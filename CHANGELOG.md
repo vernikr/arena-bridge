@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.2
+
+### Added
+- `arena-bridge tunnel --bin ngrok` runs an ngrok tunnel instead of cloudflared; with an
+  authtoken and a reserved domain (`--authtoken`, `--domain`) the public URL stays the same
+  across restarts, so the agent prompt does not have to be copied again.
+
 ## 0.6.1
 
 ### Fixed

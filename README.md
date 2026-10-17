@@ -54,7 +54,9 @@ arena-bridge setup --root ~/projects --root ~/Documents
 `setup` печатает готовый промпт и публичный URL. Дальше — просто говорите агенту задачу.
 
 Нужен туннель? Поставьте `cloudflared` (`brew install cloudflared` или бинарник в `/usr/local/bin`).
-Подойдёт и любой другой: `ngrok http 8787`, `tailscale funnel --bg 8787`.
+Можно и через ngrok — `arena-bridge tunnel --bin ngrok`; с сохранённым токеном и зарезервированным
+доменом публичный адрес остаётся постоянным, и промпт агенту не нужно копировать заново:
+`arena-bridge tunnel --bin ngrok --authtoken <token> --domain <name>.ngrok-free.dev`.
 
 ### В фоне, чтобы не открывать терминал
 

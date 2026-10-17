@@ -129,7 +129,7 @@ def cmd_tunnel(args):
         print(f"arena-bridge API on http://{cfg.get('host')}:{port}")
 
     print(f"starting {binary} (protocol={protocol})…")
-    proc, box, event = start_tunnel(port, protocol, binary)
+    proc, box, event = start_tunnel(port, protocol, binary, getattr(args, "authtoken", None), getattr(args, "domain", None))
 
     if not event.wait(timeout=90) or "url" not in box:
         print("✗ the tunnel did not report a public URL in time", file=sys.stderr)
@@ -499,7 +499,9 @@ def build_parser():
     tunnel = sub.add_parser("tunnel", help="start the API + a cloudflared quick tunnel")
     tunnel.add_argument("--port", type=int)
     tunnel.add_argument("--protocol", default="http2", choices=["http2", "quic", "auto"])
-    tunnel.add_argument("--bin", default="cloudflared")
+    tunnel.add_argument("--bin", default="cloudflared", help="cloudflared (default) or ngrok")
+    tunnel.add_argument("--authtoken", help="ngrok authtoken")
+    tunnel.add_argument("--domain", help="ngrok reserved domain")
     tunnel.set_defaults(func=cmd_tunnel)
 
     hub = sub.add_parser("hub", help="run a relay server for many devices")
@@ -552,6 +554,8 @@ def build_parser():
     setup.add_argument("--device")
     setup.add_argument("--protocol", default="http2", choices=["http2", "quic", "auto"])
     setup.add_argument("--bin", default="cloudflared")
+    setup.add_argument("--authtoken")
+    setup.add_argument("--domain")
     setup.add_argument("--public-url")
     setup.add_argument("--no-approval", action="store_true")
     setup.add_argument("--no-shell", action="store_true")

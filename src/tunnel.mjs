@@ -2,15 +2,27 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
+const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
 
 /**
- * Starts a cloudflared quick tunnel and resolves with the public URL it prints.
- * QUIC (UDP/7844) is blocked on many corporate/ISP networks, so we default to
- * http2 transport, which works over plain TCP/443.
+ * Starts a tunnel and resolves with the public URL it prints.
+ * cloudflared: QUIC (UDP/7844) is blocked on many networks, so we default to http2 over TCP/443.
+ * ngrok: an authtoken and an optional reserved domain give the same URL on every restart.
  */
-export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared' } = {}) {
+export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain } = {}) {
   const target = `http://127.0.0.1:${port}`;
-  const args = ['tunnel', '--url', target, '--protocol', protocol];
+  const isNgrok = /ngrok/i.test(bin);
+  const args = isNgrok
+    ? [
+        'http',
+        target,
+        ...(authtoken ? ['--authtoken', String(authtoken)] : []),
+        ...(domain ? ['--domain', String(domain)] : []),
+        '--log',
+        'stdout',
+      ]
+    : ['tunnel', '--url', target, '--protocol', protocol];
+  const urlPattern = isNgrok ? NGROK_URL_RE : URL_RE;
 
   const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -27,7 +39,7 @@ export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared'
   const onChunk = (chunk) => {
     const text = chunk.toString();
     buffer += text;
-    const match = URL_RE.exec(buffer);
+    const match = urlPattern.exec(buffer);
     if (match && !settled) {
       settled = true;
       resolveUrl(match[0]);

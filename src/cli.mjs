@@ -92,7 +92,9 @@ Common options:
   --hub URL            hub base URL (for "connect" / init --mode hub)
   --public-url URL     public base URL the agent should use
   --protocol P         tunnel transport: http2 (default, works on locked-down networks) or quic
-  --bin PATH           tunnel binary to run (default: cloudflared)
+  --bin PATH           tunnel binary to run (default: cloudflared; "ngrok" is supported too)
+  --authtoken TOKEN    ngrok authtoken (keeps the same URL on every restart)
+  --domain NAME        ngrok reserved domain, e.g. my-machine.ngrok-free.app
   --no-approval        disable the human approval gate (dangerous)
   --no-shell           disable shell execution entirely
 
@@ -197,7 +199,13 @@ async function cmdTunnel(args) {
   }
 
   console.log(`starting ${bin} (protocol=${protocol})…`);
-  const { child, urlPromise } = startTunnel(cfg, { port, protocol, bin });
+  const { child, urlPromise } = startTunnel(cfg, {
+    port,
+    protocol,
+    bin,
+    authtoken: args.flags.authtoken,
+    domain: args.flags.domain,
+  });
 
   let publicUrl;
   try {

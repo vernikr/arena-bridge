@@ -6,6 +6,7 @@ import subprocess
 import threading
 
 URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.IGNORECASE)
+NGROK_URL_RE = re.compile(r"https://[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)", re.IGNORECASE)
 
 
 def is_port_open(port, host="127.0.0.1", timeout=0.7) -> bool:
@@ -18,10 +19,25 @@ def is_port_open(port, host="127.0.0.1", timeout=0.7) -> bool:
             return False
 
 
-def start_tunnel(port, protocol="http2", binary="cloudflared"):
+def start_tunnel(port, protocol="http2", binary="cloudflared", authtoken=None, domain=None):
     """Returns (process, box, event). box['url'] holds the public URL once it appears."""
+    is_ngrok = "ngrok" in binary.lower()
+    if is_ngrok:
+        args = [
+            binary,
+            "http",
+            f"http://127.0.0.1:{port}",
+            *([ "--authtoken", str(authtoken)] if authtoken else []),
+            *([ "--domain", str(domain)] if domain else []),
+            "--log",
+            "stdout",
+        ]
+        pattern = NGROK_URL_RE
+    else:
+        args = [binary, "tunnel", "--url", f"http://127.0.0.1:{port}", "--protocol", protocol]
+        pattern = URL_RE
     proc = subprocess.Popen(
-        [binary, "tunnel", "--url", f"http://127.0.0.1:{port}", "--protocol", protocol],
+        args,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -32,7 +48,7 @@ def start_tunnel(port, protocol="http2", binary="cloudflared"):
 
     def reader():
         for line in proc.stdout:
-            match = URL_RE.search(line)
+            match = pattern.search(line)
             if match and "url" not in box:
                 box["url"] = match.group(0)
                 event.set()
