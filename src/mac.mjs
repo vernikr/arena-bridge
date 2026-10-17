@@ -100,21 +100,31 @@ function parseJson(text) {
 }
 
 function collectElements(node, out = [], depth = 0) {
-  if (!node || depth > 6) return out;
+  if (!node || depth > 8) return out;
   if (Array.isArray(node)) {
     for (const n of node) collectElements(n, out, depth + 1);
     return out;
   }
   if (typeof node !== 'object') return out;
-  if (node.elements && Array.isArray(node.elements)) {
-    for (const e of node.elements) {
+  for (const key of ['ui_elements', 'elements']) {
+    const list = node[key];
+    if (!Array.isArray(list) || !list.length) continue;
+    for (const e of list) {
+      if (!e || typeof e !== 'object') continue;
+      const value = e.value;
       out.push({
-        id: e.id ?? e.elementId ?? e.element_id ?? null,
-        role: e.role ?? e.elementRole ?? e.type ?? null,
+        id: e.id ?? e.element_id ?? e.elementId ?? null,
+        role: e.role ?? e.ax_role ?? e.elementRole ?? e.type ?? null,
         title: e.title ?? e.label ?? e.name ?? e.placeholder ?? null,
-        value: typeof e.value === 'string' ? e.value.slice(0, 200) : null,
-        bounds: e.frame ?? e.bounds ?? e.rect ?? null,
-        enabled: e.enabled ?? null,
+        label: e.label ?? null,
+        description: e.description ?? null,
+        identifier: e.identifier ?? null,
+        value: typeof value === 'string' ? value.slice(0, 200) : (value ?? null),
+        bounds: e.bounds ?? e.frame ?? e.rect ?? null,
+        enabled: e.is_enabled ?? e.enabled ?? null,
+        actionable: e.is_actionable ?? null,
+        settable: e.is_value_settable ?? null,
+        shortcut: e.keyboard_shortcut ?? null,
       });
     }
     return out;
@@ -178,10 +188,16 @@ export function macTools(cfg = {}) {
   const seeVariants = (args, outPath) => {
     const mode = args.mode === 'window' ? 'window' : 'screen';
     const base = ['see', '--mode', mode, ...targetFlags(args)];
+    if (!outPath) {
+      return [
+        ['see', '--tree', '--no-screenshot', '--json', ...targetFlags(args)],
+        ['see', '--tree', '--json', ...targetFlags(args)],
+        ['see', '--json', ...targetFlags(args)],
+      ];
+    }
     return [
-      [...base, '--json', '--path', outPath, '--snapshot'],
-      [...base, '--json', '--path', outPath, '--tree'],
       [...base, '--json', '--path', outPath],
+      [...base, '--path', outPath, '--json'],
       ['image', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath],
     ];
   };
@@ -202,7 +218,10 @@ export function macTools(cfg = {}) {
 
   const matchElement = (e, args) => {
     const q = (v) => String(v ?? '').toLowerCase();
-    if (args.name && !q(e.title).includes(q(args.name)) && !q(e.id).includes(q(args.name)) && !q(e.value).includes(q(args.name))) return false;
+    const text = [e.title, e.label, e.description, e.identifier, e.value, e.id]
+      .map(q)
+      .join('\n');
+    if (args.name && !text.includes(q(args.name))) return false;
     if (args.role && !q(e.role).includes(q(args.role))) return false;
     if (args.value && !q(e.value).includes(q(args.value))) return false;
     return true;
@@ -210,11 +229,8 @@ export function macTools(cfg = {}) {
 
   const searchPath = () => path.join(os.tmpdir(), 'arena-bridge-see', 'see.png');
 
-  const searchSee = async (args) => {
-    const out = searchPath();
-    ensureDir(path.dirname(out));
-    return collectSee({ app: args.app, window_title: args.window_title, mode: args.mode || 'screen' }, out);
-  };
+  const searchSee = (args) =>
+    collectSee({ app: args.app, window_title: args.window_title, mode: args.mode || 'screen' }, null);
 
   return [
     {
@@ -607,9 +623,10 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
+            ['set-value', String(args.value), '--on', String(args.on), ...flags],
+            ['set-value', String(args.value), '--on', String(args.on)],
             ['set-value', '--on', String(args.on), String(args.value), ...flags],
             ['set-value', '--on', String(args.on), '--value', String(args.value), ...flags],
-            ['set-value', String(args.on), String(args.value), ...flags],
           ],
           { timeout: 30 },
         );
@@ -645,22 +662,42 @@ export function macTools(cfg = {}) {
     },
     {
       name: 'mac_menu_click',
-      description: 'Click a menu item by its visible name (e.g. "Save", "Copy Link") — no pointer, no coordinates.',
+      description:
+        'Trigger a menu item by name (e.g. "Save", "Copy Link") or a nested path ("File > Export") — no pointer, no coordinates.',
       approval: true,
-      schema: S({ item: { type: 'string' }, app: { type: 'string' } }, ['item']),
-      required: ['item'],
+      schema: S(
+        {
+          item: { type: 'string', description: 'name of the menu item' },
+          path: { type: 'string', description: 'nested path, e.g. "File > Export"' },
+          app: { type: 'string', description: 'required: the background menu click needs a target app' },
+        },
+        [],
+      ),
+      required: [],
       handler: async (args) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
-        const flags = args.app ? ['--app', String(args.app)] : [];
-        const res = await runVariants(
-          p.bin,
-          [
-            ['menu', 'click', '--item', String(args.item), ...flags],
-            ['menu', 'click', String(args.item), ...flags],
-          ],
-          { timeout: 30 },
-        );
+        if (!args.item && !args.path) {
+          return { ok: false, error: 'missing_item', hint: 'Pass item ("Save") or path ("File > Export").' };
+        }
+        if (!args.app) {
+          return {
+            ok: false,
+            error: 'missing_app',
+            hint: 'A background menu click needs an explicit app: mac_menu_click {"app":"Safari","item":"Save"}.',
+          };
+        }
+        const flags = ['--app', String(args.app)];
+        const variants = args.path
+          ? [
+              ['menu', 'click', '--path', String(args.path), ...flags],
+              ['menu', 'click', String(args.path), ...flags],
+            ]
+          : [
+              ['menu', 'click', '--item', String(args.item), ...flags],
+              ['menu', 'click', String(args.item), ...flags],
+            ];
+        const res = await runVariants(p.bin, variants, { timeout: 30 });
         return finish(res, 'menu-click');
       },
     },
@@ -703,8 +740,8 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
-            ['space', 'switch', '--to', String(args.to)],
-            ['space', 'switch', String(args.to)],
+            ['space', 'switch', '--to', String(args.to), '--foreground'],
+            ['space', 'switch', String(args.to), '--foreground'],
           ],
           { timeout: 30 },
         );

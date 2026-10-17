@@ -93,7 +93,7 @@ def _parse_json(text):
 
 def _collect_elements(node, out=None, depth=0):
     out = [] if out is None else out
-    if node is None or depth > 6:
+    if node is None or depth > 8:
         return out
     if isinstance(node, list):
         for item in node:
@@ -101,21 +101,34 @@ def _collect_elements(node, out=None, depth=0):
         return out
     if not isinstance(node, dict):
         return out
-    elements = node.get("elements")
-    if isinstance(elements, list):
+    for key in ("ui_elements", "elements"):
+        elements = node.get(key)
+        if not isinstance(elements, list) or not elements:
+            continue
         for element in elements:
+            if not isinstance(element, dict):
+                continue
             value = element.get("value")
             out.append(
                 {
-                    "id": element.get("id") or element.get("elementId") or element.get("element_id"),
-                    "role": element.get("role") or element.get("elementRole") or element.get("type"),
+                    "id": element.get("id") or element.get("element_id") or element.get("elementId"),
+                    "role": element.get("role")
+                    or element.get("ax_role")
+                    or element.get("elementRole")
+                    or element.get("type"),
                     "title": element.get("title")
                     or element.get("label")
                     or element.get("name")
                     or element.get("placeholder"),
-                    "value": value[:200] if isinstance(value, str) else None,
-                    "bounds": element.get("frame") or element.get("bounds") or element.get("rect"),
-                    "enabled": element.get("enabled"),
+                    "label": element.get("label"),
+                    "description": element.get("description"),
+                    "identifier": element.get("identifier"),
+                    "value": value[:200] if isinstance(value, str) else value,
+                    "bounds": element.get("bounds") or element.get("frame") or element.get("rect"),
+                    "enabled": element.get("is_enabled") if element.get("is_enabled") is not None else element.get("enabled"),
+                    "actionable": element.get("is_actionable"),
+                    "settable": element.get("is_value_settable"),
+                    "shortcut": element.get("keyboard_shortcut"),
                 }
             )
         return out
@@ -179,10 +192,15 @@ def mac_tools(cfg=None):
     def see_variants(args, out_path):
         mode = "window" if args.get("mode") == "window" else "screen"
         base = ["see", "--mode", mode, *_target_flags(args)]
+        if not out_path:
+            return [
+                ["see", "--tree", "--no-screenshot", "--json", *_target_flags(args)],
+                ["see", "--tree", "--json", *_target_flags(args)],
+                ["see", "--json", *_target_flags(args)],
+            ]
         return [
-            [*base, "--json", "--path", out_path, "--snapshot"],
-            [*base, "--json", "--path", out_path, "--tree"],
             [*base, "--json", "--path", out_path],
+            [*base, "--path", out_path, "--json"],
             ["image", "--mode", mode, *_target_flags(args), "--json", "--path", out_path],
         ]
 
@@ -208,7 +226,10 @@ def mac_tools(cfg=None):
 
         if args.get("name"):
             needle = q(args["name"])
-            if not any(needle in q(element.get(key)) for key in ("title", "id", "value")):
+            haystack = "\n".join(
+                q(element.get(key)) for key in ("title", "label", "description", "identifier", "value", "id")
+            )
+            if needle not in haystack:
                 return False
         if args.get("role") and q(args["role"]) not in q(element.get("role")):
             return False
@@ -217,15 +238,13 @@ def mac_tools(cfg=None):
         return True
 
     def search_see(args):
-        out_path = str(Path(os.environ.get("TMPDIR", "/tmp")) / "arena-bridge-see" / "see.png")
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         return collect_see(
             {
                 "app": args.get("app"),
                 "window_title": args.get("window_title"),
                 "mode": args.get("mode") or "screen",
             },
-            out_path,
+            None,
         )
 
     def see(args, ctx):
@@ -452,9 +471,10 @@ def mac_tools(cfg=None):
         on = str(args.get("on"))
         value = str(args.get("value"))
         variants = [
+            ["set-value", value, "--on", on, *flags],
+            ["set-value", value, "--on", on],
             ["set-value", "--on", on, value, *flags],
             ["set-value", "--on", on, "--value", value, *flags],
-            ["set-value", on, value, *flags],
         ]
         return _finish(_run_variants(bin_path, variants, timeout=30), "set-value")
 
@@ -479,9 +499,20 @@ def mac_tools(cfg=None):
         bin_path = peek()
         if not bin_path:
             return _not_found()
-        flags = ["--app", str(args["app"])] if args.get("app") else []
-        item = str(args.get("item"))
-        variants = [["menu", "click", "--item", item, *flags], ["menu", "click", item, *flags]]
+        if not args.get("item") and not args.get("path"):
+            return {"ok": False, "error": "missing_item", "hint": 'Pass item ("Save") or path ("File > Export").'}
+        if not args.get("app"):
+            return {
+                "ok": False,
+                "error": "missing_app",
+                "hint": 'A background menu click needs an explicit app: mac_menu_click {"app":"Safari","item":"Save"}.',
+            }
+        flags = ["--app", str(args["app"])]
+        if args.get("path"):
+            variants = [["menu", "click", "--path", str(args["path"]), *flags], ["menu", "click", str(args["path"]), *flags]]
+        else:
+            item = str(args.get("item"))
+            variants = [["menu", "click", "--item", item, *flags], ["menu", "click", item, *flags]]
         return _finish(_run_variants(bin_path, variants, timeout=30), "menu-click")
 
     def spaces(args, ctx):
@@ -505,7 +536,7 @@ def mac_tools(cfg=None):
         if not bin_path:
             return _not_found()
         target = str(args.get("to"))
-        variants = [["space", "switch", "--to", target], ["space", "switch", target]]
+        variants = [["space", "switch", "--to", target, "--foreground"], ["space", "switch", target, "--foreground"]]
         return _finish(_run_variants(bin_path, variants, timeout=30), "space-switch")
 
     def wait_element(args, ctx):
@@ -736,10 +767,16 @@ def mac_tools(cfg=None):
         },
         {
             "name": "mac_menu_click",
-            "description": 'Click a menu item by its visible name (e.g. "Save", "Copy Link") — no pointer, no coordinates.',
+            "description": 'Trigger a menu item by name (e.g. "Save", "Copy Link") or a nested path ("File > Export") — no pointer, no coordinates.',
             "approval": True,
-            "schema": obj({"item": {"type": "string"}, "app": {"type": "string"}}, ["item"]),
-            "required": ["item"],
+            "schema": obj(
+                {
+                    "item": {"type": "string", "description": "name of the menu item"},
+                    "path": {"type": "string", "description": 'nested path, e.g. "File > Export"'},
+                    "app": {"type": "string", "description": "required: the background menu click needs a target app"},
+                }
+            ),
+            "required": [],
             "handler": menu_click,
         },
         {

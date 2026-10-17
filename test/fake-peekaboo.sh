@@ -15,7 +15,7 @@ done
 
 case "$1" in
   see | image)
-    echo '{"elements":[{"id":"B1","role":"button","title":"Save","bounds":{"x":1,"y":2}},{"id":"B2","role":"textField","title":"Search"}]}'
+    echo '{"success":true,"data":{"snapshot_id":"ps1_0123456789abcdef0123456789abcdef","element_count":2,"ui_elements":[{"id":"B1","role":"button","ax_role":"AXButton","title":"Save","label":"Save","value":null,"description":null,"identifier":null,"bounds":{"x":1,"y":2},"is_actionable":true,"is_enabled":true,"is_value_settable":false},{"id":"B2","role":"textField","ax_role":"AXTextField","title":"Search","label":"Search","value":"","description":"Search field","identifier":"search","bounds":{"x":4,"y":6},"is_actionable":true,"is_enabled":true,"is_value_settable":true}]}}'
     ;;
   list)
     if [ "$2" = "windows" ]; then

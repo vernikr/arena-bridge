@@ -149,7 +149,7 @@ def _():
 def _():
     r = engine.call("mac_set", {"on": "B2", "value": "hello"})
     assert r["ok"], r
-    assert "set-value --on B2 hello" in (HOME / "peek.log").read_text()
+    assert "set-value hello --on B2" in (HOME / "peek.log").read_text()
 
 
 @test("mac_menu lists and clicks menu items by name")

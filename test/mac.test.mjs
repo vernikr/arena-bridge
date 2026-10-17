@@ -145,7 +145,7 @@ await test('mac_element can filter by role', async () => {
 await test('mac_set writes a value through the accessibility API', async () => {
   const r = await engine.call('mac_set', { on: 'B2', value: 'hello' });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.match(fs.readFileSync(LOG, 'utf8'), /set-value --on B2 hello/);
+  assert.match(fs.readFileSync(LOG, 'utf8'), /set-value hello --on B2/);
 });
 
 await test('mac_menu lists and clicks menu items by name', async () => {

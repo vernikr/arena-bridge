@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.4
+
+### Fixed
+- The accessibility element map is read from Peekaboo's real payload (`data.ui_elements`), so
+  `mac_see` and `mac_element` now return the controls of a window instead of an empty list.
+  Elements carry their label, description, identifier and value-settable flag.
+- Commands follow the Peekaboo v4 grammar: `set-value "<value>" --on <id>`, `menu click --item|--path`
+  with an explicit app, `space switch --to <n> --foreground`, and the tree-only read
+  `see --tree --no-screenshot --json` (no screenshot artifact for pure lookups).
+
 ## 0.6.3
 
 ### Added

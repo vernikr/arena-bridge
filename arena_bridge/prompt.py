@@ -104,7 +104,7 @@ The token is: {token}
 6. Stay out of the user's way: do not pass `foreground`, do not focus windows and do not move the
    pointer unless the user asks for it. Background actions are delivered to the target window only.
 7. `mac_set` writes a value straight into a control (no keystrokes, no focus change);
-   `mac_menu_click` triggers a menu item by its name — both are more reliable than typing.
+   `mac_menu_click` triggers a menu item by its name (it needs the `app` name) — both are more reliable than typing.
 8. `mac_wait` waits for a control to appear or disappear instead of sleeping and guessing.
 9. `mac_spaces` lists the macOS virtual desktops; `mac_space_switch` moves the agent to another
    Space so the user keeps the screen they are looking at.
