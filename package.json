@@ -1,6 +1,6 @@
 {
   "name": "arena-bridge",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Give a cloud AI agent (Arena.ai Agent Mode, Claude, Cursor, ...) controlled access to your own machine over HTTP/MCP: files, shell, Chrome and the macOS desktop, with an approval gate, trust windows and an audit log.",
   "type": "module",
   "bin": {
@@ -26,11 +26,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vernikr-personal/arena-bridge.git"
+    "url": "git+https://github.com/vernikr/arena-bridge.git"
   },
-  "homepage": "https://github.com/vernikr-personal/arena-bridge#readme",
+  "homepage": "https://github.com/vernikr/arena-bridge#readme",
   "bugs": {
-    "url": "https://github.com/vernikr-personal/arena-bridge/issues"
+    "url": "https://github.com/vernikr/arena-bridge/issues"
   },
   "keywords": [
     "mcp",
@@ -47,7 +47,7 @@
     "mcp-server",
     "self-hosted"
   ],
-  "author": "vernikr-personal",
+  "author": "vernikr",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.1
+
+### Fixed
+- Repository links point to the new home: github.com/vernikr/arena-bridge.
+
 ## 0.6.0
 
 ### Added
