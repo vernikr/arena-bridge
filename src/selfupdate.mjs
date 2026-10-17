@@ -6,6 +6,21 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const PKG = 'arena-bridge';
 
+/** The npm prefix the current installation lives in, so an update replaces this very copy. */
+export function installPrefix() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const parts = here.split(path.sep);
+    const idx = parts.lastIndexOf('node_modules');
+    if (idx < 1) return null;
+    let prefix = parts.slice(0, idx).join(path.sep);
+    if (prefix.endsWith(`${path.sep}lib`)) prefix = prefix.slice(0, -4);
+    return prefix || null;
+  } catch {
+    return null;
+  }
+}
+
 export function packageInfo() {
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -65,7 +80,24 @@ export async function selfUpdate({ dryRun = false } = {}) {
   if (dryRun) {
     return { ok: true, upToDate: false, installed: info.version, latest, command: `npm i -g ${PKG}@latest` };
   }
-  const res = await run('npm', ['i', '-g', `${PKG}@latest`]);
+  const prefix = installPrefix();
+  const install = (extra = []) =>
+    run('npm', ['i', '-g', ...(prefix ? ['--prefix', prefix] : []), ...extra, `${PKG}@${latest}`]);
+
+  let res = await run('npm', ['i', '-g', ...(prefix ? ['--prefix', prefix] : []), `${PKG}@latest`]);
+  if (!res.ok && /notarget|ETARGET|No matching version/i.test(res.stderr || '')) {
+    // the registry metadata can be ahead of the tarball for a moment after a publish
+    await new Promise((r) => setTimeout(r, 15000));
+    res = await install();
+  }
+  if (!res.ok && /EEXIST|already exists/i.test(res.stderr || '')) {
+    // a previous install from a tarball leaves a conflicting link in the global bin
+    res = await run('npm', ['i', '-g', ...(prefix ? ['--prefix', prefix] : []), '--force', `${PKG}@${latest}`]);
+    if (!res.ok) {
+      await run('npm', ['rm', '-g', ...(prefix ? ['--prefix', prefix] : []), PKG]);
+      res = await install();
+    }
+  }
   if (!res.ok) {
     return {
       ok: false,

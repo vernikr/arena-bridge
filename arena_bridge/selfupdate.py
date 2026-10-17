@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 import urllib.request
 
 PKG = "arena-bridge"
@@ -58,6 +59,14 @@ def self_update(dry_run: bool = False) -> dict:
             text=True,
             timeout=600,
         )
+        if proc.returncode != 0 and "notarget" in (proc.stderr or "").lower():
+            time.sleep(15)
+            proc = subprocess.run(
+                ["pip", "install", "-U", f"{PKG}=={latest}"],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
     except Exception as exc:  # pragma: no cover - defensive
         return {"ok": False, "error": "pip install failed", "detail": str(exc), "installed": info["version"], "latest": latest}
     if proc.returncode != 0:

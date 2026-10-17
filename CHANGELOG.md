@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.2
+
+### Fixed
+- `arena-bridge update` now replaces the very installation it runs from (the npm prefix is
+  detected), survives a tarball install that left a conflicting link, and retries when the
+  registry metadata is ahead of the tarball.
+
 ## 0.5.1
 
 ### Fixed
