@@ -200,6 +200,10 @@ async function cmdTunnel(args) {
     publicUrl = await urlPromise;
   } catch (e) {
     console.error(`✗ ${e.message}`);
+    if (String(e.message).includes('ENOENT')) {
+      console.error(`  ${bin} is not installed. Install it (macOS: brew install cloudflared) or pass a path: --bin /path/to/cloudflared`);
+      console.error('  Any other tunnel works too: ngrok http 8787, tailscale funnel --bg 8787');
+    }
     try {
       child.kill();
     } catch {

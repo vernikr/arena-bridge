@@ -132,6 +132,7 @@ def cmd_tunnel(args):
 
     if not event.wait(timeout=90) or "url" not in box:
         print("✗ the tunnel did not report a public URL in time", file=sys.stderr)
+        print(f"  is {binary} installed? (macOS: brew install cloudflared) or pass a path: --bin /path/to/{binary}", file=sys.stderr)
         try:
             proc.terminate()
         except Exception:

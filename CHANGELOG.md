@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.1
+
+### Fixed
+- `setup` and `tunnel` now say how to install `cloudflared` when the binary is missing.
+
 ## 0.5.0
 
 ### Added

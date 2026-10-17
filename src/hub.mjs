@@ -90,7 +90,7 @@ export function createHubServer(cfg) {
         return sendJson(res, 200, {
           ok: true,
           mode: 'hub',
-          version: '0.5.0',
+          version: '0.5.1',
           devices: [...devices.keys()],
         });
       }
