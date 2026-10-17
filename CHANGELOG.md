@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.6
+
+### Fixed
+- The tunnel is now supervised: when the tunnel binary dies, it is started again automatically
+  and the new public URL is printed and saved to the config, instead of leaving a dead tunnel
+  behind (the bridge used to keep running while the public address had stopped working).
+
 ## 0.6.5
 
 ### Fixed

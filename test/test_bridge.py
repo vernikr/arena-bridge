@@ -376,6 +376,31 @@ def _():
     assert j["ok"] is False and j["error"] == "DEVICE_OFFLINE", j
 
 
+@test("a dropped tunnel is restarted and the new URL is reported")
+def _():
+    from arena_bridge.tunnel import start_tunnel
+
+    log = TMP / "tunnel-restart.log"
+    fake = TMP / "fake-flaky-tunnel"
+    fake.write_text(
+        "#!/bin/sh\n"
+        f'echo "start $$" >> "{log}"\n'
+        "echo '2026-01-01T00:00:00Z INF https://fake-flaky-tunnel.trycloudflare.com'\n"
+        "exit 1\n"
+    )
+    fake.chmod(0o755)
+    proc, box, event = start_tunnel(8787, "http2", str(fake), delay=0.1)
+    assert event.wait(timeout=15), box
+    assert box["url"] == "https://fake-flaky-tunnel.trycloudflare.com", box
+    seen = []
+    box["on_url"](seen.append)
+    time.sleep(1.2)
+    starts = len(log.read_text().strip().splitlines())
+    assert starts >= 2, f"expected the tunnel to restart, got {starts} start(s)"
+    assert seen, "the new URL is reported"
+    proc.terminate()
+
+
 server.shutdown()
 server2.shutdown()
 hub.shutdown()

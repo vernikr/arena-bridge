@@ -480,6 +480,31 @@ await test('startTunnel extracts the public URL from the cloudflared banner', as
   child.kill();
 });
 
+await test('a dropped tunnel is restarted and the new URL is reported', async () => {
+  const log = path.join(TMP, 'tunnel-restart.log');
+  const fake = path.join(TMP, 'fake-flaky-tunnel');
+  fs.writeFileSync(
+    fake,
+    [
+      '#!/bin/sh',
+      'echo "start $$" >> "' + log + '"',
+      'echo "2026-01-01T00:00:00Z INF https://fake-flaky-tunnel.trycloudflare.com"',
+      'exit 1',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  const { child, urlPromise, onUrl } = startTunnel(loaded, { port: 8787, bin: fake, delay: 100 });
+  const url = await urlPromise;
+  assert.equal(url, 'https://fake-flaky-tunnel.trycloudflare.com');
+  const seen = [];
+  onUrl((u) => seen.push(u));
+  await new Promise((r) => setTimeout(r, 1200));
+  const starts = fs.readFileSync(log, 'utf8').trim().split('\n').length;
+  assert.ok(starts >= 2, `expected the tunnel to restart, got ${starts} start(s)`);
+  assert.ok(seen.length >= 1, 'the new URL is reported');
+  child.kill();
+});
+
 await test('repeated --root flags accumulate instead of overwriting', async () => {
   const { parseArgs } = await import('../src/cli.mjs');
   const args = parseArgs(['init', '--root', '~/projects', '--root', '~/Documents,~/notes']);

@@ -9,7 +9,10 @@ const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
  * cloudflared: QUIC (UDP/7844) is blocked on many networks, so we default to http2 over TCP/443.
  * ngrok: an authtoken and an optional reserved domain give the same URL on every restart.
  */
-export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain } = {}) {
+export function startTunnel(
+  cfg,
+  { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000 } = {},
+) {
   const target = `http://127.0.0.1:${port}`;
   const isNgrok = /ngrok/i.test(bin);
   const args = isNgrok
@@ -24,12 +27,13 @@ export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared'
     : ['tunnel', '--url', target, '--protocol', protocol];
   const urlPattern = isNgrok ? NGROK_URL_RE : URL_RE;
 
-  const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
+  let child = null;
   let buffer = '';
   let settled = false;
+  let attempt = 0;
   let resolveUrl;
   let rejectUrl;
+  const listeners = new Set();
 
   const urlPromise = new Promise((resolve, reject) => {
     resolveUrl = resolve;
@@ -37,33 +41,48 @@ export function startTunnel(cfg, { port, protocol = 'http2', bin = 'cloudflared'
   });
 
   const onChunk = (chunk) => {
-    const text = chunk.toString();
-    buffer += text;
+    buffer += chunk.toString();
     const match = urlPattern.exec(buffer);
-    if (match && !settled) {
+    if (!match) return;
+    if (!settled) {
       settled = true;
       resolveUrl(match[0]);
     }
+    for (const fn of listeners) fn(match[0]);
   };
 
-  child.stdout.on('data', onChunk);
-  child.stderr.on('data', onChunk);
+  const spawnChild = () => {
+    child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    buffer = '';
+    child.stdout.on('data', onChunk);
+    child.stderr.on('data', onChunk);
+    child.on('error', (e) => {
+      if (!settled) {
+        settled = true;
+        rejectUrl(new Error(`cannot start ${bin}: ${e.message}`));
+      }
+    });
+    child.on('exit', (code) => {
+      if (!settled) {
+        settled = true;
+        rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared`));
+        return;
+      }
+      if (attempt++ < restarts) {
+        setTimeout(spawnChild, delay);
+      }
+    });
+  };
 
-  child.on('error', (e) => {
-    if (!settled) {
-      settled = true;
-      rejectUrl(new Error(`cannot start ${bin}: ${e.message}`));
-    }
-  });
+  spawnChild();
 
-  child.on('exit', (code) => {
-    if (!settled) {
-      settled = true;
-      rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared`));
-    }
-  });
-
-  return { child, urlPromise, args, target };
+  return {
+    child,
+    urlPromise,
+    args,
+    target,
+    onUrl: (fn) => listeners.add(fn),
+  };
 }
 
 export function isPortOpen(port, host = '127.0.0.1', timeout = 700) {

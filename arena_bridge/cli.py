@@ -147,6 +147,15 @@ def cmd_tunnel(args):
     cfg["port"] = port
     save_config(cfg)
 
+    def announce(url):
+        if url == public_url:
+            return
+        cfg["publicUrl"] = url
+        save_config(cfg)
+        print(f"\n⚠ tunnel reconnected — new public URL: {url}", flush=True)
+        print("Update the base URL in the agent chat (arena-bridge prompt prints a fresh copy).", flush=True)
+
+    box.get("on_url", lambda fn: None)(announce)
     print(f"\npublic URL: {public_url}   (saved as config.publicUrl)\n")
     print("Paste this into the agent chat:")
     print("-----8<-----")

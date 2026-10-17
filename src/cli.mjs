@@ -199,7 +199,7 @@ async function cmdTunnel(args) {
   }
 
   console.log(`starting ${bin} (protocol=${protocol})…`);
-  const { child, urlPromise } = startTunnel(cfg, {
+  const { child, urlPromise, onUrl } = startTunnel(cfg, {
     port,
     protocol,
     bin,
@@ -228,6 +228,15 @@ async function cmdTunnel(args) {
   cfg.publicUrl = publicUrl;
   cfg.port = port;
   saveConfig(cfg);
+
+  onUrl((url) => {
+    if (url === publicUrl) return;
+    publicUrl = url;
+    cfg.publicUrl = url;
+    saveConfig(cfg);
+    console.log(`\n⚠ tunnel reconnected — new public URL: ${url}`);
+    console.log('Update the base URL in the agent chat (arena-bridge prompt prints a fresh copy).');
+  });
 
   console.log(`\npublic URL: ${publicUrl}   (saved as config.publicUrl)\n`);
   console.log('Paste this into the agent chat:');
