@@ -191,6 +191,7 @@ export function macTools(cfg = {}) {
     if (!outPath) {
       return [
         ['see', '--tree', '--no-screenshot', '--json', ...targetFlags(args)],
+        ['see', '--tree', '--no-screenshot', '--no-remote', '--json', ...targetFlags(args)],
         ['see', '--tree', '--json', ...targetFlags(args)],
         ['see', '--json', ...targetFlags(args)],
       ];
@@ -198,6 +199,7 @@ export function macTools(cfg = {}) {
     return [
       [...base, '--json', '--path', outPath],
       [...base, '--path', outPath, '--json'],
+      [...base, '--no-remote', '--json', '--path', outPath],
       ['image', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath],
     ];
   };
@@ -467,9 +469,9 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
-            ['list', 'apps', '--json'],
             ['app', 'list', '--json'],
-            ['list', 'apps'],
+            ['list', 'apps', '--json'],
+            ['app', 'list'],
           ],
           { timeout: 30 },
         );
@@ -492,12 +494,16 @@ export function macTools(cfg = {}) {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const flags = args.app ? ['--app', String(args.app)] : [];
+        if (!flags.length) {
+          const windows = await windowsOfAllApps(p.bin);
+          return { ok: true, windows, source: 'per-app', hint: 'Pass app or pid to narrow the list down.' };
+        }
         const res = await runVariants(
           p.bin,
           [
-            ['list', 'windows', ...flags, '--json'],
             ['window', 'list', ...flags, '--json'],
-            ['list', 'windows', ...flags],
+            ['list', 'windows', ...flags, '--json'],
+            ['window', 'list', ...flags],
           ],
           { timeout: 30 },
         );
@@ -642,10 +648,11 @@ export function macTools(cfg = {}) {
       handler: async (args) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
-        const flags = args.app ? ['--app', String(args.app)] : [];
+        const flags = menuFlags(args);
         const res = await runVariants(
           p.bin,
           [
+            ['menu', 'list', ...flags, '--no-remote', '--json'],
             ['menu', 'list', ...flags, '--json'],
             ['menu', 'list', ...flags],
           ],
@@ -654,9 +661,10 @@ export function macTools(cfg = {}) {
         const json = parseJson(res.stdout);
         return {
           ok: res.exit_code === 0,
-          menus: json ? (json.menus || json.data?.menus || json) : undefined,
+          menus: json ? (json.menus || json.data?.menus || json.data?.menu_structure || json) : undefined,
           output: json ? undefined : res.stdout.slice(0, 4000),
           error: res.exit_code === 0 ? undefined : (res.stderr || '').trim().slice(0, 600),
+          hint: res.exit_code === 0 ? undefined : menuHint(res),
         };
       },
     },
@@ -670,6 +678,7 @@ export function macTools(cfg = {}) {
           item: { type: 'string', description: 'name of the menu item' },
           path: { type: 'string', description: 'nested path, e.g. "File > Export"' },
           app: { type: 'string', description: 'required: the background menu click needs a target app' },
+          pid: { type: 'number', description: 'process id, when the app name is ambiguous' },
         },
         [],
       ),
@@ -680,22 +689,22 @@ export function macTools(cfg = {}) {
         if (!args.item && !args.path) {
           return { ok: false, error: 'missing_item', hint: 'Pass item ("Save") or path ("File > Export").' };
         }
-        if (!args.app) {
+        if (!args.app && !args.pid) {
           return {
             ok: false,
             error: 'missing_app',
             hint: 'A background menu click needs an explicit app: mac_menu_click {"app":"Safari","item":"Save"}.',
           };
         }
-        const flags = ['--app', String(args.app)];
+        const flags = menuFlags(args);
         const variants = args.path
           ? [
+              ['menu', 'click', '--path', String(args.path), ...flags, '--no-remote'],
               ['menu', 'click', '--path', String(args.path), ...flags],
-              ['menu', 'click', String(args.path), ...flags],
             ]
           : [
+              ['menu', 'click', '--item', String(args.item), ...flags, '--no-remote'],
               ['menu', 'click', '--item', String(args.item), ...flags],
-              ['menu', 'click', String(args.item), ...flags],
             ];
         const res = await runVariants(p.bin, variants, { timeout: 30 });
         return finish(res, 'menu-click');
@@ -713,6 +722,7 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
+            ['space', 'list', '--no-remote', '--json'],
             ['space', 'list', '--json'],
             ['space', 'list'],
           ],
@@ -740,8 +750,8 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
+            ['space', 'switch', '--to', String(args.to), '--foreground', '--no-remote'],
             ['space', 'switch', '--to', String(args.to), '--foreground'],
-            ['space', 'switch', String(args.to), '--foreground'],
           ],
           { timeout: 30 },
         );
@@ -819,6 +829,43 @@ export function macTools(cfg = {}) {
       },
     },
   ];
+}
+
+function menuFlags(args) {
+  const f = [];
+  if (args.app) f.push('--app', String(args.app));
+  if (args.pid) f.push('--pid', String(args.pid));
+  return f;
+}
+
+function menuHint(res) {
+  const text = (res.stderr || res.stdout || '').trim();
+  if (/multiple apps match/i.test(text)) {
+    return 'Several apps share that name — pass the process id from mac_apps: mac_menu {"pid":12345}.';
+  }
+  return text.slice(0, 600);
+}
+
+async function windowsOfAllApps(bin) {
+  const res = await runVariants(
+    bin,
+    [
+      ['app', 'list', '--json'],
+      ['list', 'apps', '--json'],
+    ],
+    { timeout: 30 },
+  );
+  const json = parseJson(res.stdout);
+  const apps = json ? (json.apps || json.data?.apps || []) : [];
+  const out = [];
+  for (const app of Array.isArray(apps) ? apps.slice(0, 6) : []) {
+    if (!app || !app.pid) continue;
+    const w = await run(bin, ['window', 'list', '--pid', String(app.pid), '--json'], { timeout: 20 });
+    const data = parseJson(w.stdout);
+    const list = data ? (data.windows || data.data?.windows || []) : [];
+    for (const win of Array.isArray(list) ? list : []) out.push({ ...win, app: app.name, pid: app.pid });
+  }
+  return out;
 }
 
 function checkPeek(p) {

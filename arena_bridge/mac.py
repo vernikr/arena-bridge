@@ -176,6 +176,38 @@ def _finish(res, action):
     }
 
 
+def _menu_flags(args):
+    flags = []
+    if args.get("app"):
+        flags += ["--app", str(args["app"])]
+    if args.get("pid"):
+        flags += ["--pid", str(args["pid"])]
+    return flags
+
+
+def _menu_hint(res):
+    text = (res.get("stderr") or res.get("stdout") or "").strip()
+    if "multiple apps match" in text.lower():
+        return "Several apps share that name — pass the process id from mac_apps: mac_menu {\"pid\":12345}."
+    return text[:600]
+
+
+def _windows_of_all_apps(bin_path):
+    res = _run_variants(bin_path, [["app", "list", "--json"], ["list", "apps", "--json"]], timeout=30)
+    data = _parse_json(res["stdout"])
+    apps = data.get("apps") or data.get("data", {}).get("apps") or [] if isinstance(data, dict) else []
+    out = []
+    for app in apps[:6] if isinstance(apps, list) else []:
+        if not isinstance(app, dict) or not app.get("pid"):
+            continue
+        w = _run(bin_path, ["window", "list", "--pid", str(app["pid"]), "--json"], timeout=20)
+        wdata = _parse_json(w["stdout"])
+        wins = wdata.get("windows") or wdata.get("data", {}).get("windows") or [] if isinstance(wdata, dict) else []
+        for win in wins if isinstance(wins, list) else []:
+            out.append({**win, "app": app.get("name"), "pid": app.get("pid")})
+    return out
+
+
 def _not_found():
     return {"ok": False, "error": "peekaboo_not_found", "hint": NOT_FOUND_HINT}
 
@@ -378,7 +410,7 @@ def mac_tools(cfg=None):
         bin_path = peek()
         if not bin_path:
             return _not_found()
-        variants = [["list", "apps", "--json"], ["app", "list", "--json"], ["list", "apps"]]
+        variants = [["app", "list", "--json"], ["list", "apps", "--json"], ["app", "list"]]
         res = _run_variants(bin_path, variants, timeout=30)
         data = _parse_json(res["stdout"])
         payload = data
@@ -396,10 +428,17 @@ def mac_tools(cfg=None):
         if not bin_path:
             return _not_found()
         flags = ["--app", str(args["app"])] if args.get("app") else []
+        if not flags:
+            return {
+                "ok": True,
+                "windows": _windows_of_all_apps(bin_path),
+                "source": "per-app",
+                "hint": "Pass app or pid to narrow the list down.",
+            }
         variants = [
-            ["list", "windows", *flags, "--json"],
             ["window", "list", *flags, "--json"],
-            ["list", "windows", *flags],
+            ["list", "windows", *flags, "--json"],
+            ["window", "list", *flags],
         ]
         res = _run_variants(bin_path, variants, timeout=30)
         data = _parse_json(res["stdout"])
@@ -482,17 +521,27 @@ def mac_tools(cfg=None):
         bin_path = peek()
         if not bin_path:
             return _not_found()
-        flags = ["--app", str(args["app"])] if args.get("app") else []
-        res = _run_variants(bin_path, [["menu", "list", *flags, "--json"], ["menu", "list", *flags]], timeout=30)
+        flags = _menu_flags(args)
+        res = _run_variants(
+            bin_path,
+            [["menu", "list", *flags, "--no-remote", "--json"], ["menu", "list", *flags, "--json"], ["menu", "list", *flags]],
+            timeout=30,
+        )
         data = _parse_json(res["stdout"])
         payload = data
         if isinstance(data, dict):
-            payload = data.get("menus") or data.get("data", {}).get("menus") or data
+            payload = (
+                data.get("menus")
+                or data.get("data", {}).get("menus")
+                or data.get("data", {}).get("menu_structure")
+                or data
+            )
         return {
             "ok": res["exit_code"] == 0,
             "menus": payload if data is not None else None,
             "output": None if data is not None else (res["stdout"] or "")[:4000],
             "error": None if res["exit_code"] == 0 else (res["stderr"] or "").strip()[:600],
+            "hint": None if res["exit_code"] == 0 else _menu_hint(res),
         }
 
     def menu_click(args, ctx):
@@ -501,25 +550,35 @@ def mac_tools(cfg=None):
             return _not_found()
         if not args.get("item") and not args.get("path"):
             return {"ok": False, "error": "missing_item", "hint": 'Pass item ("Save") or path ("File > Export").'}
-        if not args.get("app"):
+        if not args.get("app") and not args.get("pid"):
             return {
                 "ok": False,
                 "error": "missing_app",
                 "hint": 'A background menu click needs an explicit app: mac_menu_click {"app":"Safari","item":"Save"}.',
             }
-        flags = ["--app", str(args["app"])]
+        flags = _menu_flags(args)
         if args.get("path"):
-            variants = [["menu", "click", "--path", str(args["path"]), *flags], ["menu", "click", str(args["path"]), *flags]]
+            variants = [
+                ["menu", "click", "--path", str(args["path"]), *flags, "--no-remote"],
+                ["menu", "click", "--path", str(args["path"]), *flags],
+            ]
         else:
             item = str(args.get("item"))
-            variants = [["menu", "click", "--item", item, *flags], ["menu", "click", item, *flags]]
+            variants = [
+                ["menu", "click", "--item", item, *flags, "--no-remote"],
+                ["menu", "click", "--item", item, *flags],
+            ]
         return _finish(_run_variants(bin_path, variants, timeout=30), "menu-click")
 
     def spaces(args, ctx):
         bin_path = peek()
         if not bin_path:
             return _not_found()
-        res = _run_variants(bin_path, [["space", "list", "--json"], ["space", "list"]], timeout=30)
+        res = _run_variants(
+            bin_path,
+            [["space", "list", "--no-remote", "--json"], ["space", "list", "--json"], ["space", "list"]],
+            timeout=30,
+        )
         data = _parse_json(res["stdout"])
         payload = data
         if isinstance(data, dict):
@@ -536,7 +595,10 @@ def mac_tools(cfg=None):
         if not bin_path:
             return _not_found()
         target = str(args.get("to"))
-        variants = [["space", "switch", "--to", target, "--foreground"], ["space", "switch", target, "--foreground"]]
+        variants = [
+            ["space", "switch", "--to", target, "--foreground", "--no-remote"],
+            ["space", "switch", "--to", target, "--foreground"],
+        ]
         return _finish(_run_variants(bin_path, variants, timeout=30), "space-switch")
 
     def wait_element(args, ctx):

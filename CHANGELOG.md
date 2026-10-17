@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.5
+
+### Fixed
+- Peekaboo 4.9 compatibility: `peekaboo list` was removed in v4, so `mac_apps` now uses
+  `app list` and `mac_windows` uses `window list` (enumerating the running apps when no app is
+  given). `mac_menu` / `mac_menu_click` accept a process id, run against the local host
+  (`--no-remote`) and read the `menu_structure` payload; `mac_spaces` / `mac_space_switch` also
+  run locally, because a remote host cannot read or switch Spaces.
+
 ## 0.6.4
 
 ### Fixed

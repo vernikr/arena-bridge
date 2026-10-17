@@ -129,6 +129,14 @@ def _():
     assert wins["windows"][0]["id"] == 42
 
 
+@test("mac_windows enumerates the windows of the running apps")
+def _():
+    r = engine.call("mac_windows", {})
+    assert r["ok"], r
+    assert r["windows"][0]["title"] == "Documents"
+    assert r["windows"][0]["app"] == "Safari"
+
+
 @test("mac_element finds controls by their visible name")
 def _():
     r = engine.call("mac_element", {"name": "Save"})
@@ -166,7 +174,8 @@ def _():
 def _():
     r = engine.call("mac_spaces", {})
     assert r["ok"], r
-    assert r["spaces"][1]["name"] == "Desktop 2"
+    assert r["spaces"][1]["id"] == 2
+    assert r["spaces"][0]["is_active"] is True
     switch = engine.call("mac_space_switch", {"to": "2"})
     assert switch["ok"], switch
     assert "space switch --to 2" in (HOME / "peek.log").read_text()

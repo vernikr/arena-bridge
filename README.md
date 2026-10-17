@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-110%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-112%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -157,6 +157,7 @@ cookies и localStorage нет.
 ```
 
 Установить Peekaboo: `brew install peekaboo` (или бинарник в `/usr/local/bin/peekaboo`).
+Проверено с Peekaboo 4.9 (4.3 тоже работает, но синтаксис команд обновлён под 4.9).
 macOS спросит разрешения **Screen Recording** и **Accessibility** для терминала, из которого
 запущен мост — без них скриншоты и клики не работают; `mac_permissions` покажет, что не так.
 

@@ -18,11 +18,18 @@ case "$1" in
     echo '{"success":true,"data":{"snapshot_id":"ps1_0123456789abcdef0123456789abcdef","element_count":2,"ui_elements":[{"id":"B1","role":"button","ax_role":"AXButton","title":"Save","label":"Save","value":null,"description":null,"identifier":null,"bounds":{"x":1,"y":2},"is_actionable":true,"is_enabled":true,"is_value_settable":false},{"id":"B2","role":"textField","ax_role":"AXTextField","title":"Search","label":"Search","value":"","description":"Search field","identifier":"search","bounds":{"x":4,"y":6},"is_actionable":true,"is_enabled":true,"is_value_settable":true}]}}'
     ;;
   list)
-    if [ "$2" = "windows" ]; then
-      echo '{"windows":[{"id":42,"title":"Documents"}]}'
+    echo "Command 'peekaboo list' was removed in v4." >&2
+    exit 1
+    ;;
+  app)
+    if [ "$2" = "list" ]; then
+      echo '{"success":true,"data":{"apps":[{"name":"Safari","pid":10,"is_active":true},{"name":"Finder","pid":11,"is_active":false}]}}'
     else
-      echo '{"apps":[{"name":"Safari","pid":10,"focused":true},{"name":"Finder","pid":11,"focused":false}]}'
+      echo "done app $2"
     fi
+    ;;
+  window)
+    echo '{"success":true,"data":{"windows":[{"id":42,"title":"Documents"}]}}'
     ;;
   permissions)
     echo 'Screen Recording: granted'
@@ -32,14 +39,14 @@ case "$1" in
     ;;
   menu)
     if [ "$2" = "list" ]; then
-      echo '{"menus":[{"title":"File","items":[{"title":"Save","id":"M1"}]}]}'
+      echo '{"success":true,"data":{"app":"Safari","menu_structure":[{"title":"File","enabled":true,"items":[{"title":"Save","enabled":true}]}]}}'
     else
       echo "done menu $2"
     fi
     ;;
   space)
     if [ "$2" = "list" ]; then
-      echo '{"spaces":[{"id":1,"name":"Desktop 1","active":true},{"id":2,"name":"Desktop 2","active":false}]}'
+      echo '{"success":true,"data":{"spaces":[{"type":"user","id":1,"is_active":true},{"type":"user","id":2,"is_active":false}]}}'
     else
       echo "done space $2"
     fi

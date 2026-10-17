@@ -128,6 +128,13 @@ await test('mac_apps and mac_windows return structured lists', async () => {
   assert.equal(wins.windows[0].id, 42);
 });
 
+await test('mac_windows enumerates the windows of the running apps', async () => {
+  const r = await engine.call('mac_windows', {});
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.windows[0].title, 'Documents');
+  assert.equal(r.windows[0].app, 'Safari');
+});
+
 await test('mac_element finds controls by their visible name', async () => {
   const r = await engine.call('mac_element', { name: 'Save' });
   assert.equal(r.ok, true, JSON.stringify(r));
@@ -160,7 +167,8 @@ await test('mac_menu lists and clicks menu items by name', async () => {
 await test('mac_spaces shows the virtual desktops', async () => {
   const r = await engine.call('mac_spaces', {});
   assert.equal(r.ok, true);
-  assert.equal(r.spaces[1].name, 'Desktop 2');
+  assert.equal(r.spaces[1].id, 2);
+  assert.equal(r.spaces[0].is_active, true);
   const sw = await engine.call('mac_space_switch', { to: '2' });
   assert.equal(sw.ok, true, JSON.stringify(sw));
   assert.match(fs.readFileSync(LOG, 'utf8'), /space switch --to 2/);
