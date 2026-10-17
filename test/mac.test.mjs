@@ -128,6 +128,57 @@ await test('mac_apps and mac_windows return structured lists', async () => {
   assert.equal(wins.windows[0].id, 42);
 });
 
+await test('mac_element finds controls by their visible name', async () => {
+  const r = await engine.call('mac_element', { name: 'Save' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.count, 1);
+  assert.equal(r.matches[0].id, 'B1');
+  assert.equal(r.matches[0].role, 'button');
+});
+
+await test('mac_element can filter by role', async () => {
+  const r = await engine.call('mac_element', { role: 'textField' });
+  assert.equal(r.count, 1);
+  assert.equal(r.matches[0].title, 'Search');
+});
+
+await test('mac_set writes a value through the accessibility API', async () => {
+  const r = await engine.call('mac_set', { on: 'B2', value: 'hello' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.match(fs.readFileSync(LOG, 'utf8'), /set-value --on B2 hello/);
+});
+
+await test('mac_menu lists and clicks menu items by name', async () => {
+  const list = await engine.call('mac_menu', { app: 'Safari' });
+  assert.equal(list.ok, true);
+  assert.equal(list.menus[0].title, 'File');
+  const click = await engine.call('mac_menu_click', { item: 'Save', app: 'Safari' });
+  assert.equal(click.ok, true, JSON.stringify(click));
+  assert.match(fs.readFileSync(LOG, 'utf8'), /menu click --item Save --app Safari/);
+});
+
+await test('mac_spaces shows the virtual desktops', async () => {
+  const r = await engine.call('mac_spaces', {});
+  assert.equal(r.ok, true);
+  assert.equal(r.spaces[1].name, 'Desktop 2');
+  const sw = await engine.call('mac_space_switch', { to: '2' });
+  assert.equal(sw.ok, true, JSON.stringify(sw));
+  assert.match(fs.readFileSync(LOG, 'utf8'), /space switch --to 2/);
+});
+
+await test('mac_wait reports the element it waited for', async () => {
+  const r = await engine.call('mac_wait', { name: 'Save', timeout: 5 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.found, true);
+  assert.equal(r.element.id, 'B1');
+});
+
+await test('mac_wait can wait for something to disappear', async () => {
+  const r = await engine.call('mac_wait', { name: 'Nothing here', disappear: true, timeout: 5 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.gone, true);
+});
+
 await test('mac_permissions explains what macOS still asks for', async () => {
   const r = await engine.call('mac_permissions', {});
   assert.equal(r.ok, true);

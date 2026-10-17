@@ -175,6 +175,47 @@ export function macTools(cfg = {}) {
     return f;
   };
 
+  const seeVariants = (args, outPath) => {
+    const mode = args.mode === 'window' ? 'window' : 'screen';
+    const base = ['see', '--mode', mode, ...targetFlags(args)];
+    return [
+      [...base, '--json', '--path', outPath, '--snapshot'],
+      [...base, '--json', '--path', outPath, '--tree'],
+      [...base, '--json', '--path', outPath],
+      ['image', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath],
+    ];
+  };
+
+  const collectSee = async (args, outPath) => {
+    let best = null;
+    for (const variant of seeVariants(args, outPath)) {
+      const res = await run(peek(), variant, { timeout: 60 });
+      const json = parseJson(res.stdout);
+      const cand = { res, json, elements: collectElements(json), variant };
+      if (!best) best = cand;
+      if (res.exit_code === 0 && cand.elements.length) return cand;
+      if (res.exit_code === 0 && best.res.exit_code !== 0) best = cand;
+      if (res.exit_code !== 0 && !UNKNOWN.test(res.stderr || '')) break;
+    }
+    return best;
+  };
+
+  const matchElement = (e, args) => {
+    const q = (v) => String(v ?? '').toLowerCase();
+    if (args.name && !q(e.title).includes(q(args.name)) && !q(e.id).includes(q(args.name)) && !q(e.value).includes(q(args.name))) return false;
+    if (args.role && !q(e.role).includes(q(args.role))) return false;
+    if (args.value && !q(e.value).includes(q(args.value))) return false;
+    return true;
+  };
+
+  const searchPath = () => path.join(os.tmpdir(), 'arena-bridge-see', 'see.png');
+
+  const searchSee = async (args) => {
+    const out = searchPath();
+    ensureDir(path.dirname(out));
+    return collectSee({ app: args.app, window_title: args.window_title, mode: args.mode || 'screen' }, out);
+  };
+
   return [
     {
       name: 'mac_see',
@@ -199,15 +240,8 @@ export function macTools(cfg = {}) {
         const outPath = args.path ? checkPath(String(args.path), cfg, ctx.base) : { ok: true, abs: defaultShotPath(cfg) };
         if (!outPath.ok) return { ok: false, error: outPath.error, reason: outPath.reason };
         ensureDir(path.dirname(outPath.abs));
-        const mode = args.mode === 'window' ? 'window' : 'screen';
-        const variants = [
-          ['see', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath.abs],
-          ['see', '--mode', mode, ...targetFlags(args), '--path', outPath.abs, '--json'],
-          ['image', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath.abs],
-        ];
-        const res = await runVariants(p.bin, variants, { timeout: 60 });
-        const json = parseJson(res.stdout);
-        const elements = collectElements(json).slice(0, 300);
+        const seen = await collectSee(args, outPath.abs);
+        const elements = seen.elements.slice(0, 300);
         const saved = fs.existsSync(outPath.abs);
         if (!saved) {
           const fb = await captureScreenFallback(outPath.abs);
@@ -215,7 +249,7 @@ export function macTools(cfg = {}) {
             return {
               ok: false,
               error: 'capture_failed',
-              reason: (res.stderr || '').trim().slice(0, 800),
+              reason: (seen.res.stderr || '').trim().slice(0, 800),
               hint: 'Grant Screen Recording permission to the app that runs the bridge (System Settings → Privacy & Security → Screen Recording).',
             };
           }
@@ -226,9 +260,12 @@ export function macTools(cfg = {}) {
           saved,
           elements,
           element_count: elements.length,
-          hint: 'Click by element id: mac_click {"on":"<id>"} or by visible text: mac_click {"text":"Save"}',
+          hint: 'Click by element id: mac_click {"on":"<id>"} or by visible text: mac_click {"text":"Save"}. Find elements by name with mac_element.',
         };
-        if (args.include_raw && json) out.raw = json;
+        if (!elements.length) {
+          out.hint += ' No elements found — run mac_permissions: the element list comes from the macOS Accessibility API.';
+        }
+        if (args.include_raw && seen.json) out.raw = seen.json;
         return out;
       },
     },
@@ -515,6 +552,206 @@ export function macTools(cfg = {}) {
           { timeout: 30 },
         );
         return finish(res, 'quit');
+      },
+    },
+    {
+      name: 'mac_element',
+      description:
+        'Find interface elements by visible name, role or value through the macOS accessibility API. No screenshots, no pixel guessing. Read-only.',
+      approval: false,
+      schema: S(
+        {
+          name: { type: 'string', description: 'visible text or title to look for' },
+          role: { type: 'string', description: 'e.g. button, textField, menuItem, staticText' },
+          value: { type: 'string' },
+          app: { type: 'string' },
+          window_title: { type: 'string' },
+          limit: { type: 'number' },
+        },
+        [],
+      ),
+      required: [],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const seen = await searchSee(args);
+        const matches = seen.elements.filter((e) => matchElement(e, args)).slice(0, Number(args.limit) || 25);
+        return {
+          ok: true,
+          matches,
+          count: matches.length,
+          scanned: seen.elements.length,
+          hint: 'Act on a match by id: mac_click {"on":"<id>"} or mac_set {"on":"<id>","value":"..."}.',
+        };
+      },
+    },
+    {
+      name: 'mac_set',
+      description:
+        'Set the value of an element directly through the accessibility API — fills a field without focusing the window and without simulated keystrokes.',
+      approval: true,
+      schema: S(
+        {
+          on: { type: 'string', description: 'element id from mac_see / mac_element' },
+          value: { type: 'string' },
+          app: { type: 'string' },
+          window_id: { type: 'string' },
+        },
+        ['on', 'value'],
+      ),
+      required: ['on', 'value'],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const flags = targetFlags(args);
+        const res = await runVariants(
+          p.bin,
+          [
+            ['set-value', '--on', String(args.on), String(args.value), ...flags],
+            ['set-value', '--on', String(args.on), '--value', String(args.value), ...flags],
+            ['set-value', String(args.on), String(args.value), ...flags],
+          ],
+          { timeout: 30 },
+        );
+        return finish(res, 'set-value');
+      },
+    },
+    {
+      name: 'mac_menu',
+      description: 'List the menu items of an application through the accessibility API. Read-only.',
+      approval: false,
+      schema: S({ app: { type: 'string' } }, []),
+      required: [],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const flags = args.app ? ['--app', String(args.app)] : [];
+        const res = await runVariants(
+          p.bin,
+          [
+            ['menu', 'list', ...flags, '--json'],
+            ['menu', 'list', ...flags],
+          ],
+          { timeout: 30 },
+        );
+        const json = parseJson(res.stdout);
+        return {
+          ok: res.exit_code === 0,
+          menus: json ? (json.menus || json.data?.menus || json) : undefined,
+          output: json ? undefined : res.stdout.slice(0, 4000),
+          error: res.exit_code === 0 ? undefined : (res.stderr || '').trim().slice(0, 600),
+        };
+      },
+    },
+    {
+      name: 'mac_menu_click',
+      description: 'Click a menu item by its visible name (e.g. "Save", "Copy Link") — no pointer, no coordinates.',
+      approval: true,
+      schema: S({ item: { type: 'string' }, app: { type: 'string' } }, ['item']),
+      required: ['item'],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const flags = args.app ? ['--app', String(args.app)] : [];
+        const res = await runVariants(
+          p.bin,
+          [
+            ['menu', 'click', '--item', String(args.item), ...flags],
+            ['menu', 'click', String(args.item), ...flags],
+          ],
+          { timeout: 30 },
+        );
+        return finish(res, 'menu-click');
+      },
+    },
+    {
+      name: 'mac_spaces',
+      description: 'List the macOS Spaces (virtual desktops) and which one is active. Read-only.',
+      approval: false,
+      schema: S({}, []),
+      required: [],
+      handler: async () => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const res = await runVariants(
+          p.bin,
+          [
+            ['space', 'list', '--json'],
+            ['space', 'list'],
+          ],
+          { timeout: 30 },
+        );
+        const json = parseJson(res.stdout);
+        return {
+          ok: res.exit_code === 0,
+          spaces: json ? (json.spaces || json.data?.spaces || json) : undefined,
+          output: json ? undefined : res.stdout.slice(0, 4000),
+          error: res.exit_code === 0 ? undefined : (res.stderr || '').trim().slice(0, 600),
+        };
+      },
+    },
+    {
+      name: 'mac_space_switch',
+      description:
+        'Move to another Space so the agent works on a separate virtual desktop and the user keeps the screen they are on.',
+      approval: true,
+      schema: S({ to: { type: 'string', description: 'space id or index from mac_spaces' } }, ['to']),
+      required: ['to'],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const res = await runVariants(
+          p.bin,
+          [
+            ['space', 'switch', '--to', String(args.to)],
+            ['space', 'switch', String(args.to)],
+          ],
+          { timeout: 30 },
+        );
+        return finish(res, 'space-switch');
+      },
+    },
+    {
+      name: 'mac_wait',
+      description:
+        'Wait until an element with the given name/role appears (or disappears) and report what was seen. Read-only.',
+      approval: false,
+      schema: S(
+        {
+          name: { type: 'string' },
+          role: { type: 'string' },
+          value: { type: 'string' },
+          disappear: { type: 'boolean', description: 'wait until the element is gone' },
+          timeout: { type: 'number', description: 'seconds, default 20, max 120' },
+          app: { type: 'string' },
+        },
+        [],
+      ),
+      required: [],
+      handler: async (args) => {
+        const p = checkPeek(peek());
+        if (!p.ok) return p;
+        const limit = Math.min(120, Math.max(1, Number(args.timeout) || 20));
+        const deadline = Date.now() + limit * 1000;
+        let scanned = 0;
+        while (Date.now() < deadline) {
+          const seen = await searchSee(args);
+          scanned = seen.elements.length;
+          const hit = seen.elements.find((e) => matchElement(e, args));
+          if (args.disappear) {
+            if (!hit) return { ok: true, gone: true, found: false, scanned };
+          } else if (hit) {
+            return { ok: true, found: true, element: hit, scanned };
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+        return {
+          ok: false,
+          found: false,
+          error: 'not_found',
+          reason: `no matching element within ${limit}s`,
+          scanned,
+        };
       },
     },
     {

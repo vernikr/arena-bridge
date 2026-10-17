@@ -176,6 +176,58 @@ def mac_tools(cfg=None):
             return None
         return bin_path
 
+    def see_variants(args, out_path):
+        mode = "window" if args.get("mode") == "window" else "screen"
+        base = ["see", "--mode", mode, *_target_flags(args)]
+        return [
+            [*base, "--json", "--path", out_path, "--snapshot"],
+            [*base, "--json", "--path", out_path, "--tree"],
+            [*base, "--json", "--path", out_path],
+            ["image", "--mode", mode, *_target_flags(args), "--json", "--path", out_path],
+        ]
+
+    def collect_see(args, out_path):
+        best = None
+        for variant in see_variants(args, out_path):
+            res = _run(peek(), variant, timeout=60)
+            data = _parse_json(res["stdout"])
+            cand = {**res, "data": data, "elements": _collect_elements(data), "variant": variant}
+            if best is None:
+                best = cand
+            if res["exit_code"] == 0 and cand["elements"]:
+                return cand
+            if res["exit_code"] == 0 and best["exit_code"] != 0:
+                best = cand
+            if res["exit_code"] != 0 and not any(m in (res["stderr"] or "").lower() for m in UNKNOWN):
+                break
+        return best or {"stdout": "", "stderr": "", "exit_code": -1, "data": None, "elements": [], "variant": []}
+
+    def match_element(element, args):
+        def q(value):
+            return str(value if value is not None else "").lower()
+
+        if args.get("name"):
+            needle = q(args["name"])
+            if not any(needle in q(element.get(key)) for key in ("title", "id", "value")):
+                return False
+        if args.get("role") and q(args["role"]) not in q(element.get("role")):
+            return False
+        if args.get("value") and q(args["value"]) not in q(element.get("value")):
+            return False
+        return True
+
+    def search_see(args):
+        out_path = str(Path(os.environ.get("TMPDIR", "/tmp")) / "arena-bridge-see" / "see.png")
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        return collect_see(
+            {
+                "app": args.get("app"),
+                "window_title": args.get("window_title"),
+                "mode": args.get("mode") or "screen",
+            },
+            out_path,
+        )
+
     def see(args, ctx):
         bin_path = peek()
         if not bin_path:
@@ -191,16 +243,10 @@ def mac_tools(cfg=None):
         else:
             out_path = _default_shot_path(cfg_now)
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        mode = "window" if args.get("mode") == "window" else "screen"
-        flags = _target_flags(args)
-        variants = [
-            ["see", "--mode", mode, *flags, "--json", "--path", out_path],
-            ["see", "--mode", mode, *flags, "--path", out_path, "--json"],
-            ["image", "--mode", mode, *flags, "--json", "--path", out_path],
-        ]
-        res = _run_variants(bin_path, variants, timeout=60)
-        data = _parse_json(res["stdout"])
-        elements = _collect_elements(data)[:300]
+        seen = collect_see(args, out_path)
+        res = seen
+        data = seen["data"]
+        elements = seen["elements"][:300]
         saved = os.path.exists(out_path)
         if not saved:
             fb = _run("/usr/sbin/screencapture", ["-x", "-o", out_path], timeout=30)
@@ -217,8 +263,11 @@ def mac_tools(cfg=None):
             "saved": saved,
             "elements": elements,
             "element_count": len(elements),
-            "hint": 'Click by element id: mac_click {"on":"<id>"} or by visible text: mac_click {"text":"Save"}',
+            "hint": 'Click by element id: mac_click {"on":"<id>"} or by visible text: mac_click {"text":"Save"}. Find elements by name with mac_element.',
         }
+        if not elements:
+            out["hint"] += " No elements found — run mac_permissions: the element list comes from the macOS Accessibility API."
+
         if args.get("include_raw") and data is not None:
             out["raw"] = data
         return out
@@ -381,6 +430,109 @@ def mac_tools(cfg=None):
             "hint": "System Settings → Privacy & Security → Screen Recording / Accessibility → enable the terminal that runs the bridge.",
         }
 
+    def element(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        seen = search_see(args)
+        matches = [e for e in seen["elements"] if match_element(e, args)][: int(args.get("limit") or 25)]
+        return {
+            "ok": True,
+            "matches": matches,
+            "count": len(matches),
+            "scanned": len(seen["elements"]),
+            "hint": 'Act on a match by id: mac_click {"on":"<id>"} or mac_set {"on":"<id>","value":"..."}.',
+        }
+
+    def set_value(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        flags = _target_flags(args)
+        on = str(args.get("on"))
+        value = str(args.get("value"))
+        variants = [
+            ["set-value", "--on", on, value, *flags],
+            ["set-value", "--on", on, "--value", value, *flags],
+            ["set-value", on, value, *flags],
+        ]
+        return _finish(_run_variants(bin_path, variants, timeout=30), "set-value")
+
+    def menu(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        flags = ["--app", str(args["app"])] if args.get("app") else []
+        res = _run_variants(bin_path, [["menu", "list", *flags, "--json"], ["menu", "list", *flags]], timeout=30)
+        data = _parse_json(res["stdout"])
+        payload = data
+        if isinstance(data, dict):
+            payload = data.get("menus") or data.get("data", {}).get("menus") or data
+        return {
+            "ok": res["exit_code"] == 0,
+            "menus": payload if data is not None else None,
+            "output": None if data is not None else (res["stdout"] or "")[:4000],
+            "error": None if res["exit_code"] == 0 else (res["stderr"] or "").strip()[:600],
+        }
+
+    def menu_click(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        flags = ["--app", str(args["app"])] if args.get("app") else []
+        item = str(args.get("item"))
+        variants = [["menu", "click", "--item", item, *flags], ["menu", "click", item, *flags]]
+        return _finish(_run_variants(bin_path, variants, timeout=30), "menu-click")
+
+    def spaces(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        res = _run_variants(bin_path, [["space", "list", "--json"], ["space", "list"]], timeout=30)
+        data = _parse_json(res["stdout"])
+        payload = data
+        if isinstance(data, dict):
+            payload = data.get("spaces") or data.get("data", {}).get("spaces") or data
+        return {
+            "ok": res["exit_code"] == 0,
+            "spaces": payload if data is not None else None,
+            "output": None if data is not None else (res["stdout"] or "")[:4000],
+            "error": None if res["exit_code"] == 0 else (res["stderr"] or "").strip()[:600],
+        }
+
+    def space_switch(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        target = str(args.get("to"))
+        variants = [["space", "switch", "--to", target], ["space", "switch", target]]
+        return _finish(_run_variants(bin_path, variants, timeout=30), "space-switch")
+
+    def wait_element(args, ctx):
+        bin_path = peek()
+        if not bin_path:
+            return _not_found()
+        limit = min(120, max(1, int(args.get("timeout") or 20)))
+        deadline = time.time() + limit
+        scanned = 0
+        while time.time() < deadline:
+            seen = search_see(args)
+            scanned = len(seen["elements"])
+            hit = next((e for e in seen["elements"] if match_element(e, args)), None)
+            if args.get("disappear"):
+                if hit is None:
+                    return {"ok": True, "gone": True, "found": False, "scanned": scanned}
+            elif hit is not None:
+                return {"ok": True, "found": True, "element": hit, "scanned": scanned}
+            time.sleep(2)
+        return {
+            "ok": False,
+            "found": False,
+            "error": "not_found",
+            "reason": f"no matching element within {limit}s",
+            "scanned": scanned,
+        }
+
     def obj(props, required=None):
         return {
             "type": "object",
@@ -540,6 +692,88 @@ def mac_tools(cfg=None):
             "schema": obj({"name": {"type": "string"}}, ["name"]),
             "required": ["name"],
             "handler": app_quit,
+        },
+        {
+            "name": "mac_element",
+            "description": "Find interface elements by visible name, role or value through the macOS accessibility API. No screenshots, no pixel guessing. Read-only.",
+            "approval": False,
+            "schema": obj(
+                {
+                    "name": {"type": "string", "description": "visible text or title to look for"},
+                    "role": {"type": "string", "description": "e.g. button, textField, menuItem, staticText"},
+                    "value": {"type": "string"},
+                    "app": {"type": "string"},
+                    "window_title": {"type": "string"},
+                    "limit": {"type": "number"},
+                }
+            ),
+            "required": [],
+            "handler": element,
+        },
+        {
+            "name": "mac_set",
+            "description": "Set the value of an element directly through the accessibility API — fills a field without focusing the window and without simulated keystrokes.",
+            "approval": True,
+            "schema": obj(
+                {
+                    "on": {"type": "string", "description": "element id from mac_see / mac_element"},
+                    "value": {"type": "string"},
+                    "app": {"type": "string"},
+                    "window_id": {"type": "string"},
+                },
+                ["on", "value"],
+            ),
+            "required": ["on", "value"],
+            "handler": set_value,
+        },
+        {
+            "name": "mac_menu",
+            "description": "List the menu items of an application through the accessibility API. Read-only.",
+            "approval": False,
+            "schema": obj({"app": {"type": "string"}}, []),
+            "required": [],
+            "handler": menu,
+        },
+        {
+            "name": "mac_menu_click",
+            "description": 'Click a menu item by its visible name (e.g. "Save", "Copy Link") — no pointer, no coordinates.',
+            "approval": True,
+            "schema": obj({"item": {"type": "string"}, "app": {"type": "string"}}, ["item"]),
+            "required": ["item"],
+            "handler": menu_click,
+        },
+        {
+            "name": "mac_spaces",
+            "description": "List the macOS Spaces (virtual desktops) and which one is active. Read-only.",
+            "approval": False,
+            "schema": obj({}, []),
+            "required": [],
+            "handler": spaces,
+        },
+        {
+            "name": "mac_space_switch",
+            "description": "Move to another Space so the agent works on a separate virtual desktop and the user keeps the screen they are on.",
+            "approval": True,
+            "schema": obj({"to": {"type": "string", "description": "space id or index from mac_spaces"}}, ["to"]),
+            "required": ["to"],
+            "handler": space_switch,
+        },
+        {
+            "name": "mac_wait",
+            "description": "Wait until an element with the given name/role appears (or disappears) and report what was seen. Read-only.",
+            "approval": False,
+            "schema": obj(
+                {
+                    "name": {"type": "string"},
+                    "role": {"type": "string"},
+                    "value": {"type": "string"},
+                    "disappear": {"type": "boolean", "description": "wait until the element is gone"},
+                    "timeout": {"type": "number", "description": "seconds, default 20, max 120"},
+                    "app": {"type": "string"},
+                }
+            ),
+            "required": [],
+            "handler": wait_element,
         },
         {
             "name": "mac_permissions",

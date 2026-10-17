@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-96%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-110%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -82,7 +82,7 @@ arena-bridge setup --root ~/projects
 | Шелл | `bash` `sysinfo` | команды и сведения о машине |
 | Процессы | `start_process` `read_process_output` `write_process` `kill_process` | фоновые дев-серверы |
 | Chrome | `chrome_launch` `chrome_profiles` `chrome_attach` `chrome_open` `chrome_navigate` `chrome_snapshot` `chrome_click` `chrome_type` `chrome_press` `chrome_screenshot` `chrome_evaluate` `chrome_tabs` `chrome_stop` | браузер через CDP |
-| Десктоп | `mac_see` `mac_click` `mac_type` `mac_key` `mac_scroll` `mac_move` `mac_drag` `mac_apps` `mac_windows` `mac_app_launch` `mac_app_focus` `mac_app_quit` `mac_permissions` | macOS через Peekaboo |
+| Десктоп | `mac_see` `mac_element` `mac_click` `mac_set` `mac_type` `mac_key` `mac_scroll` `mac_move` `mac_drag` `mac_menu` `mac_menu_click` `mac_wait` `mac_spaces` `mac_space_switch` `mac_apps` `mac_windows` `mac_app_launch` `mac_app_focus` `mac_app_quit` `mac_permissions` | macOS через Peekaboo |
 
 Полный каталог с JSON-схемами: `GET /tools` или `arena-bridge tools`.
 
@@ -93,7 +93,11 @@ arena-bridge setup --root ~/projects
 | прочитать страницу | `chrome_snapshot` (`{"mode":"ax"}` — роли и имена, `{"mode":"text"}`, `{"mode":"html"}`) |
 | кликнуть на странице | `chrome_click` (CSS-селектор или видимый текст) |
 | работать в вашем залогиненном Chrome | `chrome_attach` (порт 9222) и те же `chrome_*` |
-| посмотреть на экран или нативное приложение | `mac_see` (скриншот + id кликабельных элементов) |
+| посмотреть на экран или нативное приложение | `mac_see` (скриншот + id элементов) |
+| найти контрол по названию, без скриншота | `mac_element` (через Accessibility API: имя, роль, значение) |
+| заполнить поле, не печатая и не забирая фокус | `mac_set` (значение пишется напрямую в элемент) |
+| открыть пункт меню | `mac_menu` (список) → `mac_menu_click` (по названию) |
+| дождаться, пока контрол появится | `mac_wait` |
 | кликнуть в нативном приложении | `mac_click` (id элемента, видимый текст или координаты) |
 | напечатать | `mac_type`, затем `mac_key` для Enter/Tab/cmd+s |
 | посмотреть файлы | `list_dir` (только верхний уровень; глубже — `{"recursive":true}`) |
@@ -141,9 +145,13 @@ cookies и localStorage нет.
 
 ```jsonc
 {"tool": "mac_see", "args": {"app": "Safari", "mode": "window"}}  // скриншот + id элементов
-{"tool": "mac_click", "args": {"on": "B3"}}                        // клик по id из mac_see
+{"tool": "mac_element", "args": {"name": "Save"}}                // найти кнопку по названию
+{"tool": "mac_click", "args": {"on": "B3"}}                      // клик по id из mac_see
+{"tool": "mac_set", "args": {"on": "B2", "value": "hello"}}      // вписать значение напрямую
 {"tool": "mac_type", "args": {"text": "hello", "submit": true}}
 {"tool": "mac_key", "args": {"key": "cmd+s"}}
+{"tool": "mac_menu_click", "args": {"item": "Save", "app": "Safari"}}  // пункт меню по названию
+{"tool": "mac_wait", "args": {"name": "Saved", "timeout": 20}}        // дождаться результата
 {"tool": "mac_apps", "args": {}}                                  // что запущено
 {"tool": "mac_permissions", "args": {}}                           // чего не хватает в macOS
 ```
@@ -151,6 +159,25 @@ cookies и localStorage нет.
 Установить Peekaboo: `brew install peekaboo` (или бинарник в `/usr/local/bin/peekaboo`).
 macOS спросит разрешения **Screen Recording** и **Accessibility** для терминала, из которого
 запущен мост — без них скриншоты и клики не работают; `mac_permissions` покажет, что не так.
+
+### Что даёт доступ Accessibility
+
+macOS отдаёт приложениям два разных слоя: картинку экрана и **Accessibility API** — дерево
+элементов интерфейса с названиями, ролями и значениями. Второй слой полезен агенту сильнее:
+
+| | по картинке | через Accessibility API |
+| --- | --- | --- |
+| как найти кнопку «Сохранить» | угадать координаты | `mac_element {"name":"Сохранить"}` → точный элемент |
+| как нажать | клик по координате, может промахнуться | `mac_click {"on":"<id>"}` — по самому элементу |
+| как вписать текст | свайп, фокус, клавиатура | `mac_set {"on":"<id>","value":"..."}` — без фокуса и без клавиш |
+| как открыть «Файл → Экспорт» | перемещать курсор по меню | `mac_menu_click {"item":"Экспорт"}` — по названию |
+| как убедиться, что получилось | смотреть скриншот | `mac_wait {"name":"Готово"}` — ждать появления |
+| чужой ввод и фокус | мешает вам | действия уходят в фоновое окно |
+
+Практический вывод: с выданным Accessibility агент работает заметно точнее и тише. Разрешение
+даётся один раз в **Системные настройки → Конфиденциальность и безопасность → Универсальный
+доступ** (для терминала, из которого запущен мост). `mac_permissions` показывает текущее
+состояние разрешений.
 
 ---
 
@@ -199,7 +226,7 @@ arena-bridge browser close work       # закрыть окно этого пр�
 | --- | --- |
 | окно агента занимает экран | по умолчанию агент работает в фоне; видимое окно можно сделать маленьким и в углу: `chrome_launch {"headless":false,"width":900,"height":700,"x":-920,"y":40}` |
 | агент перехватывает фокус и курсор | действия в нативных приложениях идут «в фон» — в нужное окно, без переключения на вас; курсор двигается только по вашей явной просьбе |
-| окно агента на вашем рабочем столе | macOS умеет несколько рабочих столов: окно агента живёт на отдельном столе, вы — на своём |
+| окно агента на вашем рабочем столе | macOS умеет несколько рабочих столов: агент переключается на отдельный стол через `mac_space_switch`, вы остаётесь на своём |
 | нужен отдельный «второй монитор» | в macOS виртуальный монитор штатно не создаётся; сторонние утилиты (BetterDisplay, DisplayLink) умеют — тогда окно агента всегда там, где вы не работаете |
 | нужен полностью независимый курсор и стол | только отдельная виртуальная машина; на 16 ГБ и Intel 2019 года она заметно тормозит и съедает 30–60 ГБ — как правило, не нужно |
 
@@ -295,8 +322,8 @@ npm run test:python  # 44 теста Python: то же самое
 src/            Node-реализация (zero dependencies)
   ws.mjs        минимальный WebSocket-клиент
   cdp.mjs       клиент Chrome DevTools Protocol
-  browser.mjs   12 инструментов chrome_*
-  mac.mjs       13 инструментов mac_* (Peekaboo)
+  browser.mjs   13 инструментов chrome_*
+  mac.mjs       20 инструментов mac_* (Peekaboo, Accessibility API)
   trust.mjs     окно доверия
   policy.mjs    проверка путей (roots / protected)
   engine.mjs    каталог, гейт подтверждений, аудит

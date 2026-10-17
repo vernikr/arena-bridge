@@ -27,8 +27,22 @@ case "$1" in
   permissions)
     echo 'Screen Recording: granted'
     ;;
-  click | type | press | scroll | move | drag)
+  click | type | press | scroll | move | drag | set-value)
     echo "done $1"
+    ;;
+  menu)
+    if [ "$2" = "list" ]; then
+      echo '{"menus":[{"title":"File","items":[{"title":"Save","id":"M1"}]}]}'
+    else
+      echo "done menu $2"
+    fi
+    ;;
+  space)
+    if [ "$2" = "list" ]; then
+      echo '{"spaces":[{"id":1,"name":"Desktop 1","active":true},{"id":2,"name":"Desktop 2","active":false}]}'
+    else
+      echo "done space $2"
+    fi
     ;;
   app)
     echo "done app $2"

@@ -129,6 +129,64 @@ def _():
     assert wins["windows"][0]["id"] == 42
 
 
+@test("mac_element finds controls by their visible name")
+def _():
+    r = engine.call("mac_element", {"name": "Save"})
+    assert r["ok"], r
+    assert r["count"] == 1
+    assert r["matches"][0]["id"] == "B1"
+    assert r["matches"][0]["role"] == "button"
+
+
+@test("mac_element can filter by role")
+def _():
+    r = engine.call("mac_element", {"role": "textField"})
+    assert r["count"] == 1
+    assert r["matches"][0]["title"] == "Search"
+
+
+@test("mac_set writes a value through the accessibility API")
+def _():
+    r = engine.call("mac_set", {"on": "B2", "value": "hello"})
+    assert r["ok"], r
+    assert "set-value --on B2 hello" in (HOME / "peek.log").read_text()
+
+
+@test("mac_menu lists and clicks menu items by name")
+def _():
+    listing = engine.call("mac_menu", {"app": "Safari"})
+    assert listing["ok"], listing
+    assert listing["menus"][0]["title"] == "File"
+    click = engine.call("mac_menu_click", {"item": "Save", "app": "Safari"})
+    assert click["ok"], click
+    assert "menu click --item Save --app Safari" in (HOME / "peek.log").read_text()
+
+
+@test("mac_spaces shows the virtual desktops")
+def _():
+    r = engine.call("mac_spaces", {})
+    assert r["ok"], r
+    assert r["spaces"][1]["name"] == "Desktop 2"
+    switch = engine.call("mac_space_switch", {"to": "2"})
+    assert switch["ok"], switch
+    assert "space switch --to 2" in (HOME / "peek.log").read_text()
+
+
+@test("mac_wait reports the element it waited for")
+def _():
+    r = engine.call("mac_wait", {"name": "Save", "timeout": 5})
+    assert r["ok"], r
+    assert r["found"] is True
+    assert r["element"]["id"] == "B1"
+
+
+@test("mac_wait can wait for something to disappear")
+def _():
+    r = engine.call("mac_wait", {"name": "Nothing here", "disappear": True, "timeout": 5})
+    assert r["ok"], r
+    assert r["gone"] is True
+
+
 @test("a missing peekaboo is reported instead of crashing")
 def _():
     saved = os.environ["PEEKABOO_PATH"]

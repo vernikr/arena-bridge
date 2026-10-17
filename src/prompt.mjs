@@ -59,6 +59,11 @@ ${tools.join('\n')}
 | click a native app | \`mac_click\` with the element id from \`mac_see\`, a visible text, or \`{"x":..,"y":..}\` |
 | type into a native app | \`mac_type\`, then \`mac_key\` for Enter/Tab/cmd+s |
 | list or open applications | \`mac_apps\`, \`mac_app_launch\`, \`mac_app_focus\` |
+| find a control by its name, without a screenshot | \`mac_element\` (accessibility API: name, role, value) |
+| fill a field without typing and without focus | \`mac_set\` (sets the value through the accessibility API) |
+| use the application menu | \`mac_menu\` to list, \`mac_menu_click\` to trigger an item by name |
+| wait for a control to appear or vanish | \`mac_wait\` |
+| work on a separate virtual desktop | \`mac_spaces\`, \`mac_space_switch\` |
 | look at files | \`list_dir\` (top level only; add \`{"recursive":true}\` to go deeper), \`read_file\`, \`search_files\` |
 
 ## Browser control (Chrome over CDP)
@@ -75,6 +80,8 @@ ${tools.join('\n')}
 6. A visible window can be kept small and out of the way: \`chrome_launch {"headless":false,"width":900,"height":700,"x":-920,"y":40}\`.
 
 ## Desktop control (macOS, through Peekaboo)
+0. Prefer the accessibility API over pixels: controls are recognised by name and role, not by guessing
+   coordinates. \`mac_element\` finds them, \`mac_see\` returns the same elements with ids plus a screenshot.
 1. \`mac_see\` is the entry point: it takes a screenshot of the screen (or of one app window with
    \`{"app": "Safari", "mode": "window"}\`) and returns the clickable elements with their ids.
 2. Then \`mac_click\` (by id, by visible text or by coordinates) → \`mac_type\` → \`mac_key\` → \`mac_scroll\`.
@@ -84,6 +91,11 @@ ${tools.join('\n')}
 5. Screenshots are saved as PNG inside the authorized roots; read them back with \`file_get\`.
 6. Stay out of the user's way: do not pass \`foreground\`, do not focus windows and do not move the
    pointer unless the user asks for it. Background actions are delivered to the target window only.
+7. \`mac_set\` writes a value straight into a control (no keystrokes, no focus change);
+   \`mac_menu_click\` triggers a menu item by its name — both are more reliable than typing.
+8. \`mac_wait\` waits for a control to appear or disappear instead of sleeping and guessing.
+9. \`mac_spaces\` lists the macOS virtual desktops; \`mac_space_switch\` moves the agent to another
+   Space so the user keeps the screen they are looking at.
 
 ## Approvals
 ${trustLine}

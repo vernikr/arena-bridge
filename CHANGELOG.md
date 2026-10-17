@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.3
+
+### Added
+- Desktop control now works through the macOS accessibility API first, not by pixel guessing:
+  - `mac_element` finds a control by its visible name, role or value and returns its id;
+  - `mac_set` writes a value straight into a control — no keystrokes, no focus change;
+  - `mac_menu` / `mac_menu_click` list and trigger menu items by name;
+  - `mac_wait` waits until a control appears or disappears instead of sleeping;
+  - `mac_spaces` / `mac_space_switch` move the agent to another macOS Space (virtual desktop).
+- `mac_see` asks for the accessibility element map explicitly and explains what to do when the
+  element list is empty (missing Accessibility permission).
+
 ## 0.6.2
 
 ### Added
