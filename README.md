@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-92%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-96%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ arena-bridge setup --root ~/projects
 | Файлы | `list_dir` `read_file` `write_file` `edit_file` `delete_path` `search_files` `file_get` `file_put` | работа с файлами в разрешённых папках |
 | Шелл | `bash` `sysinfo` | команды и сведения о машине |
 | Процессы | `start_process` `read_process_output` `write_process` `kill_process` | фоновые дев-серверы |
-| Chrome | `chrome_launch` `chrome_attach` `chrome_open` `chrome_navigate` `chrome_snapshot` `chrome_click` `chrome_type` `chrome_press` `chrome_screenshot` `chrome_evaluate` `chrome_tabs` `chrome_stop` | браузер через CDP |
+| Chrome | `chrome_launch` `chrome_profiles` `chrome_attach` `chrome_open` `chrome_navigate` `chrome_snapshot` `chrome_click` `chrome_type` `chrome_press` `chrome_screenshot` `chrome_evaluate` `chrome_tabs` `chrome_stop` | браузер через CDP |
 | Десктоп | `mac_see` `mac_click` `mac_type` `mac_key` `mac_scroll` `mac_move` `mac_drag` `mac_apps` `mac_windows` `mac_app_launch` `mac_app_focus` `mac_app_quit` `mac_permissions` | macOS через Peekaboo |
 
 Полный каталог с JSON-схемами: `GET /tools` или `arena-bridge tools`.
@@ -171,6 +171,41 @@ arena-bridge trust --off
 
 ---
 
+## Отдельные браузерные «кабинеты» агента
+
+Агенту можно выдать несколько независимых профилей браузера — например «рабочий», «клиентский»,
+«тестовый». В каждом свои входы, и они переживают перезапуск моста.
+
+```bash
+arena-bridge browser open work       # открыть Chrome с профилем «work»
+# вы логинитесь в нужные сайты и закрываете окно — входы сохраняются
+arena-bridge browser list             # какие профили есть
+arena-bridge browser close work       # закрыть окно этого профиля
+```
+
+Агент открывает тот же профиль через `chrome_launch {"profile":"work"}` — уже с вашими входами.
+Каталог профилей агент тоже видит: `chrome_profiles`.
+
+Ваш собственный Chrome (на порту 9222, с вашими сессиями) доступен отдельно — через
+`chrome_attach`; любые действия в нём требуют подтверждения.
+
+---
+
+## Как это не мешает вам
+
+| Что беспокоит | Как решается |
+| --- | --- |
+| окно агента занимает экран | по умолчанию агент работает в фоне; видимое окно можно сделать маленьким и в углу: `chrome_launch {"headless":false,"width":900,"height":700,"x":-920,"y":40}` |
+| агент перехватывает фокус и курсор | действия в нативных приложениях идут «в фон» — в нужное окно, без переключения на вас; курсор двигается только по вашей явной просьбе |
+| окно агента на вашем рабочем столе | macOS умеет несколько рабочих столов: окно агента живёт на отдельном столе, вы — на своём |
+| нужен отдельный «второй монитор» | в macOS виртуальный монитор штатно не создаётся; сторонние утилиты (BetterDisplay, DisplayLink) умеют — тогда окно агента всегда там, где вы не работаете |
+| нужен полностью независимый курсор и стол | только отдельная виртуальная машина; на 16 ГБ и Intel 2019 года она заметно тормозит и съедает 30–60 ГБ — как правило, не нужно |
+
+Рекомендация для ноутбука с 16 ГБ и Intel 2019: отдельные профили браузера + фоновый режим +
+при необходимости второй рабочий стол macOS. Полноценная виртуальная машина того не стоит.
+
+---
+
 ## Безопасность
 
 | Токен | Кто знает | Что позволяет |
@@ -215,6 +250,7 @@ arena-bridge audit -n 50       # что происходило
 | `version` | установленная и последняя версии |
 | `update` | обновить пакет с npm (`--check` — только проверить) |
 | `service` | macOS-фоновый сервис: `install` / `uninstall` / `status` |
+| `browser` | профили браузера агента: `list` / `open <name>` / `close <name>` |
 | `rotate` | сменить агентский или девайсный токен |
 
 ---
@@ -246,8 +282,8 @@ curl -sS -X POST "https://<ваш-url>/call" \
 
 ```bash
 npm install          # зависимостей нет — только dev-тесты
-npm test             # 50 тестов Node: direct, approval, trust, MCP, hub, туннель, Chrome, десктоп
-npm run test:python  # 42 теста Python: то же самое
+npm test             # 52 теста Node: direct, approval, trust, MCP, hub, туннель, Chrome, десктоп
+npm run test:python  # 44 теста Python: то же самое
 ```
 
 Тесты не требуют ни Chrome, ни Peekaboo: используются фейковые CDP- и Peekaboo-серверы

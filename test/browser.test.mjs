@@ -103,6 +103,7 @@ await test('the catalog exposes the chrome_* tools', async () => {
   const names = engine.catalog().map((t) => t.name);
   for (const n of [
     'chrome_launch',
+    'chrome_profiles',
     'chrome_attach',
     'chrome_tabs',
     'chrome_open',
@@ -127,6 +128,21 @@ await test('chrome_launch starts an agent-owned browser and lists its tabs', asy
   assert.ok(res.session_id.startsWith('chrome_'));
   assert.ok(res.tabs.length >= 2);
   engine.browser.sessions.get(res.session_id)?.proc?.kill();
+});
+
+await test('a named profile keeps its logins between runs', async () => {
+  process.env.CHROME_PATH = FAKE_CHROME;
+  const res = await engine.call('chrome_launch', { headless: true, port: PORT + 9, profile: 'work' });
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(res.profile_name, 'work');
+  assert.ok(res.profile.endsWith(path.join('chrome-profiles', 'work')), res.profile);
+  engine.browser.sessions.get(res.session_id)?.proc?.kill();
+});
+
+await test('chrome_profiles lists the named profiles', async () => {
+  const res = await engine.call('chrome_profiles', {});
+  assert.equal(res.ok, true);
+  assert.ok(res.profiles.some((p) => p.name === 'work'), JSON.stringify(res.profiles));
 });
 
 await test('actions on the agent-owned browser need no approval', async () => {

@@ -33,10 +33,70 @@ const KEYS = {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function findChrome() {
+export function findChrome() {
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   for (const c of CHROME_CANDIDATES) if (fs.existsSync(c)) return c;
   return null;
+}
+
+/** Where the named agent profiles live (follows ARENA_BRIDGE_HOME when set). */
+export function profileDir() {
+  const base = process.env.ARENA_BRIDGE_HOME || path.join(os.homedir(), '.arena-bridge');
+  return path.join(base, 'chrome-profiles');
+}
+
+export const sanitizeProfile = (name) =>
+  String(name)
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'default';
+
+/** A named profile keeps its logins between agent runs; a path is used as given. */
+export function resolveProfile(raw, port = 9223) {
+  if (!raw) return path.join(os.homedir(), '.arena-bridge', `chrome-profile-${port}`);
+  const value = String(raw);
+  if (value.startsWith('/') || value.startsWith('~')) {
+    return path.resolve(value.replace(/^~/, os.homedir()));
+  }
+  return path.join(profileDir(), sanitizeProfile(value));
+}
+
+export function profileName(raw) {
+  if (!raw) return null;
+  const value = String(raw);
+  if (value.startsWith('/') || value.startsWith('~')) return null;
+  return sanitizeProfile(value);
+}
+
+export function listProfiles() {
+  const out = [];
+  let names = [];
+  try {
+    names = fs.readdirSync(profileDir());
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    const dir = path.join(profileDir(), name);
+    let stat = null;
+    try {
+      stat = fs.statSync(dir);
+    } catch {
+      continue;
+    }
+    if (!stat.isDirectory()) continue;
+    let size = 0;
+    try {
+      size = fs
+        .readdirSync(dir)
+        .reduce((acc, f) => acc + (fs.statSync(path.join(dir, f)).size || 0), 0);
+    } catch {
+      /* ignore */
+    }
+    out.push({ name, path: dir, mtime: stat.mtimeMs, files: fs.readdirSync(dir).length, approx_bytes: size });
+  }
+  return out.sort((a, b) => b.mtime - a.mtime);
 }
 
 const S = (props, required) => ({
@@ -140,9 +200,7 @@ export class BrowserManager {
     }
     const headless = args.headless !== false;
     const port = Number(args.port || 9223);
-    const profile = args.profile
-      ? path.resolve(String(args.profile).replace(/^~/, os.homedir()))
-      : path.join(os.homedir(), '.arena-bridge', `chrome-profile-${port}`);
+    const profile = resolveProfile(args.profile, port);
 
     fs.mkdirSync(profile, { recursive: true });
 
@@ -157,6 +215,14 @@ export class BrowserManager {
       '--remote-allow-origins=*',
     ];
     if (headless) chromeArgs.push(process.env.ARENA_HEADLESS_FLAG || '--headless=new');
+    if (!headless) {
+      const width = Number(args.width || 0);
+      const height = Number(args.height || 0);
+      if (width && height) chromeArgs.push(`--window-size=${width},${height}`);
+      if (Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y))) {
+        chromeArgs.push(`--window-position=${Number(args.x)},${Number(args.y)}`);
+      }
+    }
     if (args.url) chromeArgs.push(String(args.url));
 
     const proc = spawn(bin, chromeArgs, { detached: true, stdio: 'ignore' });
@@ -193,6 +259,7 @@ export class BrowserManager {
       headless,
       port,
       profile,
+      profile_name: profileName(args.profile),
       ws_url: wsUrl,
       tabs: [...session.tabs.values()].map((t) => ({ tab_id: t.targetId, title: t.title, url: t.url })),
       note: 'This browser belongs to the agent — no local approval needed for actions on it.',
@@ -307,12 +374,40 @@ export class BrowserManager {
             headless: { type: 'boolean', description: 'true (default) = no window, false = visible window' },
             port: { type: 'number', description: 'CDP port (default 9223)' },
             url: { type: 'string', description: 'URL to open on start' },
-            profile: { type: 'string', description: 'profile directory (default ~/.arena-bridge/chrome-profile-<port>)' },
+            profile: {
+              type: 'string',
+              description:
+                'named profile (keeps its logins between runs) or a directory path. ' +
+                'Default: a throwaway profile for this port.',
+            },
+            width: { type: 'number', description: 'window width in pixels (visible window only)' },
+            height: { type: 'number', description: 'window height in pixels (visible window only)' },
+            x: { type: 'number', description: 'window left edge, e.g. -900 puts it on the left of a wide screen' },
+            y: { type: 'number', description: 'window top edge' },
           },
           [],
         ),
         required: [],
         handler: (args, ctx) => ctx.browser.launch(args, ctx),
+      },
+      {
+        name: 'chrome_profiles',
+        description:
+          'List the agent\'s own named browser profiles (each keeps its own logins between runs). ' +
+          'Launch one with chrome_launch {"profile":"<name>"}; the user logs into it once with ' +
+          '"arena-bridge browser open <name>" on their machine.',
+        approval: false,
+        schema: S({}, []),
+        required: [],
+        handler: async () => {
+          const profiles = listProfiles();
+          return {
+            ok: true,
+            count: profiles.length,
+            profiles,
+            hint: 'Ask the user to log in: arena-bridge browser open <name> — then use chrome_launch {"profile":"<name>"}',
+          };
+        },
       },
       {
         name: 'chrome_attach',

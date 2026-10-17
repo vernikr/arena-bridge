@@ -69,6 +69,10 @@ ${tools.join('\n')}
 3. \`chrome_attach\` connects to the user's own Chrome (default port 9222, with their logged-in sessions).
    Actions on an attached browser require a local approval — ask for it instead of retrying.
 4. Screenshots: pass \`{"path": "shot.png"}\` to save the PNG inside the authorized roots, then read it with \`file_get\`.
+5. Named profiles keep their logins between runs: \`chrome_launch {"profile":"work"}\` opens
+   \`~/.arena-bridge/chrome-profiles/work\`. \`chrome_profiles\` lists them. The user logs in once with
+   \`arena-bridge browser open work\` on their machine — ask for that instead of trying to log in yourself.
+6. A visible window can be kept small and out of the way: \`chrome_launch {"headless":false,"width":900,"height":700,"x":-920,"y":40}\`.
 
 ## Desktop control (macOS, through Peekaboo)
 1. \`mac_see\` is the entry point: it takes a screenshot of the screen (or of one app window with
@@ -78,6 +82,8 @@ ${tools.join('\n')}
 4. If a capture or a click fails, run \`mac_permissions\` — macOS needs Screen Recording and
    Accessibility permissions for the terminal that runs the bridge.
 5. Screenshots are saved as PNG inside the authorized roots; read them back with \`file_get\`.
+6. Stay out of the user's way: do not pass \`foreground\`, do not focus windows and do not move the
+   pointer unless the user asks for it. Background actions are delivered to the target window only.
 
 ## Approvals
 ${trustLine}

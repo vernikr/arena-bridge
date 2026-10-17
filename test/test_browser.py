@@ -113,6 +113,7 @@ def _():
     names = [t["name"] for t in engine.catalog()]
     for n in [
         "chrome_launch",
+        "chrome_profiles",
         "chrome_attach",
         "chrome_tabs",
         "chrome_open",
@@ -136,6 +137,23 @@ def _():
     assert res["managed"] is True
     assert len(res["tabs"]) >= 2
     engine.browser.sessions[res["session_id"]]["proc"].terminate()
+
+
+@test("a named profile keeps its logins between runs")
+def _():
+    os.environ["CHROME_PATH"] = str(FAKE_CHROME)
+    res = engine.call("chrome_launch", {"headless": True, "port": PORT + 9, "profile": "work"})
+    assert res["ok"] is True, res
+    assert res["profile_name"] == "work"
+    assert res["profile"].endswith(os.path.join("chrome-profiles", "work")), res["profile"]
+    engine.browser.sessions[res["session_id"]]["proc"].terminate()
+
+
+@test("chrome_profiles lists the named profiles")
+def _():
+    res = engine.call("chrome_profiles", {})
+    assert res["ok"] is True
+    assert any(p["name"] == "work" for p in res["profiles"]), res["profiles"]
 
 
 @test("actions on the agent-owned browser need no approval")

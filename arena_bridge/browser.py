@@ -47,6 +47,63 @@ def _schema(props=None, required=None):
     }
 
 
+def profile_dir() -> Path:
+    """Where the named agent profiles live (follows ARENA_BRIDGE_HOME when set)."""
+    base = os.environ.get("ARENA_BRIDGE_HOME") or str(Path.home() / ".arena-bridge")
+    return Path(base) / "chrome-profiles"
+
+
+def sanitize_profile(name) -> str:
+    cleaned = "".join(c if (c.isalnum() or c in "._-") else "-" for c in str(name).strip())
+    cleaned = cleaned.strip("-")[:60]
+    return cleaned or "default"
+
+
+def resolve_profile(raw=None, port=9223) -> str:
+    """A named profile keeps its logins between agent runs; a path is used as given."""
+    if not raw:
+        return str(Path.home() / ".arena-bridge" / f"chrome-profile-{port}")
+    value = str(raw)
+    if value.startswith("/") or value.startswith("~"):
+        return str(Path(value.replace("~", str(Path.home()), 1)).resolve())
+    return str(profile_dir() / sanitize_profile(value))
+
+
+def profile_name(raw=None):
+    if not raw:
+        return None
+    value = str(raw)
+    if value.startswith("/") or value.startswith("~"):
+        return None
+    return sanitize_profile(value)
+
+
+def list_profiles() -> list:
+    out = []
+    base = profile_dir()
+    if not base.exists():
+        return out
+    for entry in base.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            files = list(entry.iterdir())
+            size = sum(f.stat().st_size for f in files if f.is_file())
+            mtime = entry.stat().st_mtime
+        except OSError:
+            continue
+        out.append(
+            {
+                "name": entry.name,
+                "path": str(entry),
+                "mtime": mtime * 1000,
+                "files": len(files),
+                "approx_bytes": size,
+            }
+        )
+    return sorted(out, key=lambda p: p["mtime"], reverse=True)
+
+
 def find_chrome():
     env = os.environ.get("CHROME_PATH")
     if env and Path(env).exists():
@@ -150,11 +207,7 @@ class BrowserManager:
             }
         headless = args.get("headless", True) is not False
         port = int(args.get("port") or 9223)
-        profile = (
-            str(Path(str(args["profile"]).replace("~", str(Path.home()), 1)).resolve())
-            if args.get("profile")
-            else str(Path.home() / ".arena-bridge" / f"chrome-profile-{port}")
-        )
+        profile = resolve_profile(args.get("profile"), port)
         Path(profile).mkdir(parents=True, exist_ok=True)
 
         chrome_args = [
@@ -169,6 +222,13 @@ class BrowserManager:
         ]
         if headless:
             chrome_args.append(os.environ.get("ARENA_HEADLESS_FLAG", "--headless=new"))
+        else:
+            width = int(args.get("width") or 0)
+            height = int(args.get("height") or 0)
+            if width and height:
+                chrome_args.append(f"--window-size={width},{height}")
+            if args.get("x") is not None and args.get("y") is not None:
+                chrome_args.append(f"--window-position={int(args['x'])},{int(args['y'])}")
         if args.get("url"):
             chrome_args.append(str(args["url"]))
 
@@ -204,6 +264,7 @@ class BrowserManager:
             "headless": headless,
             "port": port,
             "profile": profile,
+            "profile_name": profile_name(args.get("profile")),
             "ws_url": ws_url,
             "tabs": [{"tab_id": t["targetId"], "title": t["title"], "url": t["url"]} for t in session["tabs"].values()],
             "note": "This browser belongs to the agent — no local approval needed for actions on it.",
@@ -344,10 +405,33 @@ class BrowserManager:
                         "headless": {"type": "boolean", "description": "true (default) = no window"},
                         "port": {"type": "number", "description": "CDP port (default 9223)"},
                         "url": {"type": "string"},
-                        "profile": {"type": "string"},
+                        "profile": {
+                            "type": "string",
+                            "description": "named profile (keeps its logins between runs) or a directory path",
+                        },
+                        "width": {"type": "number", "description": "window width in pixels (visible window only)"},
+                        "height": {"type": "number", "description": "window height in pixels (visible window only)"},
+                        "x": {"type": "number", "description": "window left edge"},
+                        "y": {"type": "number", "description": "window top edge"},
                     }
                 ),
                 "handler": lambda args, ctx: self.launch(args, ctx),
+            },
+            {
+                "name": "chrome_profiles",
+                "description": (
+                    "List the agent's own named browser profiles (each keeps its own logins between runs). "
+                    "Launch one with chrome_launch {\"profile\":\"<name>\"}; the user logs into it once with "
+                    "'arena-bridge browser open <name>' on their machine."
+                ),
+                "approval": False,
+                "schema": _schema({}),
+                "handler": lambda args, ctx: {
+                    "ok": True,
+                    "count": len(list_profiles()),
+                    "profiles": list_profiles(),
+                    "hint": "Ask the user to log in: arena-bridge browser open <name> — then use chrome_launch {\"profile\":\"<name>\"}",
+                },
             },
             {
                 "name": "chrome_attach",

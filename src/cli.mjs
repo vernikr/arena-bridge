@@ -11,8 +11,10 @@ import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide } from './approvals.mjs';
 import { tailAudit } from './audit.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
+import { spawn, execSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
+import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
 import { serviceStatus, serviceInstall, serviceUninstall } from './service.mjs';
 
@@ -78,6 +80,8 @@ Commands:
   update               Update this package from npm (--check to only look)
   service              Run the bridge as a macOS background service
                        install | uninstall | status
+  browser              The agent's own browser profiles
+                       list | open <name> | close <name>
 
 Common options:
   --mode direct|hub    mode for "init"
@@ -437,6 +441,86 @@ function cmdService(args) {
   if (!st.installed) console.log('  install it with: arena-bridge service install');
 }
 
+function cmdBrowser(args) {
+  const what = args._[1] || 'list';
+  if (what === 'list') {
+    const profiles = listProfiles();
+    if (!profiles.length) {
+      console.log('no agent browser profiles yet — create one: arena-bridge browser open <name>');
+      return;
+    }
+    for (const p of profiles) {
+      console.log(`${p.name.padEnd(20)} ${String(p.files).padStart(3)} files   ${new Date(p.mtime).toLocaleString()}`);
+      console.log(`  ${p.path}`);
+    }
+    console.log('\nThe agent opens a profile with: chrome_launch {"profile":"<name>"}');
+    return;
+  }
+  if (what === 'open') {
+    const name = args._[2];
+    if (!name) {
+      console.error('usage: arena-bridge browser open <name>');
+      process.exit(1);
+    }
+    const bin = findChrome();
+    if (!bin) {
+      console.error('✗ Chrome not found in /Applications');
+      process.exit(1);
+    }
+    const profile = resolveProfile(name);
+    fs.mkdirSync(profile, { recursive: true });
+    const chromeArgs = [
+      `--user-data-dir=${profile}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--remote-debugging-port=0',
+    ];
+    const width = Number(args.flags.width || 0);
+    const height = Number(args.flags.height || 0);
+    if (width && height) chromeArgs.push(`--window-size=${width},${height}`);
+    if (args.flags.x != null && args.flags.y != null) {
+      chromeArgs.push(`--window-position=${Number(args.flags.x)},${Number(args.flags.y)}`);
+    }
+    const proc = spawn(bin, chromeArgs, { detached: true, stdio: 'ignore' });
+    proc.unref();
+    console.log(`✓ Chrome opened with the profile "${sanitizeProfile(name)}"`);
+    console.log(`  profile: ${profile}`);
+    console.log('  log in to the sites the agent needs and close this window — the logins stay.');
+    console.log(`  the agent opens the same profile with: chrome_launch {"profile":"${sanitizeProfile(name)}"}`);
+    return;
+  }
+  if (what === 'close') {
+    const name = args._[2];
+    if (!name) {
+      console.error('usage: arena-bridge browser close <name>');
+      process.exit(1);
+    }
+    const profile = resolveProfile(name);
+    let out = '';
+    try {
+      out = execSync('ps -Ao pid,command', { encoding: 'utf8' });
+    } catch {
+      /* ignore */
+    }
+    let killed = 0;
+    for (const line of out.split('\n')) {
+      if (!line.includes(`--user-data-dir=${profile}`)) continue;
+      const pid = Number(line.trim().split(/\s+/)[0]);
+      if (!pid) continue;
+      try {
+        process.kill(pid);
+        killed++;
+      } catch {
+        /* ignore */
+      }
+    }
+    console.log(`✓ closed ${killed} Chrome window(s) for "${sanitizeProfile(name)}"`);
+    return;
+  }
+  console.error(`unknown browser action: ${what}\nuse: list | open <name> | close <name>`);
+  process.exitCode = 1;
+}
+
 function cmdRotate(args) {
   const cfg = loadConfig();
   const what = args.flags.device ? 'device' : 'agent';
@@ -521,6 +605,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdUpdate(args);
     case 'service':
       return cmdService(args);
+    case 'browser':
+      return cmdBrowser(args);
     case undefined:
     case 'help':
     case '--help':

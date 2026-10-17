@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.0
+
+### Added
+- Named browser profiles for the agent: `chrome_launch {"profile":"work"}` keeps its logins between
+  runs, `chrome_profiles` lists them, and `arena-bridge browser list|open|close` manages them from
+  the command line so the user can log in once.
+- A visible agent window can be sized and placed (`width`, `height`, `x`, `y`) so it stays out of
+  the way on the user's screen.
+
 ## 0.5.2
 
 ### Fixed

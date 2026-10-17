@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -354,6 +355,69 @@ def cmd_service(args):
         print("  install it with: arena-bridge service install")
 
 
+def cmd_browser(args):
+    from .browser import find_chrome, list_profiles, resolve_profile, sanitize_profile
+
+    action = args.action
+    if action == "list":
+        profiles = list_profiles()
+        if not profiles:
+            print("no agent browser profiles yet - create one: arena-bridge browser open <name>")
+            return
+        for profile in profiles:
+            print(f"{profile['name']:20} {profile['files']:>3} files   {profile['path']}")
+        print("\nThe agent opens a profile with: chrome_launch {\"profile\":\"<name>\"}")
+        return
+    if action == "open":
+        binary = find_chrome()
+        if not binary:
+            print("✗ Chrome not found in /Applications", file=sys.stderr)
+            sys.exit(1)
+        profile = resolve_profile(args.name)
+        Path(profile).mkdir(parents=True, exist_ok=True)
+        chrome_args = [
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--remote-debugging-port=0",
+        ]
+        if args.width and args.height:
+            chrome_args.append(f"--window-size={args.width},{args.height}")
+        if args.x is not None and args.y is not None:
+            chrome_args.append(f"--window-position={args.x},{args.y}")
+        subprocess.Popen(
+            [binary, *chrome_args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print(f"✓ Chrome opened with the profile \"{sanitize_profile(args.name)}\"")
+        print(f"  profile: {profile}")
+        print("  log in to the sites the agent needs and close this window - the logins stay.")
+        print(f'  the agent opens the same profile with: chrome_launch {{"profile":"{sanitize_profile(args.name)}"}}')
+        return
+    if action == "close":
+        profile = resolve_profile(args.name)
+        killed = 0
+        try:
+            listing = subprocess.run(["ps", "-Ao", "pid,command"], capture_output=True, text=True).stdout
+        except Exception:
+            listing = ""
+        for line in listing.splitlines():
+            if f"--user-data-dir={profile}" not in line:
+                continue
+            try:
+                pid = int(line.strip().split()[0])
+                os.kill(pid, 15)
+                killed += 1
+            except Exception:
+                continue
+        print(f'✓ closed {killed} Chrome window(s) for "{sanitize_profile(args.name)}"')
+        return
+    print(f"unknown browser action: {action}", file=sys.stderr)
+    sys.exit(1)
+
+
 def cmd_rotate(args):
     cfg = load_config()
     what = "device" if args.device else "agent"
@@ -502,6 +566,15 @@ def build_parser():
     update = sub.add_parser("update", help="update this package from PyPI")
     update.add_argument("--check", action="store_true", help="only check for a newer version")
     update.set_defaults(func=cmd_update)
+
+    browser = sub.add_parser("browser", help="the agent's own browser profiles")
+    browser.add_argument("action", nargs="?", default="list", choices=["list", "open", "close"])
+    browser.add_argument("name", nargs="?", help="profile name")
+    browser.add_argument("--width", type=int)
+    browser.add_argument("--height", type=int)
+    browser.add_argument("--x", type=int)
+    browser.add_argument("--y", type=int)
+    browser.set_defaults(func=cmd_browser)
 
     service = sub.add_parser("service", help="run the bridge as a macOS background service")
     service.add_argument("action", nargs="?", default="status", choices=["install", "uninstall", "status"])
