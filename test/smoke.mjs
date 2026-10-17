@@ -513,6 +513,13 @@ await test('repeated --root flags accumulate instead of overwriting', async () =
   assert.deepEqual(flat, ['~/projects', '~/Documents', '~/notes']);
 });
 
+await test('the service command takes the tunnel flags', async () => {
+  const { parseArgs } = await import('../src/cli.mjs');
+  const args = parseArgs(['service', 'install', '--bin', 'ngrok', '--domain', 'mymac.ngrok-free.app']);
+  assert.equal(args.flags.bin, 'ngrok');
+  assert.equal(args.flags.domain, 'mymac.ngrok-free.app');
+});
+
 await test('isPortOpen detects a listening port', async () => {
   const probe = http.createServer();
   await new Promise((r) => probe.listen(0, '127.0.0.1', r));

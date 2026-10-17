@@ -48,7 +48,7 @@ export async function handleMcp(req, res, ctx) {
           mcpResponse(id, {
             protocolVersion: PROTOCOL_VERSION,
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: 'arena-bridge', version: '0.6.6' },
+            serverInfo: { name: 'arena-bridge', version: '0.6.7' },
             instructions:
               'Tools operate the user\'s own machine. Dangerous operations may return ' +
               'PROTECTED and require a local human approval.',

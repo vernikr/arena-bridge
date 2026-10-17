@@ -346,7 +346,12 @@ def cmd_service(args):
     from .service import service_install, service_status, service_uninstall
 
     if args.action == "install":
-        res = service_install()
+        res = service_install(
+            bin=getattr(args, "bin", None),
+            domain=getattr(args, "domain", None),
+            authtoken=getattr(args, "authtoken", None),
+            port=getattr(args, "port", None),
+        )
         print(f"\u2713 service installed: {res['plist']}")
         print("  the bridge now starts with the system and keeps a public URL alive")
         print("  current URL: arena-bridge url")
@@ -358,6 +363,9 @@ def cmd_service(args):
     st = service_status()
     print(f"service: {'installed' if st['installed'] else 'not installed'} ({'running' if st['running'] else 'not running'})")
     print(f"  plist: {st['plist']}")
+    current = load_config().get("publicUrl")
+    if current:
+        print(f"  current URL: {current}")
     if st.get("detail"):
         print(f"  {st['detail'].splitlines()[0]}")
     if not st["installed"]:
@@ -591,6 +599,10 @@ def build_parser():
 
     service = sub.add_parser("service", help="run the bridge as a macOS background service")
     service.add_argument("action", nargs="?", default="status", choices=["install", "uninstall", "status"])
+    service.add_argument("--bin", help="tunnel binary for the service (cloudflared or ngrok)")
+    service.add_argument("--domain", help="ngrok reserved domain for a stable public URL")
+    service.add_argument("--authtoken", help="ngrok authtoken")
+    service.add_argument("--port", type=int, help="API port")
     service.set_defaults(func=cmd_service)
     return p
 

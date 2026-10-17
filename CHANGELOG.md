@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.7
+
+### Added
+- `arena-bridge service install --bin ngrok --domain <name>` installs the macOS background
+  service with a fixed public address; `arena-bridge service status` now shows the current URL.
+
 ## 0.6.6
 
 ### Fixed

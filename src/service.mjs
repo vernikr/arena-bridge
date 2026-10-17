@@ -21,9 +21,14 @@ function cliEntry() {
   return path.join(here, '..', 'bin', 'arena-bridge.mjs');
 }
 
-function plistXml() {
+function plistXml({ bin, domain, authtoken, port } = {}) {
   const cli = cliEntry();
   const logs = logDir();
+  const extra = [];
+  if (bin) extra.push('--bin', String(bin));
+  if (domain) extra.push('--domain', String(domain));
+  if (authtoken) extra.push('--authtoken', String(authtoken));
+  if (port) extra.push('--port', String(port));
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -34,6 +39,7 @@ function plistXml() {
     <string>${process.execPath}</string>
     <string>${cli}</string>
     <string>tunnel</string>
+${extra.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -63,12 +69,12 @@ export function serviceStatus() {
   return { installed, running, plist: plistPath(), detail: out.trim().slice(0, 600) };
 }
 
-export function serviceInstall() {
+export function serviceInstall(options = {}) {
   ensureDirs();
   fs.mkdirSync(logDir(), { recursive: true });
   const dir = path.dirname(plistPath());
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(plistPath(), plistXml());
+  fs.writeFileSync(plistPath(), plistXml(options));
   launchctl(['bootout', `gui/${process.getuid()}/${LABEL}`], { quiet: true });
   const out = launchctl(['bootstrap', `gui/${process.getuid()}`, plistPath()], { quiet: true });
   launchctl(['enable', `gui/${process.getuid()}/${LABEL}`], { quiet: true });

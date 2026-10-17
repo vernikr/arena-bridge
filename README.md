@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-114%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-115%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -63,6 +63,18 @@ arena-bridge setup --root ~/projects --root ~/Documents
 `arena-bridge tunnel --bin ngrok --authtoken <token> --domain <name>.ngrok-free.dev`.
 
 ### В фоне, чтобы не открывать терминал
+
+Мост можно поднять как службу macOS — он стартует вместе с системой, переживает закрытие
+терминала и поднимается заново после сбоя:
+
+```bash
+arena-bridge service install                                   # облако, случайный адрес
+arena-bridge service install --bin ngrok --domain mymac.ngrok-free.app   # постоянный адрес
+arena-bridge service status                                    # состояние и текущий URL
+arena-bridge url                                              # текущий публичный адрес
+arena-bridge service uninstall
+```
+
 
 ```bash
 arena-bridge service install   # launchd: стартует вместе с системой, URL всегда живой

@@ -440,7 +440,12 @@ async function cmdUpdate(args) {
 function cmdService(args) {
   const what = args._[1] || 'status';
   if (what === 'install') {
-    const res = serviceInstall();
+    const res = serviceInstall({
+      bin: args.flags.bin,
+      domain: args.flags.domain,
+      authtoken: args.flags.authtoken,
+      port: args.flags.port,
+    });
     console.log(`\u2713 service installed: ${res.plist}`);
     console.log('  the bridge now starts with the system and keeps a public URL alive');
     console.log('  current URL: arena-bridge url');
@@ -454,6 +459,8 @@ function cmdService(args) {
   const st = serviceStatus();
   console.log(`service: ${st.installed ? 'installed' : 'not installed'} (${st.running ? 'running' : 'not running'})`);
   console.log(`  plist: ${st.plist}`);
+  const current = loadConfig().publicUrl;
+  if (current) console.log(`  current URL: ${current}`);
   if (st.detail) console.log(`  ${st.detail.split('\n')[0]}`);
   if (!st.installed) console.log('  install it with: arena-bridge service install');
 }

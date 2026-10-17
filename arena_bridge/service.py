@@ -44,15 +44,19 @@ def service_status() -> dict:
     }
 
 
-def service_install() -> dict:
+def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
     ensure_dirs()
     logs = log_dir()
     logs.mkdir(parents=True, exist_ok=True)
     plist = plist_path()
     plist.parent.mkdir(parents=True, exist_ok=True)
+    arguments = [*cli_entry(), "tunnel"]
+    for flag, value in (("--bin", bin), ("--domain", domain), ("--authtoken", authtoken), ("--port", port)):
+        if value:
+            arguments += [flag, str(value)]
     payload = {
         "Label": LABEL,
-        "ProgramArguments": [*cli_entry(), "tunnel"],
+        "ProgramArguments": arguments,
         "RunAtLoad": True,
         "KeepAlive": True,
         "StandardOutPath": str(logs / "bridge.log"),
