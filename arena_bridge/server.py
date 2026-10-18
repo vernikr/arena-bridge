@@ -16,7 +16,7 @@ from .telegram import answer_callback, edit_message_text, parse_command, send_te
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.8"
+        server_version = "arena-bridge/0.7.9"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -75,7 +75,7 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.8"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.9"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/tools":

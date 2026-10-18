@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.9
+
+### Fixed
+- The build script of the app keeps the executable bit, and the release workflow sets it too.
+
 ## 0.7.8
 
 ### Fixed

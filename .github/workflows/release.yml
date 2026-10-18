@@ -79,6 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: build the app for both architectures
         run: |
+          chmod +x macos/ArenaBridge/build.sh
           for arch in arm64 x86_64; do
             (cd macos/ArenaBridge && ARCH=$arch ./build.sh)
             cp -R "macos/ArenaBridge/dist/Arena Bridge.app" "/tmp/Arena Bridge.app"
