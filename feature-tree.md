@@ -23,6 +23,7 @@
   - Проверка установки: `arena-bridge doctor`
 - Нативное приложение macOS
   - Обычное окно, без иконки в менюбаре
+  - Состояние обновляется само: статус, подтверждения и доверенное окно — каждые несколько секунд
   - Сборка: `macos/ArenaBridge/build.sh` → `dist/Arena Bridge.app`; `ARCH=x86_64|arm64`
   - Подпись ad-hoc; иконка `Resources/AppIcon.png` → `.icns` при сборке
   - Gatekeeper при первом запуске: правый клик → «Открыть» либо `xattr -dr com.apple.quarantine`

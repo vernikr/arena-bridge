@@ -26,8 +26,15 @@ must install in one step. The Gatekeeper hint has to be short and not intrusive.
   of `build.sh`; the script also printed the architecture with a variable that bash could not
   parse.
 
+## The window that follows the machine
+
+The app used to show the state it had at the moment it opened. Now it refreshes itself: the
+status, the pending approvals and the trust window every few seconds, the work log now and
+then. The trust window is read straight from its file, so the line "active — 2:59 left" is
+always the truth.
+
 ## Live check on the user's Mac
 
-- The command line is 0.7.10 (`~/.local/bin/arena-bridge`), the app is installed from the
+- The command line is 0.7.11 (`~/.local/bin/arena-bridge`), the app 0.3.0 is installed from the
   release asset and runs, the service `ai.arena.bridge` answers 200 on `/health`.
 - The trust window opened for the tests is closed: every side-effecting action asks again.
