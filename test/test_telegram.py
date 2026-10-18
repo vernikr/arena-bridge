@@ -267,7 +267,8 @@ def _():
     rec = json.loads(path.read_text())
     assert rec["status"] == "approved", "the button settles the request"
     trust = json.loads((HOME / "trust.json").read_text())
-    assert trust["tools"] == ["bash"], trust
+    assert trust["tools"] == [], trust  # blanket per user request
+    assert trust["paths"] == [], trust
     assert trust["until"] > int(time.time() * 1000) + 2 * 3600 * 1000
     edited = [m for m in SENT if m.get("method") == "editMessageText"][-1]
     assert "Approved" in edited["payload"]["text"]

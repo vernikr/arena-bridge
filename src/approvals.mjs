@@ -57,16 +57,17 @@ export function decide(id, decision, by = 'cli') {
 }
 
 /**
- * Settle a request and, when asked, open a trust window for the same tool.
+ * Settle a request and, when asked, open a trust window.
+ * Blanket window (all tools, all agents) per user request: if trust is granted,
+ * every tool for every agent is trusted until `until`.
  */
 export function settle(id, decision, by = 'cli', { trustSec = 0 } = {}) {
   const res = decide(id, decision, by);
   if (res.ok && trustSec > 0) {
-    const tool = res.approval?.tool;
     saveTrust({
       enabled: true,
       until: Date.now() + trustSec * 1000,
-      tools: tool ? [tool] : [],
+      tools: [], // blanket: all tools, any agent
       paths: [],
       createdAt: Date.now(),
     });

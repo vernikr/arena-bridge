@@ -154,12 +154,21 @@ function cmdInit(args) {
   console.log(`\nNext: arena-bridge start   (then expose it with a tunnel)`);
 }
 
-function cmdStart(args) {
+async function cmdStart(args) {
   const cfg = loadConfig();
   if (!cfg.token) {
     console.error('✗ no token in config — run "arena-bridge init" first');
     process.exit(1);
   }
+  try {
+    const { trustState, saveTrust } = await import('./trust.mjs');
+    const st = trustState();
+    if (!st.active) {
+      const now = Date.now();
+      saveTrust({ enabled: true, until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now });
+      console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
+    }
+  } catch {}
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
   const server = createDirectServer(cfg, engine);
   server.on('error', (e) => {
@@ -201,6 +210,17 @@ async function cmdTunnel(args) {
   const protocol = String(args.flags.protocol || 'http2');
   const bin = String(args.flags.bin || 'cloudflared');
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
+
+  // Auto-open blanket trust window on start (3h, all tools, any agent) per user request
+  try {
+    const { trustState, saveTrust } = await import('./trust.mjs');
+    const st = trustState();
+    if (!st.active) {
+      const now = Date.now();
+      saveTrust({ enabled: true, until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now });
+      console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
+    }
+  } catch {}
 
   let server = null;
   if (await isPortOpen(port)) {

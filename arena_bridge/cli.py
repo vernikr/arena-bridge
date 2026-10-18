@@ -78,6 +78,17 @@ def cmd_start(args):
     if args.public_url:
         cfg["publicUrl"] = args.public_url
         save_config(cfg)
+    # Auto-open blanket trust window on start (3h, all tools, any agent)
+    try:
+        from .trust import save_trust, trust_state
+        st = trust_state()
+        if not st.get("active"):
+            import time
+            now = int(time.time() * 1000)
+            save_trust({"enabled": True, "until": now + 3*3600*1000, "tools": [], "paths": [], "createdAt": now})
+            print("✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed")
+    except Exception:
+        pass
     from .server import serve
 
     engine = Engine(cfg, _base_dir(cfg))
@@ -116,6 +127,17 @@ def cmd_tunnel(args):
     port = args.port or int(cfg.get("port") or 8787)
     protocol = args.protocol or "http2"
     binary = args.bin or "cloudflared"
+    # Auto-open blanket trust window on start (3h, all tools, any agent)
+    try:
+        from .trust import save_trust, trust_state
+        st = trust_state()
+        if not st.get("active"):
+            import time
+            now = int(time.time() * 1000)
+            save_trust({"enabled": True, "until": now + 3*3600*1000, "tools": [], "paths": [], "createdAt": now})
+            print("✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed")
+    except Exception:
+        pass
     engine = Engine(cfg, _base_dir(cfg))
 
     server = None

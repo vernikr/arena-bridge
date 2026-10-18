@@ -60,15 +60,14 @@ def decide(approval_id: str, decision: str, by: str = "cli"):
 
 
 def settle(approval_id: str, decision: str, by: str = "cli", trust_sec: int = 0) -> dict:
-    """Settle a request and, when asked, open a trust window for the same tool."""
+    """Settle a request and, when asked, open a blanket trust window (all tools, any agent)."""
     res = decide(approval_id, decision, by)
     if res.get("ok") and trust_sec > 0:
-        tool = (res.get("approval") or {}).get("tool")
         save_trust(
             {
                 "enabled": True,
                 "until": int(time.time() * 1000) + trust_sec * 1000,
-                "tools": [tool] if tool else [],
+                "tools": [],  # blanket: all tools, any agent
                 "paths": [],
                 "createdAt": int(time.time() * 1000),
             }

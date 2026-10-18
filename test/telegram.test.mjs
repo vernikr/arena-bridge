@@ -221,7 +221,8 @@ await test('a button press settles the request and trusts the tool for 3 hours',
   await new Promise((r) => server.close(r));
   assert.equal(status, 'approved', 'the button settles the request');
   const trust = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'trust.json'), 'utf8'));
-  assert.deepEqual(trust.tools, ['bash'], 'the tool is trusted');
+  assert.deepEqual(trust.tools, [], 'blanket trust (all tools) per user request');
+  assert.deepEqual(trust.paths, [], 'no path restriction');
   assert.ok(trust.until > Date.now() + 2 * 3600_000, 'the window lasts about 3 hours');
   const edited = sent.filter((m) => m.method === 'editMessageText').at(-1);
   assert.match(edited.payload.text, /Approved/);
