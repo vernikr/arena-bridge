@@ -367,7 +367,10 @@ def cmd_service(args):
             authtoken=getattr(args, "authtoken", None),
             port=getattr(args, "port", None),
         )
+        if not res["ok"]:
+            raise RuntimeError(res["detail"])
         print(f"\u2713 service installed: {res['plist']}")
+        print("  reload scheduled in 3 seconds; check: arena-bridge service status")
         print("  the bridge now starts with the system and keeps a public URL alive")
         print("  current URL: arena-bridge url")
         return

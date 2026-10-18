@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -44,7 +45,10 @@ export function agentPath() {
   const bundle = appBundlePath();
   if (!bundle) return null;
   const helper = path.join(bundle, 'Contents', 'Helpers', AGENT_NAME);
-  return fs.existsSync(helper) ? helper : null;
+  try {
+    fs.accessSync(helper, fs.constants.X_OK);
+    return fs.statSync(helper).isFile() ? helper : null;
+  } catch { return null; }
 }
 
 /**
@@ -112,6 +116,10 @@ export function programArguments({ bin, domain, authtoken, port } = {}) {
   return [runnerPath(), 'tunnel', ...extra];
 }
 
+function xml(value) {
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
 export function plistXml(options = {}) {
   const logs = logDir();
   const program = programArguments(options);
@@ -122,15 +130,15 @@ export function plistXml(options = {}) {
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-${program.map((a) => `    <string>${a}</string>`).join('\n')}
+${program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${path.join(logs, 'bridge.log')}</string>
-  <key>StandardErrorPath</key><string>${path.join(logs, 'bridge.err.log')}</string>
+  <key>StandardOutPath</key><string>${xml(path.join(logs, 'bridge.log'))}</string>
+  <key>StandardErrorPath</key><string>${xml(path.join(logs, 'bridge.err.log'))}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${servicePath()}</string>
+    <key>PATH</key><string>${xml(servicePath())}</string>
   </dict>
 </dict>
 </plist>
@@ -152,18 +160,32 @@ export function serviceStatus() {
   return { installed, running, plist: plistPath(), detail: out.trim().slice(0, 600) };
 }
 
+export const reloadScript = "#!/bin/sh\nset -eu\nTARGET=$1\nPLIST=$2\nSTATUS=$3\nJOB=$4\nDOMAIN=${TARGET%/*}\nfinish() {\n  code=$?\n  trap - EXIT\n  if [ \"$code\" -eq 0 ]; then printf 'loaded\\n' > \"$STATUS\"; else printf 'failed (%s)\\n' \"$code\" > \"$STATUS\"; fi\n  rm -f \"$0\"\n  /bin/launchctl remove \"$JOB\" >/dev/null 2>&1 || true\n  exit \"$code\"\n}\ntrap finish EXIT\nprintf 'scheduled\\n' > \"$STATUS\"\nsleep 3\n/bin/launchctl enable \"$TARGET\"\nif /bin/launchctl print \"$TARGET\" >/dev/null 2>&1; then\n  /bin/launchctl bootout \"$TARGET\"\nfi\nattempt=0\nuntil /bin/launchctl bootstrap \"$DOMAIN\" \"$PLIST\"; do\n  attempt=$((attempt + 1))\n  [ \"$attempt\" -lt 10 ] || exit 1\n  sleep 1\ndone\n/bin/launchctl print \"$TARGET\" >/dev/null\n";
+
 export function serviceInstall(options = {}) {
   ensureDirs();
   fs.mkdirSync(logDir(), { recursive: true });
-  const dir = path.dirname(plistPath());
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(path.dirname(plistPath()), { recursive: true });
   fs.writeFileSync(runnerPath(), runnerScript(), { mode: 0o755 });
   fs.chmodSync(runnerPath(), 0o755);
-  fs.writeFileSync(plistPath(), plistXml(options));
-  launchctl(['bootout', `gui/${process.getuid()}/${LABEL}`], { quiet: true });
-  const out = launchctl(['bootstrap', `gui/${process.getuid()}`, plistPath()], { quiet: true });
-  launchctl(['enable', `gui/${process.getuid()}/${LABEL}`], { quiet: true });
-  return { ok: true, plist: plistPath(), detail: (out || '').trim().slice(0, 400) };
+  const plist = plistPath();
+  fs.writeFileSync(`${plist}.tmp`, plistXml(options), { mode: 0o600 });
+  fs.renameSync(`${plist}.tmp`, plist);
+  const job = `${LABEL}.reload.${randomUUID()}`;
+  const script = path.join(CONFIG_DIR, `${job}.sh`);
+  const status = path.join(CONFIG_DIR, 'service-reload.status');
+  fs.writeFileSync(script, reloadScript, { mode: 0o700 });
+  fs.writeFileSync(status, 'scheduled\n', { mode: 0o600 });
+  try {
+    execFileSync('launchctl', ['submit', '-l', job, '-o', path.join(logDir(), 'service-reload.log'),
+      '-e', path.join(logDir(), 'service-reload.err.log'), '--', '/bin/sh', script,
+      `gui/${process.getuid()}/${LABEL}`, plist, status, job], { encoding: 'utf8', timeout: 20000 });
+  } catch (e) {
+    fs.rmSync(script, { force: true });
+    fs.writeFileSync(status, 'submission failed\n');
+    return { ok: false, plist, detail: String(e.stderr || e.message).slice(0, 400) };
+  }
+  return { ok: true, scheduled: true, plist, status, detail: 'reload scheduled; check service status and service-reload.status' };
 }
 
 export function serviceUninstall() {

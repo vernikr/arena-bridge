@@ -49,8 +49,10 @@ cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$BUNDLE/Contents/Info.plist"
 
 # the nested code is signed first, the bundle covers it afterwards
-codesign --force --sign - --identifier "$BUNDLE_ID" "$BUNDLE/Contents/Helpers/$HELPER" >/dev/null 2>&1 || true
-codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || true
+codesign --force --sign - --identifier "$BUNDLE_ID" "$BUNDLE/Contents/Helpers/$HELPER" >/dev/null 2>&1
+codesign --force --sign - "$BUNDLE" >/dev/null 2>&1
 
+codesign --verify --deep --strict "$BUNDLE"
+lipo "$BUNDLE/Contents/Helpers/$HELPER" -verify_arch "$ARCH"
 echo "built: $BUNDLE"
 echo "install: cp -R \"$BUNDLE\" /Applications/"

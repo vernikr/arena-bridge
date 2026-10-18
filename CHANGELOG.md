@@ -4,9 +4,10 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.7.18
 
 ### Fixed
+- Service reinstall is queued as an independent one-shot launchd job, so stopping the bridge does not kill its own installer. Submission errors are reported, and reload outcome is recorded separately.
 - Native helper forwards SIGINT as SIGINT and SIGTERM as SIGTERM; signal handling and child exit status verified on macOS.
 
 ### Documentation

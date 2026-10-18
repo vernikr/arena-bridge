@@ -495,7 +495,9 @@ function cmdService(args) {
       authtoken: args.flags.authtoken,
       port: args.flags.port,
     });
+    if (!res.ok) throw new Error(res.detail);
     console.log(`\u2713 service installed: ${res.plist}`);
+    console.log('  reload scheduled in 3 seconds; check: arena-bridge service status');
     console.log('  the bridge now starts with the system and keeps a public URL alive');
     console.log('  current URL: arena-bridge url');
     return;

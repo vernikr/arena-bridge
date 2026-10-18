@@ -77,6 +77,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: test helper signals
+        run: python3 test/helper_signals.py
       - name: build the app for both architectures
         run: |
           chmod +x macos/ArenaBridge/build.sh

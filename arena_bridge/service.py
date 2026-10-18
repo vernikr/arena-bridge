@@ -6,6 +6,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 from .app import AGENT_NAME, APP_NAME, SERVICE_LABEL as LABEL
@@ -45,7 +46,7 @@ def agent_path() -> Path | None:
     if not bundle:
         return None
     helper = bundle / "Contents" / "Helpers" / AGENT_NAME
-    return helper if helper.exists() else None
+    return helper if helper.is_file() and os.access(helper, os.X_OK) else None
 
 
 def stable_node() -> str:
@@ -136,6 +137,9 @@ def service_payload(bin=None, domain=None, authtoken=None, port=None) -> dict:
     }
 
 
+RELOAD_SCRIPT = '#!/bin/sh\nset -eu\nTARGET=$1\nPLIST=$2\nSTATUS=$3\nJOB=$4\nDOMAIN=${TARGET%/*}\nfinish() {\n  code=$?\n  trap - EXIT\n  if [ "$code" -eq 0 ]; then printf \'loaded\\n\' > "$STATUS"; else printf \'failed (%s)\\n\' "$code" > "$STATUS"; fi\n  rm -f "$0"\n  /bin/launchctl remove "$JOB" >/dev/null 2>&1 || true\n  exit "$code"\n}\ntrap finish EXIT\nprintf \'scheduled\\n\' > "$STATUS"\nsleep 3\n/bin/launchctl enable "$TARGET"\nif /bin/launchctl print "$TARGET" >/dev/null 2>&1; then\n  /bin/launchctl bootout "$TARGET"\nfi\nattempt=0\nuntil /bin/launchctl bootstrap "$DOMAIN" "$PLIST"; do\n  attempt=$((attempt + 1))\n  [ "$attempt" -lt 10 ] || exit 1\n  sleep 1\ndone\n/bin/launchctl print "$TARGET" >/dev/null\n'
+
+
 def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
     ensure_dirs()
     logs = log_dir()
@@ -145,13 +149,31 @@ def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
     runner = runner_path()
     runner.write_text(runner_script(), encoding="utf-8")
     runner.chmod(0o755)
-    payload = service_payload(bin, domain, authtoken, port)
-    with open(plist, "wb") as fh:
-        plistlib.dump(payload, fh)
-    _launchctl(["bootout", f"gui/{os.getuid()}/{LABEL}"])
-    out = _launchctl(["bootstrap", f"gui/{os.getuid()}", str(plist)])
-    _launchctl(["enable", f"gui/{os.getuid()}/{LABEL}"])
-    return {"ok": True, "plist": str(plist), "detail": out.strip()[:400]}
+    temp = plist.with_suffix(".plist.tmp")
+    with open(temp, "wb") as fh:
+        plistlib.dump(service_payload(bin, domain, authtoken, port), fh)
+    temp.chmod(0o600)
+    temp.replace(plist)
+    job = f"{LABEL}.reload.{uuid.uuid4()}"
+    script = config_dir() / f"{job}.sh"
+    status = config_dir() / "service-reload.status"
+    script.write_text(RELOAD_SCRIPT, encoding="utf-8")
+    script.chmod(0o700)
+    status.write_text("scheduled\n", encoding="utf-8")
+    status.chmod(0o600)
+    try:
+        subprocess.run([
+            "launchctl", "submit", "-l", job,
+            "-o", str(logs / "service-reload.log"),
+            "-e", str(logs / "service-reload.err.log"), "--", "/bin/sh", str(script),
+            f"gui/{os.getuid()}/{LABEL}", str(plist), str(status), job,
+        ], capture_output=True, text=True, timeout=20, check=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        script.unlink(missing_ok=True)
+        status.write_text("submission failed\n", encoding="utf-8")
+        return {"ok": False, "plist": str(plist), "detail": str(getattr(exc, "stderr", None) or exc)[:400]}
+    return {"ok": True, "scheduled": True, "plist": str(plist), "status": str(status),
+            "detail": "reload scheduled; check service status and service-reload.status"}
 
 
 def service_uninstall() -> dict:
