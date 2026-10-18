@@ -193,6 +193,7 @@ export function macTools(cfg = {}) {
         ['see', '--tree', '--no-screenshot', '--json', ...targetFlags(args)],
         ['see', '--tree', '--no-screenshot', '--no-remote', '--json', ...targetFlags(args)],
         ['see', '--tree', '--json', ...targetFlags(args)],
+        ['see', '--no-remote', '--tree', '--json', ...targetFlags(args)],
         ['see', '--json', ...targetFlags(args)],
       ];
     }
@@ -213,7 +214,8 @@ export function macTools(cfg = {}) {
       if (!best) best = cand;
       if (res.exit_code === 0 && cand.elements.length) return cand;
       if (res.exit_code === 0 && best.res.exit_code !== 0) best = cand;
-      if (res.exit_code !== 0 && !UNKNOWN.test(res.stderr || '')) break;
+      const denied = isPermissionError(json, res);
+      if (res.exit_code !== 0 && !denied && !UNKNOWN.test(res.stderr || '')) break;
     }
     return best;
   };
@@ -259,6 +261,15 @@ export function macTools(cfg = {}) {
         if (!outPath.ok) return { ok: false, error: outPath.error, reason: outPath.reason };
         ensureDir(path.dirname(outPath.abs));
         const seen = await collectSee(args, outPath.abs);
+        const failure = peekError(seen.json);
+        if (failure && !seen.elements.length) {
+          return {
+            ok: false,
+            error: 'peekaboo_failed',
+            reason: failure.message || String(failure.code || 'peekaboo returned an error'),
+            hint: PERMISSION_HINT,
+          };
+        }
         const elements = seen.elements.slice(0, 300);
         const saved = fs.existsSync(outPath.abs);
         if (!saved) {
@@ -866,6 +877,25 @@ export function macTools(cfg = {}) {
     },
   ];
 }
+
+/** The Peekaboo envelope reports a host that lost its macOS permissions. */
+function peekError(json) {
+  if (!json || typeof json !== 'object') return null;
+  const err = json.error;
+  if (err && typeof err === 'object' && (err.code || err.message)) return err;
+  return null;
+}
+
+function isPermissionError(json, res) {
+  const err = peekError(json);
+  const text = `${err?.code || ''} ${err?.message || ''} ${res?.stderr || ''}`;
+  return /permission|screen recording|accessibility|event synthesizing/i.test(text);
+}
+
+const PERMISSION_HINT =
+  'The Peekaboo host that captures the screen lost its macOS permissions (this happens after a Peekaboo update). ' +
+  'Re-grant Screen Recording and Accessibility to "Peekaboo Bridge" in System Settings → Privacy & Security, ' +
+  'or let the bridge use the local runtime (--no-remote). Run mac_permissions for the current state.';
 
 function menuFlags(args) {
   const f = [];

@@ -218,6 +218,23 @@ await test('mac_permissions explains what macOS still asks for', async () => {
   assert.match(r.permissions, /Screen Recording/);
 });
 
+await test('the local runtime is used when the bridge host has no permissions', async () => {
+  const r = await engine.call('mac_see', { path: path.join(WORK, 'shot3.png') });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.element_count, 2, 'the elements come from the local runtime');
+  assert.match(fs.readFileSync(LOG, 'utf8'), /--no-remote/);
+});
+
+await test('a permission problem is reported with a clear hint', async () => {
+  process.env.FAKE_PEEKABOO_NO_PERMS = '1';
+  const r = await engine.call('mac_see', { path: path.join(WORK, 'shot4.png') });
+  delete process.env.FAKE_PEEKABOO_NO_PERMS;
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'peekaboo_failed');
+  assert.match(r.reason, /permission/i);
+  assert.match(r.hint, /Screen Recording/);
+});
+
 await test('a missing peekaboo is reported instead of crashing', async () => {
   const saved = process.env.PEEKABOO_PATH;
   process.env.PEEKABOO_PATH = '/nonexistent/peekaboo';

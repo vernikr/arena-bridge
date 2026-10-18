@@ -223,6 +223,27 @@ def _():
     assert with_artifacts[0]["artifacts"][0]["bytes"] > 0
 
 
+@test("the local runtime is used when the bridge host has no permissions")
+def _():
+    r = engine.call("mac_see", {"path": str(WORK / "shot3.png")})
+    assert r["ok"], r
+    assert r["element_count"] == 2, "the elements come from the local runtime"
+    assert "--no-remote" in (HOME / "peek.log").read_text()
+
+
+@test("a permission problem is reported with a clear hint")
+def _():
+    os.environ["FAKE_PEEKABOO_NO_PERMS"] = "1"
+    try:
+        r = engine.call("mac_see", {"path": str(WORK / "shot4.png")})
+    finally:
+        del os.environ["FAKE_PEEKABOO_NO_PERMS"]
+    assert r["ok"] is False
+    assert r["error"] == "peekaboo_failed"
+    assert "permission" in r["reason"].lower()
+    assert "Screen Recording" in r["hint"]
+
+
 @test("a missing peekaboo is reported instead of crashing")
 def _():
     saved = os.environ["PEEKABOO_PATH"]

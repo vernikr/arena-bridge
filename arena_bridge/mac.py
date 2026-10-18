@@ -176,6 +176,31 @@ def _finish(res, action):
     }
 
 
+PERMISSION_HINT = (
+    "The Peekaboo host that captures the screen lost its macOS permissions (this happens after a Peekaboo update). "
+    'Re-grant Screen Recording and Accessibility to "Peekaboo Bridge" in System Settings → Privacy & Security, '
+    "or let the bridge use the local runtime (--no-remote). Run mac_permissions for the current state."
+)
+
+
+def _peek_error(data):
+    if not isinstance(data, dict):
+        return None
+    err = data.get("error")
+    if isinstance(err, dict) and (err.get("code") or err.get("message")):
+        return err
+    return None
+
+
+def _is_permission_error(cand):
+    err = _peek_error(cand.get("data"))
+    text = " ".join(
+        str(x or "")
+        for x in (err.get("code") if err else None, err.get("message") if err else None, cand.get("stderr"))
+    )
+    return any(k in text.lower() for k in ("permission", "screen recording", "accessibility", "event synthesizing"))
+
+
 def _menu_flags(args):
     flags = []
     if args.get("app"):
@@ -227,12 +252,15 @@ def mac_tools(cfg=None):
         if not out_path:
             return [
                 ["see", "--tree", "--no-screenshot", "--json", *_target_flags(args)],
+                ["see", "--tree", "--no-screenshot", "--no-remote", "--json", *_target_flags(args)],
                 ["see", "--tree", "--json", *_target_flags(args)],
+                ["see", "--no-remote", "--tree", "--json", *_target_flags(args)],
                 ["see", "--json", *_target_flags(args)],
             ]
         return [
             [*base, "--json", "--path", out_path],
             [*base, "--path", out_path, "--json"],
+            [*base, "--no-remote", "--json", "--path", out_path],
             ["image", "--mode", mode, *_target_flags(args), "--json", "--path", out_path],
         ]
 
@@ -248,7 +276,9 @@ def mac_tools(cfg=None):
                 return cand
             if res["exit_code"] == 0 and best["exit_code"] != 0:
                 best = cand
-            if res["exit_code"] != 0 and not any(m in (res["stderr"] or "").lower() for m in UNKNOWN):
+            if res["exit_code"] != 0 and not _is_permission_error(cand) and not any(
+                m in (res["stderr"] or "").lower() for m in UNKNOWN
+            ):
                 break
         return best or {"stdout": "", "stderr": "", "exit_code": -1, "data": None, "elements": [], "variant": []}
 
@@ -298,6 +328,14 @@ def mac_tools(cfg=None):
         res = seen
         data = seen["data"]
         elements = seen["elements"][:300]
+        failure = _peek_error(data)
+        if failure and not elements:
+            return {
+                "ok": False,
+                "error": "peekaboo_failed",
+                "reason": failure.get("message") or str(failure.get("code") or "peekaboo returned an error"),
+                "hint": PERMISSION_HINT,
+            }
         saved = os.path.exists(out_path)
         if not saved:
             fb = _run("/usr/sbin/screencapture", ["-x", "-o", out_path], timeout=30)

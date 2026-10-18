@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.9
+
+### Fixed
+- Desktop control survives a Peekaboo update: when the Peekaboo Bridge host loses its macOS
+  permissions (Screen Recording / Accessibility), the bridge falls back to the local Peekaboo
+  runtime and keeps working. If nothing can capture, the tool now says so instead of quietly
+  returning an empty element list.
+
 ## 0.6.8
 
 ### Added

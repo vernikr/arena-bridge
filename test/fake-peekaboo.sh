@@ -15,7 +15,18 @@ done
 
 case "$1" in
   see | image)
-    echo '{"success":true,"data":{"snapshot_id":"ps1_0123456789abcdef0123456789abcdef","element_count":2,"ui_elements":[{"id":"B1","role":"button","ax_role":"AXButton","title":"Save","label":"Save","value":null,"description":null,"identifier":null,"bounds":{"x":1,"y":2},"is_actionable":true,"is_enabled":true,"is_value_settable":false},{"id":"B2","role":"textField","ax_role":"AXTextField","title":"Search","label":"Search","value":"","description":"Search field","identifier":"search","bounds":{"x":4,"y":6},"is_actionable":true,"is_enabled":true,"is_value_settable":true}]}}'
+    if [ -n "$FAKE_PEEKABOO_NO_PERMS" ]; then
+      echo '{"success":false,"data":null,"error":{"code":"PERMISSION_ERROR_SCREEN_RECORDING","message":"Screen Recording permission is required"}}'
+      exit 1
+    fi
+    case " $* " in
+      *--no-remote*)
+        echo '{"success":true,"data":{"snapshot_id":"ps1_0123456789abcdef0123456789abcdef","element_count":2,"ui_elements":[{"id":"B1","role":"button","ax_role":"AXButton","title":"Save","label":"Save","value":null,"description":null,"identifier":null,"bounds":{"x":1,"y":2},"is_actionable":true,"is_enabled":true,"is_value_settable":false},{"id":"B2","role":"textField","ax_role":"AXTextField","title":"Search","label":"Search","value":"","description":"Search field","identifier":"search","bounds":{"x":4,"y":6},"is_actionable":true,"is_enabled":true,"is_value_settable":true}]}}'
+        ;;
+      *)
+        echo '{"success":false,"data":null,"error":{"code":"PERMISSION_ERROR_SCREEN_RECORDING","message":"Screen Recording permission is required"}}'
+        ;;
+    esac
     ;;
   list)
     echo "Command 'peekaboo list' was removed in v4." >&2
