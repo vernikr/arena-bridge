@@ -110,6 +110,9 @@ await test('the catalog exposes the chrome_* tools', async () => {
     'chrome_open',
     'chrome_navigate',
     'chrome_snapshot',
+    'chrome_observe',
+    'chrome_fill_editor',
+    'chrome_wait_for',
     'chrome_click',
     'chrome_type',
     'chrome_press',
@@ -165,6 +168,50 @@ await test('chrome_snapshot returns an accessibility tree in ax mode', async () 
   assert.equal(snap.ok, true);
   assert.ok(snap.nodes.some((n) => n.name === 'Submit'));
   engine.browser.sessions.get(launch.session_id)?.proc?.kill();
+});
+
+await test('chrome_observe + click by ref + fill_editor + wait_for', async () => {
+  process.env.CHROME_PATH = FAKE_CHROME;
+  const launch = await engine.call('chrome_launch', { headless: true, port: PORT + 6, profile: 'observe' });
+  const sid = launch.session_id;
+  const obs = await engine.call('chrome_observe', { session_id: sid });
+  assert.equal(obs.ok, true, JSON.stringify(obs));
+  assert.ok(obs.snapshot_id);
+  assert.equal(obs.elements[0].name, 'Submit');
+  assert.equal(obs.composer.kind, 'contenteditable');
+  const click = await engine.call('chrome_click', { session_id: sid, ref: 'el_0', snapshot_id: obs.snapshot_id });
+  assert.equal(click.ok, true, JSON.stringify(click));
+  const stale = await engine.call('chrome_click', { session_id: sid, ref: 'el_0', snapshot_id: 'snap_old' });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.error, 'stale_ref');
+  const fill = await engine.call('chrome_fill_editor', { session_id: sid, text: 'hello' });
+  assert.equal(fill.ok, true, JSON.stringify(fill));
+  assert.equal(fill.value, 'typed');
+  const wait = await engine.call('chrome_wait_for', { session_id: sid, condition: { type: 'text_present', text: 'Hello' } });
+  assert.equal(wait.verified, true);
+  const snap = await engine.call('chrome_snapshot', { session_id: sid, mode: 'ax' });
+  assert.equal(snap.nodes.find((n) => n.name === 'Submit').state.pressed, false);
+  const profiles = await engine.call('chrome_profiles', {});
+  assert.equal(profiles.profiles.find((x) => x.name === 'observe').running, true);
+  engine.browser.sessions.get(sid)?.proc?.kill();
+});
+
+await test('a second launch of a running profile is refused as profile_busy', async () => {
+  process.env.CHROME_PATH = FAKE_CHROME;
+  const first = await engine.call('chrome_launch', { headless: true, port: PORT + 7, profile: 'busy' });
+  assert.equal(first.ok, true, JSON.stringify(first));
+  const second = await engine.call('chrome_launch', { headless: true, port: PORT + 8, profile: 'busy' });
+  assert.equal(second.ok, false);
+  assert.equal(second.error, 'profile_busy');
+  await engine.call('chrome_stop', { session_id: first.session_id });
+});
+
+await test('the human login launch carries no debugging/automation flags', async () => {
+  for (const f of ['src/cli.mjs', 'arena_bridge/cli.py']) {
+    const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
+    assert.ok(!src.includes('--remote-debugging-port=0'), `${f} must not start the login browser with a debugging port`);
+    assert.ok(src.includes('browser login'), `${f} must expose "browser login"`);
+  }
 });
 
 await test('chrome_screenshot saves a PNG inside the authorized roots', async () => {

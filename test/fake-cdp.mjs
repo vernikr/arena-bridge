@@ -146,7 +146,11 @@ function handleMessage(text, socket) {
     case 'Accessibility.getFullAXTree':
       result = {
         nodes: [
-          { role: { value: 'button' }, name: { value: 'Submit' } },
+          {
+            role: { value: 'button' },
+            name: { value: 'Submit' },
+            properties: [{ name: 'pressed', value: { value: false } }],
+          },
           { role: { value: 'link' }, name: { value: 'Home' } },
           { role: { value: 'none' }, name: { value: '' } },
         ],
@@ -157,7 +161,28 @@ function handleMessage(text, socket) {
       break;
     case 'Runtime.evaluate': {
       const expr = String(params.expression || '');
-      if (expr.includes('outerHTML')) result = { result: { value: '<html><body>fake</body></html>' } };
+      if (expr.includes('arena-observe'))
+        result = {
+          result: {
+            value: {
+              title: 'Fake Page',
+              url: 'https://example.com/',
+              text: 'Hello from the fake page',
+              elements: [
+                { ref: 'el_0', role: 'button', name: 'Submit', tag: 'button', state: { pressed: false } },
+              ],
+              dialogs: [],
+              composer: { kind: 'contenteditable', text: '', focused: true },
+              element_total: 1,
+              truncated: false,
+            },
+          },
+        };
+      else if (expr.includes('arena-click-ref')) result = { result: { value: { clicked: true, tag: 'BUTTON', text: 'Submit' } } };
+      else if (expr.includes('arena-fill-focus')) result = { result: { value: { ok: true, kind: 'contenteditable' } } };
+      else if (expr.includes('arena-fill-read')) result = { result: { value: { ok: true, value: 'typed' } } };
+      else if (expr.includes('arena-wait-check')) result = { result: { value: true } };
+      else if (expr.includes('outerHTML')) result = { result: { value: '<html><body>fake</body></html>' } };
       else if (expr.includes('document.title'))
         result = {
           result: {

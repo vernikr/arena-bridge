@@ -719,6 +719,12 @@ class Engine:
         self.base = str(base or (cfg.get("roots") or [os.getcwd()])[0])
         self.sessions = {}
         self.browser = BrowserManager(cfg)
+        try:
+            from .browser import cleanup_orphan_chromes
+
+            cleanup_orphan_chromes()
+        except Exception:
+            pass
 
     def catalog(self):
         return TOOLS + self.browser.tools() + mac_tools(self.cfg) + telegram_tools(self.cfg)

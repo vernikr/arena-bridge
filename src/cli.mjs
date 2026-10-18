@@ -94,7 +94,7 @@ Commands:
   service              Run the bridge as a macOS background service
                        install | uninstall | status
   browser              The agent's own browser profiles
-                       list | open <name> | close <name>
+                       list | login <name> | close <name>   (open = deprecated alias of login)
 
 Common options:
   --mode direct|hub    mode for "init"
@@ -541,7 +541,7 @@ function cmdBrowser(args) {
   if (what === 'list') {
     const profiles = listProfiles();
     if (!profiles.length) {
-      console.log('no agent browser profiles yet — create one: arena-bridge browser open <name>');
+      console.log('no agent browser profiles yet — create one: arena-bridge browser login <name>');
       return;
     }
     for (const p of profiles) {
@@ -551,10 +551,13 @@ function cmdBrowser(args) {
     console.log('\nThe agent opens a profile with: chrome_launch {"profile":"<name>"}');
     return;
   }
-  if (what === 'open') {
+  if (what === 'open' || what === 'login') {
+    if (what === 'open') {
+      console.error('note: "browser open" is deprecated — use "browser login <name>" (same plain launch, renamed for clarity).');
+    }
     const name = args._[2];
     if (!name) {
-      console.error('usage: arena-bridge browser open <name>');
+      console.error('usage: arena-bridge browser login <name>');
       process.exit(1);
     }
     const bin = findChrome();
@@ -568,7 +571,9 @@ function cmdBrowser(args) {
       `--user-data-dir=${profile}`,
       '--no-first-run',
       '--no-default-browser-check',
-      '--remote-debugging-port=0',
+      // Plain human launch on purpose: no --remote-debugging-port, no automation
+      // flags. Sites (notably Google) refuse sign-in in a debugging browser,
+      // so the user logs in here and the agent attaches later via chrome_launch.
     ];
     const width = Number(args.flags.width || 0);
     const height = Number(args.flags.height || 0);
@@ -612,7 +617,7 @@ function cmdBrowser(args) {
     console.log(`✓ closed ${killed} Chrome window(s) for "${sanitizeProfile(name)}"`);
     return;
   }
-  console.error(`unknown browser action: ${what}\nuse: list | open <name> | close <name>`);
+  console.error(`unknown browser action: ${what}\nuse: list | login <name> | close <name>`);
   process.exitCode = 1;
 }
 

@@ -179,6 +179,49 @@ def _():
     engine.browser.sessions[launch["session_id"]]["proc"].terminate()
 
 
+@test("chrome_observe + click by ref + fill_editor + wait_for")
+def _():
+    os.environ["CHROME_PATH"] = str(FAKE_CHROME)
+    launch = engine.call("chrome_launch", {"headless": True, "port": PORT + 6, "profile": "observe"})
+    sid = launch["session_id"]
+    obs = engine.call("chrome_observe", {"session_id": sid})
+    assert obs["ok"], obs
+    assert obs["snapshot_id"]
+    assert obs["elements"][0]["name"] == "Submit"
+    assert obs["composer"]["kind"] == "contenteditable"
+    click = engine.call("chrome_click", {"session_id": sid, "ref": "el_0", "snapshot_id": obs["snapshot_id"]})
+    assert click["ok"], click
+    stale = engine.call("chrome_click", {"session_id": sid, "ref": "el_0", "snapshot_id": "snap_old"})
+    assert stale["ok"] is False and stale["error"] == "stale_ref", stale
+    fill = engine.call("chrome_fill_editor", {"session_id": sid, "text": "hello"})
+    assert fill["ok"] and fill["value"] == "typed", fill
+    wait = engine.call("chrome_wait_for", {"session_id": sid, "condition": {"type": "text_present", "text": "Hello"}})
+    assert wait["verified"] is True, wait
+    snap = engine.call("chrome_snapshot", {"session_id": sid, "mode": "ax"})
+    assert next(n for n in snap["nodes"] if n["name"] == "Submit")["state"]["pressed"] is False
+    profiles = engine.call("chrome_profiles", {})
+    assert next(x for x in profiles["profiles"] if x["name"] == "observe")["running"] is True
+    engine.browser.sessions[sid]["proc"].terminate()
+
+
+@test("a second launch of a running profile is refused as profile_busy")
+def _():
+    os.environ["CHROME_PATH"] = str(FAKE_CHROME)
+    first = engine.call("chrome_launch", {"headless": True, "port": PORT + 7, "profile": "busy"})
+    assert first["ok"], first
+    second = engine.call("chrome_launch", {"headless": True, "port": PORT + 8, "profile": "busy"})
+    assert second["ok"] is False and second["error"] == "profile_busy", second
+    engine.call("chrome_stop", {"session_id": first["session_id"]})
+
+
+@test("the human login launch carries no debugging/automation flags")
+def _():
+    for f in ("src/cli.mjs", "arena_bridge/cli.py"):
+        src = (ROOT / f).read_text()
+        assert "--remote-debugging-port=0" not in src, f"{f} must not start the login browser with a debugging port"
+        assert "browser login" in src, f"{f} must expose \"browser login\""
+
+
 @test("chrome_screenshot saves a PNG inside the authorized roots")
 def _():
     os.environ["CHROME_PATH"] = str(FAKE_CHROME)

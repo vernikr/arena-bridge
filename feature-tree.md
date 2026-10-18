@@ -86,9 +86,9 @@
 - Шелл: `bash`, `sysinfo`
 - Процессы: `start_process`, `read_process_output`, `write_process`, `kill_process`
 - Журнал: `audit_log`, `audit_artifact`
-- Chrome (13): `chrome_launch`, `chrome_profiles`, `chrome_attach`, `chrome_tabs`, `chrome_open`,
-  `chrome_navigate`, `chrome_snapshot`, `chrome_click`, `chrome_type`, `chrome_press`,
-  `chrome_screenshot`, `chrome_evaluate`, `chrome_stop`
+- Chrome (16): `chrome_launch`, `chrome_profiles`, `chrome_attach`, `chrome_tabs`, `chrome_open`,
+  `chrome_navigate`, `chrome_snapshot`, `chrome_observe`, `chrome_fill_editor`, `chrome_wait_for`,
+  `chrome_click`, `chrome_type`, `chrome_press`, `chrome_screenshot`, `chrome_evaluate`, `chrome_stop`
 - macOS-десктоп (20): `mac_see`, `mac_element`, `mac_click`, `mac_set`, `mac_type`, `mac_key`,
   `mac_scroll`, `mac_move`, `mac_drag`, `mac_menu`, `mac_menu_click`, `mac_wait`, `mac_spaces`,
   `mac_space_switch`, `mac_apps`, `mac_windows`, `mac_app_launch`, `mac_app_focus`, `mac_app_quit`,
@@ -97,7 +97,11 @@
 - Браузер
   - Свой браузер агента: `chrome_launch` (окно или headless), профиль по имени, размер и угол окна
   - Ваш Chrome на порту 9222: `chrome_attach`; чтение бесплатно, ввод — через гейт
-  - Снимок страницы: `chrome_snapshot` в режимах `ax` (роли и имена), `text`, `html`
+  - Снимок страницы: `chrome_snapshot` в режимах `ax` (роли, имена и состояния элементов), `text`, `html`
+  - Наблюдение и ввод без селекторов: `chrome_observe` (элементы с ref и состояниями, диалоги, редактор),
+    `chrome_click` по ref, `chrome_fill_editor` (textarea/contenteditable), `chrome_wait_for` и `expect` у действий
+  - Жизненный цикл профилей: один профиль — один Chrome (`profile_busy`), свободный CDP-порт,
+    уборка осиротевших headless-браузеров агента; вход человека — `browser login` обычным Chrome
 - Десктоп
   - `mac_see` — скриншот окна или экрана + дерево Accessibility с id элементов
   - `mac_element` — поиск контрола по имени/роли/значению без скриншота
@@ -171,7 +175,7 @@
 ## Эксплуатация
 
 - Фоновая служба: launchd `ai.arena.bridge`, логи в `~/.arena-bridge/logs/`, постоянный URL
-- Отдельные «кабинеты» браузера: именованные профили, один вход пользователя, `browser open <name>`
+- Отдельные «кабинеты» браузера: именованные профили, один вход пользователя, `browser login <name>`
 - Не мешает работе: агент по умолчанию в фоне, окно можно уменьшить и прижать в угол,
   рабочий стол агента — отдельный Space macOS; виртуальная машина не используется
 - Диагностика: `arena-bridge doctor`, `mac_permissions`, логи туннеля и службы

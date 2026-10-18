@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import socket
 import shutil
 import subprocess
 import threading
@@ -104,6 +105,65 @@ def list_profiles() -> list:
     return sorted(out, key=lambda p: p["mtime"], reverse=True)
 
 
+def profile_pids(profile) -> list:
+    """Pids of processes whose command line uses this Chrome user-data-dir."""
+    try:
+        listing = subprocess.run(["ps", "-Ao", "pid=,command="], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return []
+    needle = f"--user-data-dir={profile}"
+    out = []
+    for line in listing.splitlines():
+        if needle not in line:
+            continue
+        try:
+            pid = int(line.strip().split()[0])
+        except Exception:
+            continue
+        if pid != os.getpid():
+            out.append(pid)
+    return out
+
+
+def free_port() -> int:
+    """A free TCP port on localhost, for a CDP endpoint nobody else owns."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def cleanup_orphan_chromes(sessions=None) -> int:
+    """Kill leftover agent-owned headless Chromes (managed profiles only).
+
+    A visible browser the human opened to log in is never touched.
+    """
+    keep = set()
+    for s in sessions or []:
+        proc = s.get("proc") if isinstance(s, dict) else None
+        if proc is not None and getattr(proc, "pid", None):
+            keep.add(proc.pid)
+    roots = [str(profile_dir()) + os.sep, str(Path.home() / ".arena-bridge" / "chrome-profile-")]
+    try:
+        listing = subprocess.run(["ps", "-Ao", "pid=,command="], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return 0
+    killed = 0
+    for line in listing.splitlines():
+        if "--user-data-dir=" not in line or "--headless" not in line:
+            continue
+        if not any(r in line for r in roots):
+            continue
+        try:
+            pid = int(line.strip().split()[0])
+            if pid == os.getpid() or pid in keep:
+                continue
+            os.kill(pid, 15)
+            killed += 1
+        except Exception:
+            continue
+    return killed
+
+
 def find_chrome():
     env = os.environ.get("CHROME_PATH")
     if env and Path(env).exists():
@@ -162,6 +222,7 @@ class BrowserManager:
                 "profile": profile,
                 "proc": proc,
                 "tabs": {},
+                "observe": {},
                 "createdAt": int(time.time() * 1000),
             }
             self.sessions[sid] = session
@@ -206,18 +267,32 @@ class BrowserManager:
                 "reason": "set CHROME_PATH or install Google Chrome",
             }
         headless = args.get("headless", True) is not False
-        port = int(args.get("port") or 9223)
+        port = int(args.get("port") or 0) or free_port()
         profile = resolve_profile(args.get("profile"), port)
+
+        # One profile = one Chrome (see the Node implementation for rationale).
+        with self._lock:
+            sessions = list(self.sessions.values())
+        for s in sessions:
+            if s.get("profile") == profile:
+                return {"ok": False, "error": "profile_busy", "profile": profile, "session_id": s["id"],
+                        "hint": "This profile is already running in a browser session - reuse it or chrome_stop it first."}
+            if s.get("port") == port:
+                return {"ok": False, "error": "port_busy", "port": port, "session_id": s["id"],
+                        "hint": "That CDP port already belongs to another browser session - omit \"port\" to get a free one."}
+        external = profile_pids(profile)
+        if external:
+            return {"ok": False, "error": "profile_busy", "profile": profile, "pids": external,
+                    "hint": "A Chrome with this profile is already running (for example a \"browser login\" window). Close it, then retry."}
+
         Path(profile).mkdir(parents=True, exist_ok=True)
 
+        # As close to a plain Chrome launch as possible (only the CDP port is added).
         chrome_args = [
             f"--remote-debugging-port={port}",
             f"--user-data-dir={profile}",
             "--no-first-run",
             "--no-default-browser-check",
-            "--disable-background-networking",
-            "--disable-sync",
-            "--disable-features=Translate,MediaRouter",
             "--remote-allow-origins=*",
         ]
         if headless:
@@ -268,6 +343,20 @@ class BrowserManager:
             "ws_url": ws_url,
             "tabs": [{"tab_id": t["targetId"], "title": t["title"], "url": t["url"]} for t in session["tabs"].values()],
             "note": "This browser belongs to the agent — no local approval needed for actions on it.",
+        }
+
+    def _profiles(self, args, ctx):
+        sessions = self.list()
+        profiles = []
+        for p in list_profiles():
+            s = next((x for x in sessions if x.get("profile") == p["path"]), None)
+            profiles.append({**p, "running": bool(s), "port": s["port"] if s else None,
+                             "session_id": s["session_id"] if s else None})
+        return {
+            "ok": True,
+            "count": len(profiles),
+            "profiles": profiles,
+            "hint": "Ask the user to log in: arena-bridge browser login <name> - then use chrome_launch {\"profile\":\"<name>\"}",
         }
 
     def attach(self, args, ctx):
@@ -403,7 +492,7 @@ class BrowserManager:
                 "schema": _schema(
                     {
                         "headless": {"type": "boolean", "description": "true (default) = no window"},
-                        "port": {"type": "number", "description": "CDP port (default 9223)"},
+                        "port": {"type": "number", "description": "CDP port (omit to get a free port automatically)"},
                         "url": {"type": "string"},
                         "profile": {
                             "type": "string",
@@ -422,16 +511,11 @@ class BrowserManager:
                 "description": (
                     "List the agent's own named browser profiles (each keeps its own logins between runs). "
                     "Launch one with chrome_launch {\"profile\":\"<name>\"}; the user logs into it once with "
-                    "'arena-bridge browser open <name>' on their machine."
+                    "'arena-bridge browser login <name>' on their machine."
                 ),
                 "approval": False,
                 "schema": _schema({}),
-                "handler": lambda args, ctx: {
-                    "ok": True,
-                    "count": len(list_profiles()),
-                    "profiles": list_profiles(),
-                    "hint": "Ask the user to log in: arena-bridge browser open <name> — then use chrome_launch {\"profile\":\"<name>\"}",
-                },
+                "handler": self._profiles,
             },
             {
                 "name": "chrome_attach",
@@ -502,6 +586,57 @@ class BrowserManager:
                 "handler": self._snapshot,
             },
             {
+                "name": "chrome_observe",
+                "description": (
+                    "Observe a page for action: visible interactive elements with refs and states "
+                    "(pressed/selected/checked), open dialogs, and the current text editor with its content. "
+                    "Refs from the result can be clicked with chrome_click {\"ref\": \"...\"}. Read-only."
+                ),
+                "approval": False,
+                "schema": _schema({
+                    "session_id": {"type": "string"},
+                    "tab_id": {"type": "string"},
+                    "limit": {"type": "number", "description": "max elements (default 80, max 300)"},
+                    "text_limit": {"type": "number", "description": "max chars of visible page text (default 6000)"},
+                }),
+                "handler": self._observe_tool,
+            },
+            {
+                "name": "chrome_fill_editor",
+                "description": (
+                    "Find the visible text editor on the page (textarea, contenteditable or textbox), "
+                    "optionally clear it, type text with real input events and read the value back. "
+                    "No CSS selector needed."
+                ),
+                "approval": True,
+                "approval_for": requires_approval,
+                "schema": _schema({
+                    "session_id": {"type": "string"},
+                    "tab_id": {"type": "string"},
+                    "text": {"type": "string"},
+                    "clear": {"type": "boolean", "description": "clear the editor first (default true)"},
+                    "submit": {"type": "boolean", "description": "press Enter afterwards"},
+                    "expect": {"type": "object", "description": "condition to wait for afterwards (see chrome_wait_for)"},
+                }, ["text"]),
+                "handler": self._fill_editor_tool,
+            },
+            {
+                "name": "chrome_wait_for",
+                "description": (
+                    "Wait until a page condition holds: {type: text_present|text_absent|element_present|"
+                    "element_absent|dialog_closed|composer_empty, text, role, name}. Returns verified=true "
+                    "when it does, verified=false after the timeout. Read-only."
+                ),
+                "approval": False,
+                "schema": _schema({
+                    "session_id": {"type": "string"},
+                    "tab_id": {"type": "string"},
+                    "condition": {"type": "object"},
+                    "timeout_sec": {"type": "number", "description": "default 15, max 120"},
+                }, ["condition"]),
+                "handler": self._wait_for_tool,
+            },
+            {
                 "name": "chrome_click",
                 "description": "Click an element — by CSS selector, by visible text, or by index from the ax snapshot.",
                 "approval": True,
@@ -513,6 +648,9 @@ class BrowserManager:
                         "selector": {"type": "string"},
                         "text": {"type": "string"},
                         "index": {"type": "number"},
+                        "ref": {"type": "string", "description": "element ref from chrome_observe"},
+                        "snapshot_id": {"type": "string", "description": "snapshot_id from chrome_observe (detects stale refs)"},
+                        "expect": {"type": "object", "description": "condition to wait for afterwards (see chrome_wait_for)"},
                     }
                 ),
                 "handler": self._click,
@@ -530,6 +668,7 @@ class BrowserManager:
                         "tab_id": {"type": "string"},
                         "submit": {"type": "boolean"},
                         "clear": {"type": "boolean"},
+                        "expect": {"type": "object", "description": "condition to wait for afterwards (see chrome_wait_for)"},
                     },
                     ["selector", "text"],
                 ),
@@ -619,13 +758,23 @@ class BrowserManager:
         mode = args.get("mode") or "text"
         if mode == "ax":
             res = session["cdp"].send("Accessibility.getFullAXTree", {}, tab["sessionId"])
-            nodes = [
-                {"role": n.get("role", {}).get("value"), "name": n.get("name", {}).get("value", "")}
-                for n in res.get("nodes", [])
-                if n.get("role", {}).get("value") and n.get("role", {}).get("value") != "none"
-            ]
+            nodes = []
+            for n in res.get("nodes", []):
+                role = n.get("role", {}).get("value")
+                if not role or role == "none":
+                    continue
+                state = {}
+                for prop in n.get("properties", []):
+                    v = (prop.get("value") or {}).get("value")
+                    if v is not None and v != "":
+                        state[prop.get("name")] = v
+                item = {"role": role, "name": n.get("name", {}).get("value", "")}
+                if state:
+                    item["state"] = state
+                nodes.append(item)
             nodes = [n for n in nodes if n["name"]][:500]
-            return {"ok": True, "tab_id": tab["targetId"], "mode": mode, "nodes": nodes}
+            dialogs = [{"name": n["name"]} for n in nodes if n["role"] in ("dialog", "alertdialog")]
+            return {"ok": True, "tab_id": tab["targetId"], "mode": mode, "nodes": nodes, "dialogs": dialogs}
         if mode == "html":
             value = self._eval(session, tab, "document.documentElement.outerHTML")
             s = str(value or "")
@@ -658,6 +807,8 @@ class BrowserManager:
         if not session:
             raise ValueError("no browser session — call chrome_launch or chrome_attach first")
         tab = self._tab(session, args.get("tab_id"))
+        if args.get("ref"):
+            return self._with_expect(session, tab, args, self._click_ref(session, tab, args))
         if args.get("selector"):
             expr = (
                 f'(() => {{ const el = document.querySelector({json.dumps(args["selector"])}); '
@@ -686,7 +837,7 @@ class BrowserManager:
         else:
             return {"ok": False, "error": "provide selector, text or index"}
         res = self._eval(session, tab, expr) or {}
-        return {"ok": bool(res.get("clicked")), "tab_id": tab["targetId"], **res}
+        return self._with_expect(session, tab, args, {"ok": bool(res.get("clicked")), "tab_id": tab["targetId"], **res})
 
     def _type(self, args, ctx):
         session = self.session(args.get("session_id"))
@@ -710,7 +861,7 @@ class BrowserManager:
             return {"ok": False, "error": res.get("reason", "typing failed"), "tab_id": tab["targetId"]}
         if args.get("submit"):
             self._press(session, tab, "Enter")
-        return {"ok": True, "tab_id": tab["targetId"], "value": res.get("value"), "submitted": bool(args.get("submit"))}
+        return self._with_expect(session, tab, args, {"ok": True, "tab_id": tab["targetId"], "value": res.get("value"), "submitted": bool(args.get("submit"))})
 
     def _press_tool(self, args, ctx):
         session = self.session(args.get("session_id"))
@@ -753,3 +904,169 @@ class BrowserManager:
         tab = self._tab(session, args.get("tab_id"))
         value = self._eval(session, tab, str(args["expression"]))
         return {"ok": True, "tab_id": tab["targetId"], "value": value}
+
+    # ---------------- observe / semantic actions ----------------
+
+    def _observe(self, session, tab, args=None):
+        args = args or {}
+        limit = max(1, min(int(args.get("limit") or args.get("max_elements") or 80), 300))
+        text_limit = max(0, min(int(args.get("text_limit") or 6000), 50000))
+        snap_id = "snap_" + format(int(time.time() * 1000), "x") + "_" + format(int(time.time() * 1000000) % 46656, "x")
+        expr = (
+            "(() => { /*arena-observe*/\n"
+            f"      const LIMIT = {limit}, TEXT_LIMIT = {text_limit};\n"
+            "      document.querySelectorAll('[data-arena-bridge-ref]').forEach((e) => e.removeAttribute('data-arena-bridge-ref'));\n"
+            "      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);\n"
+            "        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };\n"
+            "      const name = (e) => (e.getAttribute('aria-label') || e.innerText || e.value ||\n"
+            "        e.getAttribute('placeholder') || e.getAttribute('title') || '').trim().replace(/\\s+/g, ' ').slice(0, 160);\n"
+            "      const role = (e) => e.getAttribute('role') || ({A:'link',BUTTON:'button',TEXTAREA:'textbox',\n"
+            "        SELECT:'combobox',INPUT:(e.type === 'checkbox' ? 'checkbox' : e.type === 'radio' ? 'radio' : 'textbox')}[e.tagName] || e.tagName.toLowerCase());\n"
+            "      const state = (e) => { const st = {};\n"
+            "        const put = (k, v) => { if (v !== null && v !== undefined) st[k] = (v === 'true' ? true : v === 'false' ? false : v); };\n"
+            "        put('pressed', e.getAttribute('aria-pressed')); put('selected', e.getAttribute('aria-selected'));\n"
+            "        put('checked', e.getAttribute('aria-checked') !== null ? e.getAttribute('aria-checked') : (typeof e.checked === 'boolean' ? String(e.checked) : null));\n"
+            "        put('expanded', e.getAttribute('aria-expanded')); put('disabled', e.disabled || e.getAttribute('aria-disabled'));\n"
+            "        st.focused = (document.activeElement === e); return st; };\n"
+            "      const SEL = 'a,button,input,textarea,select,summary,[contenteditable],[role=\"button\"],[role=\"textbox\"],[role=\"checkbox\"],[role=\"radio\"],[role=\"tab\"],[role=\"menuitem\"],[role=\"option\"],[role=\"switch\"],[role=\"combobox\"],[role=\"slider\"],[role=\"link\"]';\n"
+            "      const els = [...document.querySelectorAll(SEL)].filter(vis);\n"
+            "      const elements = els.slice(0, LIMIT).map((e, i) => { const ref = 'el_' + i;\n"
+            "        e.setAttribute('data-arena-bridge-ref', ref);\n"
+            "        return { ref, role: role(e), name: name(e), tag: e.tagName.toLowerCase(), state: state(e) }; });\n"
+            "      const dialogs = [...document.querySelectorAll('dialog[open],[role=\"dialog\"],[role=\"alertdialog\"]')].filter(vis)\n"
+            "        .map((d) => ({ text: (d.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 500),\n"
+            "          buttons: [...d.querySelectorAll('button,a,[role=\"button\"],input[type=\"button\"],input[type=\"submit\"]')]\n"
+            "            .map((b) => name(b)).filter(Boolean).slice(0, 12) }));\n"
+            "      const editorSel = 'textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input[type=\"search\"],input[type=\"email\"],input[type=\"url\"],input:not([type])';\n"
+            "      const editors = [...document.querySelectorAll(editorSel)].filter(vis);\n"
+            "      const ed = document.activeElement && editors.includes(document.activeElement) ? document.activeElement : editors[0];\n"
+            "      const composer = ed ? { kind: ed.getAttribute('contenteditable') !== null ? 'contenteditable' : ed.tagName.toLowerCase(),\n"
+            "        text: (ed.value !== undefined ? ed.value : (ed.innerText || '')).slice(0, 500), focused: document.activeElement === ed } : null;\n"
+            "      return { title: document.title, url: location.href,\n"
+            "        text: document.body ? (document.body.innerText || '').slice(0, TEXT_LIMIT) : '',\n"
+            "        elements, dialogs, composer, element_total: els.length, truncated: els.length > elements.length };\n"
+            "    })()"
+        )
+        value = self._eval(session, tab, expr) or {}
+        refs = {e.get("ref") for e in value.get("elements", [])}
+        session.setdefault("observe", {})[tab["targetId"]] = {"id": snap_id, "refs": refs, "url": value.get("url") or tab.get("url")}
+        return {"ok": True, "session_id": session["id"], "tab_id": tab["targetId"], "snapshot_id": snap_id, **value}
+
+    def _click_ref(self, session, tab, args):
+        snap = (session.get("observe") or {}).get(tab["targetId"])
+        ref = str(args.get("ref"))
+        if not snap or ref not in snap["refs"] or (args.get("snapshot_id") and args["snapshot_id"] != snap["id"]):
+            return {"ok": False, "error": "stale_ref", "ref": args.get("ref"),
+                    "reason": "That element ref is not in the latest observation of this tab - call chrome_observe again."}
+        expr = (
+            "(() => { /*arena-click-ref*/\n"
+            f"      const el = document.querySelector('[data-arena-bridge-ref=\"' + {json.dumps(ref)} + '\"]');\n"
+            "      if (!el) return { clicked: false, reason: 'element no longer in the page' };\n"
+            "      el.scrollIntoView({ block: 'center' }); el.click();\n"
+            "      return { clicked: true, tag: el.tagName, text: (el.innerText || el.value || '').slice(0, 120) }; })()"
+        )
+        res = self._eval(session, tab, expr) or {}
+        if not res.get("clicked"):
+            return {"ok": False, "error": "stale_ref", "ref": args.get("ref"), "reason": res.get("reason", "click failed")}
+        return {"ok": True, "tab_id": tab["targetId"], "ref": args.get("ref"), **res}
+
+    def _fill_editor(self, session, tab, args):
+        clear_js = "false" if args.get("clear") is False else "true"
+        focus_expr = (
+            "(() => { /*arena-fill-focus*/\n"
+            "      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);\n"
+            "        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && !e.disabled; };\n"
+            "      const sel = 'textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input[type=\"search\"],input[type=\"email\"],input[type=\"url\"],input[type=\"tel\"],input:not([type])';\n"
+            "      const eds = [...document.querySelectorAll(sel)].filter(vis);\n"
+            "      const ed = (document.activeElement && eds.includes(document.activeElement)) ? document.activeElement : eds[0];\n"
+            "      if (!ed) return { ok: false, reason: 'no visible editor found' };\n"
+            "      ed.focus();\n"
+            "      const ce = ed.getAttribute('contenteditable') !== null && ed.tagName !== 'TEXTAREA' && ed.tagName !== 'INPUT';\n"
+            f"      if ({clear_js}) {{\n"
+            "        if (ce) { document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); }\n"
+            "        else { const proto = ed instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;\n"
+            "          const setter = Object.getOwnPropertyDescriptor(proto, 'value').set; setter.call(ed, '');\n"
+            "          ed.dispatchEvent(new Event('input', { bubbles: true })); }\n"
+            "      } else if (ce) { const range = document.createRange(); range.selectNodeContents(ed); range.collapse(false);\n"
+            "        const sel2 = getSelection(); sel2.removeAllRanges(); sel2.addRange(range); }\n"
+            "      return { ok: true, kind: ce ? 'contenteditable' : ed.tagName.toLowerCase() }; })()"
+        )
+        focused = self._eval(session, tab, focus_expr) or {}
+        if not focused.get("ok"):
+            return {"ok": False, "error": focused.get("reason", "no visible editor found"), "tab_id": tab["targetId"]}
+        if str(args.get("text") or ""):
+            session["cdp"].send("Input.insertText", {"text": str(args["text"])}, tab["sessionId"])
+        read = self._eval(session, tab, "(() => { /*arena-fill-read*/ const ed = document.activeElement; if (!ed) return { ok: false, value: '' }; return { ok: true, value: (ed.value !== undefined ? ed.value : (ed.innerText || '')).slice(0, 2000) }; })()") or {}
+        return {"ok": True, "tab_id": tab["targetId"], "kind": focused.get("kind"), "value": read.get("value", "")}
+
+    def _wait_for(self, session, tab, cond, timeout_sec):
+        deadline = time.time() + max(1, min(float(timeout_sec or 15), 120))
+        cond_json = json.dumps(cond or {})
+        expr = (
+            "(() => { /*arena-wait-check*/\n"
+            f"      const c = {cond_json};\n"
+            "      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);\n"
+            "        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };\n"
+            "      const name = (e) => (e.getAttribute('aria-label') || e.innerText || e.value || e.getAttribute('placeholder') || '').trim();\n"
+            "      const role = (e) => e.getAttribute('role') || e.tagName.toLowerCase();\n"
+            "      const bodyText = document.body ? (document.body.innerText || '') : '';\n"
+            "      switch (c.type) {\n"
+            "        case 'text_present': return bodyText.includes(c.text || '');\n"
+            "        case 'text_absent': return !bodyText.includes(c.text || '');\n"
+            "        case 'dialog_closed': return ![...document.querySelectorAll('dialog[open],[role=\"dialog\"],[role=\"alertdialog\"]')].some(vis);\n"
+            "        case 'composer_empty': { const sel = 'textarea,[contenteditable],[role=\"textbox\"],input[type=\"text\"],input[type=\"search\"],input:not([type])';\n"
+            "          const ed = [...document.querySelectorAll(sel)].filter(vis)[0]; if (!ed) return false;\n"
+            "          return ((ed.value !== undefined ? ed.value : (ed.innerText || '')).trim() === ''); }\n"
+            "        case 'element_present': case 'element_absent': {\n"
+            "          const els = [...document.querySelectorAll('a,button,input,textarea,select,[contenteditable],[role]')].filter(vis);\n"
+            "          const found = els.some((e) => (!c.text || name(e).toLowerCase().includes(String(c.text).toLowerCase())) &&\n"
+            "            (!c.role || role(e).toLowerCase().includes(String(c.role).toLowerCase())) &&\n"
+            "            (!c.name || name(e).toLowerCase().includes(String(c.name).toLowerCase())));\n"
+            "          return c.type === 'element_present' ? found : !found; }\n"
+            "        default: return false;\n"
+            "      } })()"
+        )
+        while True:
+            try:
+                ok = bool(self._eval(session, tab, expr))
+            except Exception:
+                ok = False
+            if ok:
+                return True
+            if time.time() >= deadline:
+                return False
+            time.sleep(0.5)
+
+    def _with_expect(self, session, tab, args, result):
+        if not args.get("expect") or not result or result.get("ok") is False:
+            return result
+        verified = self._wait_for(session, tab, args["expect"], (args["expect"] or {}).get("timeout_sec") or 10)
+        return {**result, "verified": verified, "expect": args["expect"]}
+
+    def _observe_tool(self, args, ctx):
+        session = self.session(args.get("session_id"))
+        if not session:
+            raise ValueError("no browser session — call chrome_launch or chrome_attach first")
+        tab = self._tab(session, args.get("tab_id"))
+        return self._observe(session, tab, args)
+
+    def _fill_editor_tool(self, args, ctx):
+        session = self.session(args.get("session_id"))
+        if not session:
+            raise ValueError("no browser session — call chrome_launch or chrome_attach first")
+        tab = self._tab(session, args.get("tab_id"))
+        res = self._fill_editor(session, tab, args)
+        if res.get("ok") and args.get("submit"):
+            self._press(session, tab, "Enter")
+            res = {**res, "submitted": True}
+        return self._with_expect(session, tab, args, res)
+
+    def _wait_for_tool(self, args, ctx):
+        session = self.session(args.get("session_id"))
+        if not session:
+            raise ValueError("no browser session — call chrome_launch or chrome_attach first")
+        tab = self._tab(session, args.get("tab_id"))
+        started = time.time()
+        verified = self._wait_for(session, tab, args.get("condition") or {}, args.get("timeout_sec") or 15)
+        return {"ok": True, "tab_id": tab["targetId"], "verified": verified,
+                "condition": args.get("condition"), "elapsed_ms": int((time.time() - started) * 1000)}

@@ -68,16 +68,21 @@ ${tools.join('\n')}
 | tell the user something or ask a question | \`notify_user\` (Telegram), \`telegram_inbox\` to read the answer |
 
 ## Browser control (Chrome over CDP)
+0. Managed profiles are logged in by the human with \`arena-bridge browser login <name>\`
+   (a plain Chrome launch — never sign in through \`chrome_launch\`; if a page asks for
+   login, report it and move on). For web pages prefer observing DOM state
+   (\`chrome_observe\`: elements with refs and pressed/selected states), acting by ref and
+   verifying the result (\`expect\` / \`chrome_wait_for\`) over screenshots and coordinates.
 1. \`chrome_launch\` starts a browser that belongs to you — own profile, no personal data.
    \`{"headless": true, "url": "https://example.com"}\` (headless=false opens a visible window).
-2. Then \`chrome_open\` → \`chrome_snapshot\` → \`chrome_click\`/\`chrome_type\` → \`chrome_screenshot\`.
-   \`chrome_snapshot\` with \`{"mode": "ax"}\` returns roles and names, which is the best input for clicking.
+2. Then \`chrome_open\` → \`chrome_observe\` → \`chrome_click\` by ref / \`chrome_fill_editor\` → verify with \`expect\`.
+   \`chrome_snapshot\` with \`{"mode": "ax"}\` returns roles, names and element states; \`chrome_screenshot\` is for when the DOM is ambiguous.
 3. \`chrome_attach\` connects to the user's own Chrome (default port 9222, with their logged-in sessions).
    Actions on an attached browser require a local approval — ask for it instead of retrying.
 4. Screenshots: pass \`{"path": "shot.png"}\` to save the PNG inside the authorized roots, then read it with \`file_get\`.
 5. Named profiles keep their logins between runs: \`chrome_launch {"profile":"work"}\` opens
    \`~/.arena-bridge/chrome-profiles/work\`. \`chrome_profiles\` lists them. The user logs in once with
-   \`arena-bridge browser open work\` on their machine — ask for that instead of trying to log in yourself.
+   \`arena-bridge browser login work\` on their machine — ask for that instead of trying to log in yourself.
 6. A visible window can be kept small and out of the way: \`chrome_launch {"headless":false,"width":900,"height":700,"x":-920,"y":40}\`.
 
 ## Desktop control (macOS, through Peekaboo)

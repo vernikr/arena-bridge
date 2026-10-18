@@ -3,7 +3,7 @@ import os
 import secrets
 from pathlib import Path
 
-VERSION = "0.7.20"
+VERSION = "0.8.0"
 
 
 def config_dir() -> Path:

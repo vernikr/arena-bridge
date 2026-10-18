@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.0
+
+### Added
+- `chrome_observe`: compact page observation for action — visible interactive elements with
+  refs and states (pressed/selected/checked/expanded), open dialogs, and the current text
+  editor with its content.
+- `chrome_fill_editor`: finds the visible editor (textarea, contenteditable or textbox), types
+  with real input events and reads the value back — no CSS selector needed.
+- `chrome_wait_for` plus an `expect` option on `chrome_click`, `chrome_type` and
+  `chrome_fill_editor`: actions can wait for a page condition and report `verified`.
+- `chrome_click` accepts an element `ref` (with `snapshot_id`) from `chrome_observe`;
+  stale refs are rejected with `stale_ref` instead of clicking something else.
+- `arena-bridge browser login <name>`: a plain human Chrome launch for signing in
+  (the old `browser open` remains as a deprecated alias).
+
+### Changed
+- The login launch no longer starts Chrome with `--remote-debugging-port=0` or other
+  automation flags — Google and similar sites refused sign-in with
+  "This browser or app may not be secure". Debugging is only enabled later, by the
+  agent's `chrome_launch`, once the human has signed in.
+- `chrome_launch` keeps its flags as close to a plain Chrome launch as possible
+  (no `--disable-sync`, `--disable-background-networking` or feature kill-switches),
+  allocates a free CDP port when none is given, and refuses a second owner of a
+  profile with `profile_busy` instead of corrupting it.
+- `chrome_profiles` reports whether each profile is running, on which port and in
+  which session; leftover agent-owned headless Chromes are cleaned up on startup.
+
 ## 0.7.20
 
 ### Fixed

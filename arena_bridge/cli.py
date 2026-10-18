@@ -419,13 +419,15 @@ def cmd_browser(args):
     if action == "list":
         profiles = list_profiles()
         if not profiles:
-            print("no agent browser profiles yet - create one: arena-bridge browser open <name>")
+            print("no agent browser profiles yet - create one: arena-bridge browser login <name>")
             return
         for profile in profiles:
             print(f"{profile['name']:20} {profile['files']:>3} files   {profile['path']}")
         print("\nThe agent opens a profile with: chrome_launch {\"profile\":\"<name>\"}")
         return
-    if action == "open":
+    if action in ("open", "login"):
+        if action == "open":
+            print('note: "browser open" is deprecated - use "browser login <name>" (same plain launch, renamed for clarity).', file=sys.stderr)
         binary = find_chrome()
         if not binary:
             print("✗ Chrome not found in /Applications", file=sys.stderr)
@@ -436,7 +438,9 @@ def cmd_browser(args):
             f"--user-data-dir={profile}",
             "--no-first-run",
             "--no-default-browser-check",
-            "--remote-debugging-port=0",
+            # Plain human launch on purpose: no --remote-debugging-port, no
+            # automation flags. Sites (notably Google) refuse sign-in in a
+            # debugging browser; the agent attaches later via chrome_launch.
         ]
         if args.width and args.height:
             chrome_args.append(f"--window-size={args.width},{args.height}")
@@ -733,7 +737,7 @@ def build_parser():
     update.set_defaults(func=cmd_update)
 
     browser = sub.add_parser("browser", help="the agent's own browser profiles")
-    browser.add_argument("action", nargs="?", default="list", choices=["list", "open", "close"])
+    browser.add_argument("action", nargs="?", default="list", choices=["list", "login", "open", "close"])
     browser.add_argument("name", nargs="?", help="profile name")
     browser.add_argument("--width", type=int)
     browser.add_argument("--height", type=int)

@@ -7,7 +7,7 @@ import { checkPath, resolveTarget, isInside } from './policy.mjs';
 import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
 import { requestApproval } from './approvals.mjs';
 import { loadConfig, CONFIG_PATH } from './config.mjs';
-import { BrowserManager } from './browser.mjs';
+import { BrowserManager, cleanupOrphanChromes } from './browser.mjs';
 import { macTools } from './mac.mjs';
 import { trustState, trustAllows } from './trust.mjs';
 import { telegramTools } from './telegram.mjs';
@@ -628,6 +628,9 @@ export class Engine {
     this.base = base || process.cwd();
     this.sessions = new Map();
     this.browser = new BrowserManager(cfg);
+    // Best effort: remove headless agent Chromes a previous bridge run left
+    // behind. Login windows (visible) are never touched.
+    cleanupOrphanChromes().catch(() => {});
   }
 
   catalog() {

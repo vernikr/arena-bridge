@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import net from 'node:net';
 import { CDPClient, browserWsUrl } from './cdp.mjs';
 import { checkPath } from './policy.mjs';
 import { audit } from './audit.mjs';
@@ -32,6 +33,58 @@ const KEYS = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Pids of processes whose command line uses this Chrome user-data-dir. */
+export function profilePids(profile) {
+  return new Promise((resolve) => {
+    execFile('ps', ['-Ao', 'pid=,command='], { timeout: 10000 }, (err, stdout) => {
+      if (err) return resolve([]);
+      const needle = `--user-data-dir=${profile}`;
+      const out = [];
+      for (const line of String(stdout).split('\n')) {
+        if (!line.includes(needle)) continue;
+        const pid = Number(line.trim().split(/\s+/)[0]);
+        if (pid && pid !== process.pid) out.push(pid);
+      }
+      resolve(out);
+    });
+  });
+}
+
+/** A free TCP port on localhost, for a CDP endpoint nobody else owns. */
+export function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Kill leftover agent-owned headless Chromes (managed profiles only).
+ * A visible browser the human opened to log in is never touched.
+ */
+export async function cleanupOrphanChromes(sessions = []) {
+  const keep = new Set(sessions.map((s) => s.proc?.pid).filter(Boolean));
+  const managedRoots = [profileDir() + path.sep, path.join(os.homedir(), '.arena-bridge', 'chrome-profile-')];
+  return new Promise((resolve) => {
+    execFile('ps', ['-Ao', 'pid=,command='], { timeout: 10000 }, (err, stdout) => {
+      if (err) return resolve(0);
+      let killed = 0;
+      for (const line of String(stdout).split('\n')) {
+        if (!line.includes('--user-data-dir=') || !line.includes('--headless')) continue;
+        if (!managedRoots.some((r) => line.includes(r))) continue;
+        const pid = Number(line.trim().split(/\s+/)[0]);
+        if (!pid || pid === process.pid || keep.has(pid)) continue;
+        try { process.kill(pid, 'SIGTERM'); killed++; } catch { /* already gone */ }
+      }
+      resolve(killed);
+    });
+  });
+}
 
 export function findChrome() {
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
@@ -160,6 +213,7 @@ export class BrowserManager {
       profile,
       proc,
       tabs: new Map(),
+      observe: new Map(),
       createdAt: Date.now(),
     };
     this.sessions.set(id, session);
@@ -199,19 +253,37 @@ export class BrowserManager {
       return { ok: false, error: 'Chrome not found', reason: 'set CHROME_PATH or install Google Chrome' };
     }
     const headless = args.headless !== false;
-    const port = Number(args.port || 9223);
+    const port = Number(args.port) || (await freePort());
     const profile = resolveProfile(args.profile, port);
+
+    // One profile = one Chrome. Refuse a second owner instead of corrupting
+    // the profile or failing later with a locked user-data-dir.
+    for (const s of this.sessions.values()) {
+      if (s.profile === profile) {
+        return { ok: false, error: 'profile_busy', profile, session_id: s.id,
+          hint: 'This profile is already running in a browser session — reuse it or chrome_stop it first.' };
+      }
+      if (s.port === port) {
+        return { ok: false, error: 'port_busy', port, session_id: s.id,
+          hint: 'That CDP port already belongs to another browser session — omit "port" to get a free one.' };
+      }
+    }
+    const external = await profilePids(profile).catch(() => []);
+    if (external.length) {
+      return { ok: false, error: 'profile_busy', profile, pids: external,
+        hint: 'A Chrome with this profile is already running (for example a "browser login" window). Close it, then retry.' };
+    }
 
     fs.mkdirSync(profile, { recursive: true });
 
+    // Kept as close to a plain Chrome launch as possible (only the CDP port is
+    // added): sync/background/feature kill-switches made sites behave oddly
+    // and can invalidate sessions the user created in the plain login browser.
     const chromeArgs = [
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profile}`,
       '--no-first-run',
       '--no-default-browser-check',
-      '--disable-background-networking',
-      '--disable-sync',
-      '--disable-features=Translate,MediaRouter',
       '--remote-allow-origins=*',
     ];
     if (headless) chromeArgs.push(process.env.ARENA_HEADLESS_FLAG || '--headless=new');
@@ -345,6 +417,139 @@ export class BrowserManager {
     return res.result?.value;
   }
 
+  /* ---------------- observe / semantic actions ---------------- */
+
+  async _observe(session, tab, args = {}) {
+    const limit = Math.max(1, Math.min(Number(args.limit || args.max_elements || 80), 300));
+    const textLimit = Math.max(0, Math.min(Number(args.text_limit || 6000), 50000));
+    const id = `snap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const expr = `(() => { /*arena-observe*/
+      const LIMIT = ${limit}, TEXT_LIMIT = ${textLimit};
+      document.querySelectorAll('[data-arena-bridge-ref]').forEach((e) => e.removeAttribute('data-arena-bridge-ref'));
+      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };
+      const name = (e) => (e.getAttribute('aria-label') || e.innerText || e.value ||
+        e.getAttribute('placeholder') || e.getAttribute('title') || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+      const role = (e) => e.getAttribute('role') || ({A:'link',BUTTON:'button',TEXTAREA:'textbox',
+        SELECT:'combobox',INPUT:(e.type === 'checkbox' ? 'checkbox' : e.type === 'radio' ? 'radio' : 'textbox')}[e.tagName] || e.tagName.toLowerCase());
+      const state = (e) => { const st = {};
+        const put = (k, v) => { if (v !== null && v !== undefined) st[k] = (v === 'true' ? true : v === 'false' ? false : v); };
+        put('pressed', e.getAttribute('aria-pressed')); put('selected', e.getAttribute('aria-selected'));
+        put('checked', e.getAttribute('aria-checked') !== null ? e.getAttribute('aria-checked') : (typeof e.checked === 'boolean' ? String(e.checked) : null));
+        put('expanded', e.getAttribute('aria-expanded')); put('disabled', e.disabled || e.getAttribute('aria-disabled'));
+        st.focused = (document.activeElement === e); return st; };
+      const SEL = 'a,button,input,textarea,select,summary,[contenteditable],[role="button"],[role="textbox"],[role="checkbox"],[role="radio"],[role="tab"],[role="menuitem"],[role="option"],[role="switch"],[role="combobox"],[role="slider"],[role="link"]';
+      const els = [...document.querySelectorAll(SEL)].filter(vis);
+      const elements = els.slice(0, LIMIT).map((e, i) => { const ref = 'el_' + i;
+        e.setAttribute('data-arena-bridge-ref', ref);
+        return { ref, role: role(e), name: name(e), tag: e.tagName.toLowerCase(), state: state(e) }; });
+      const dialogs = [...document.querySelectorAll('dialog[open],[role="dialog"],[role="alertdialog"]')].filter(vis)
+        .map((d) => ({ text: (d.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 500),
+          buttons: [...d.querySelectorAll('button,a,[role="button"],input[type="button"],input[type="submit"]')]
+            .map((b) => name(b)).filter(Boolean).slice(0, 12) }));
+      const editorSel = 'textarea,[contenteditable="true"],[contenteditable=""],[role="textbox"],input[type="text"],input[type="search"],input[type="email"],input[type="url"],input:not([type])';
+      const editors = [...document.querySelectorAll(editorSel)].filter(vis);
+      const ed = document.activeElement && editors.includes(document.activeElement) ? document.activeElement : editors[0];
+      const composer = ed ? { kind: ed.getAttribute('contenteditable') !== null ? 'contenteditable' : ed.tagName.toLowerCase(),
+        text: (ed.value !== undefined ? ed.value : (ed.innerText || '')).slice(0, 500), focused: document.activeElement === ed } : null;
+      return { title: document.title, url: location.href,
+        text: document.body ? (document.body.innerText || '').slice(0, TEXT_LIMIT) : '',
+        elements, dialogs, composer, element_total: els.length, truncated: els.length > elements.length };
+    })()`;
+    const value = (await this._eval(session, tab, expr)) || {};
+    const refs = new Set((value.elements || []).map((e) => e.ref));
+    session.observe.set(tab.targetId, { id, refs, url: value.url || tab.url });
+    return { ok: true, session_id: session.id, tab_id: tab.targetId, snapshot_id: id, ...value };
+  }
+
+  async _clickRef(session, tab, args) {
+    const snap = session.observe.get(tab.targetId);
+    if (!snap || !snap.refs.has(String(args.ref)) || (args.snapshot_id && args.snapshot_id !== snap.id)) {
+      return { ok: false, error: 'stale_ref', ref: args.ref,
+        reason: 'That element ref is not in the latest observation of this tab — call chrome_observe again.' };
+    }
+    const expr = `(() => { /*arena-click-ref*/
+      const el = document.querySelector('[data-arena-bridge-ref="' + ${JSON.stringify(String(args.ref))} + '"]');
+      if (!el) return { clicked: false, reason: 'element no longer in the page' };
+      el.scrollIntoView({ block: 'center' }); el.click();
+      return { clicked: true, tag: el.tagName, text: (el.innerText || el.value || '').slice(0, 120) }; })()`;
+    const res = await this._eval(session, tab, expr);
+    if (!res || !res.clicked) {
+      return { ok: false, error: 'stale_ref', ref: args.ref, reason: res?.reason || 'click failed' };
+    }
+    return { ok: true, tab_id: tab.targetId, ref: args.ref, ...res };
+  }
+
+  async _fillEditor(session, tab, args) {
+    const focusExpr = `(() => { /*arena-fill-focus*/
+      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && !e.disabled; };
+      const sel = 'textarea,[contenteditable="true"],[contenteditable=""],[role="textbox"],input[type="text"],input[type="search"],input[type="email"],input[type="url"],input[type="tel"],input:not([type])';
+      const eds = [...document.querySelectorAll(sel)].filter(vis);
+      const ed = (document.activeElement && eds.includes(document.activeElement)) ? document.activeElement : eds[0];
+      if (!ed) return { ok: false, reason: 'no visible editor found' };
+      ed.focus();
+      const ce = ed.getAttribute('contenteditable') !== null && ed.tagName !== 'TEXTAREA' && ed.tagName !== 'INPUT';
+      if (${args.clear === false ? 'false' : 'true'}) {
+        if (ce) { document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); }
+        else { const proto = ed instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value').set; setter.call(ed, '');
+          ed.dispatchEvent(new Event('input', { bubbles: true })); }
+      } else if (ce) { const range = document.createRange(); range.selectNodeContents(ed); range.collapse(false);
+        const sel2 = getSelection(); sel2.removeAllRanges(); sel2.addRange(range); }
+      return { ok: true, kind: ce ? 'contenteditable' : ed.tagName.toLowerCase() }; })()`;
+    const focused = await this._eval(session, tab, focusExpr);
+    if (!focused || !focused.ok) return { ok: false, error: focused?.reason || 'no visible editor found', tab_id: tab.targetId };
+    if (String(args.text ?? '')) {
+      await session.cdp.send('Input.insertText', { text: String(args.text) }, tab.sessionId);
+    }
+    const read = await this._eval(session, tab, `(() => { /*arena-fill-read*/
+      const ed = document.activeElement;
+      if (!ed) return { ok: false, value: '' };
+      return { ok: true, value: (ed.value !== undefined ? ed.value : (ed.innerText || '')).slice(0, 2000) }; })()`);
+    return { ok: true, tab_id: tab.targetId, kind: focused.kind, value: read?.value ?? '' };
+  }
+
+  async _waitFor(session, tab, cond, timeoutSec) {
+    const deadline = Date.now() + Math.max(1, Math.min(Number(timeoutSec) || 15, 120)) * 1000;
+    const condJson = JSON.stringify(cond || {});
+    const expr = `(() => { /*arena-wait-check*/
+      const c = ${condJson};
+      const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };
+      const name = (e) => (e.getAttribute('aria-label') || e.innerText || e.value || e.getAttribute('placeholder') || '').trim();
+      const role = (e) => e.getAttribute('role') || e.tagName.toLowerCase();
+      const bodyText = document.body ? (document.body.innerText || '') : '';
+      switch (c.type) {
+        case 'text_present': return bodyText.includes(c.text || '');
+        case 'text_absent': return !bodyText.includes(c.text || '');
+        case 'dialog_closed': return ![...document.querySelectorAll('dialog[open],[role="dialog"],[role="alertdialog"]')].some(vis);
+        case 'composer_empty': { const sel = 'textarea,[contenteditable],[role="textbox"],input[type="text"],input[type="search"],input:not([type])';
+          const ed = [...document.querySelectorAll(sel)].filter(vis)[0]; if (!ed) return false;
+          return ((ed.value !== undefined ? ed.value : (ed.innerText || '')).trim() === ''); }
+        case 'element_present': case 'element_absent': {
+          const els = [...document.querySelectorAll('a,button,input,textarea,select,[contenteditable],[role]')].filter(vis);
+          const found = els.some((e) => (!c.text || name(e).toLowerCase().includes(String(c.text).toLowerCase())) &&
+            (!c.role || role(e).toLowerCase().includes(String(c.role).toLowerCase())) &&
+            (!c.name || name(e).toLowerCase().includes(String(c.name).toLowerCase())));
+          return c.type === 'element_present' ? found : !found; }
+        default: return false;
+      } })()`;
+    for (;;) {
+      let ok = false;
+      try { ok = !!(await this._eval(session, tab, expr)); } catch { ok = false; }
+      if (ok) return true;
+      if (Date.now() >= deadline) return false;
+      await sleep(500);
+    }
+  }
+
+  async _withExpect(session, tab, args, result) {
+    if (!args.expect || !result || result.ok === false) return result;
+    const verified = await this._waitFor(session, tab, args.expect, args.expect.timeout_sec || 10);
+    return { ...result, verified, expect: args.expect };
+  }
+
   /* ---------------- tool definitions ---------------- */
 
   tools() {
@@ -372,7 +577,7 @@ export class BrowserManager {
         schema: S(
           {
             headless: { type: 'boolean', description: 'true (default) = no window, false = visible window' },
-            port: { type: 'number', description: 'CDP port (default 9223)' },
+            port: { type: 'number', description: 'CDP port (omit to get a free port automatically)' },
             url: { type: 'string', description: 'URL to open on start' },
             profile: {
               type: 'string',
@@ -395,17 +600,21 @@ export class BrowserManager {
         description:
           'List the agent\'s own named browser profiles (each keeps its own logins between runs). ' +
           'Launch one with chrome_launch {"profile":"<name>"}; the user logs into it once with ' +
-          '"arena-bridge browser open <name>" on their machine.',
+          '"arena-bridge browser login <name>" on their machine.',
         approval: false,
         schema: S({}, []),
         required: [],
-        handler: async () => {
-          const profiles = listProfiles();
+        handler: async (args, ctx) => {
+          const sessions = ctx.browser.list();
+          const profiles = listProfiles().map((p) => {
+            const s = sessions.find((x) => x.profile === p.path);
+            return { ...p, running: !!s, port: s ? s.port : null, session_id: s ? s.session_id : null };
+          });
           return {
             ok: true,
             count: profiles.length,
             profiles,
-            hint: 'Ask the user to log in: arena-bridge browser open <name> — then use chrome_launch {"profile":"<name>"}',
+            hint: 'Ask the user to log in: arena-bridge browser login <name> — then use chrome_launch {"profile":"<name>"}',
           };
         },
       },
@@ -507,10 +716,22 @@ export class BrowserManager {
             const { nodes } = await session.cdp.send('Accessibility.getFullAXTree', {}, tab.sessionId);
             const flat = (nodes || [])
               .filter((n) => n.role?.value && n.role.value !== 'none')
-              .map((n) => ({ role: n.role.value, name: n.name?.value || '' }))
+              .map((n) => {
+                const state = {};
+                for (const prop of n.properties || []) {
+                  const v = prop.value?.value;
+                  if (v !== undefined && v !== null && v !== '') state[prop.name] = v;
+                }
+                const out = { role: n.role.value, name: n.name?.value || '' };
+                if (Object.keys(state).length) out.state = state;
+                return out;
+              })
               .filter((n) => n.name)
               .slice(0, 500);
-            return { ok: true, tab_id: tab.targetId, mode, nodes: flat };
+            const dialogs = flat
+              .filter((n) => n.role === 'dialog' || n.role === 'alertdialog')
+              .map((n) => ({ name: n.name }));
+            return { ok: true, tab_id: tab.targetId, mode, nodes: flat, dialogs };
           }
           const expr =
             mode === 'html'
@@ -535,6 +756,82 @@ export class BrowserManager {
         },
       },
       {
+        name: 'chrome_observe',
+        description:
+          'Observe a page for action: visible interactive elements with refs and states ' +
+          '(pressed/selected/checked), open dialogs, and the current text editor with its content. ' +
+          'Refs from the result can be clicked with chrome_click {"ref": "..."}. Read-only.',
+        approval: false,
+        schema: S(
+          {
+            session_id: { type: 'string' },
+            tab_id: { type: 'string' },
+            limit: { type: 'number', description: 'max elements (default 80, max 300)' },
+            text_limit: { type: 'number', description: 'max chars of visible page text (default 6000)' },
+          },
+          [],
+        ),
+        required: [],
+        handler: async (args, ctx) => {
+          const session = needSession(args, ctx);
+          const tab = await this._tab(session, args.tab_id);
+          return ctx.browser._observe(session, tab, args);
+        },
+      },
+      {
+        name: 'chrome_fill_editor',
+        description:
+          'Find the visible text editor on the page (textarea, contenteditable or textbox), ' +
+          'optionally clear it, type text with real input events and read the value back. ' +
+          'No CSS selector needed.',
+        approval: true,
+        approvalFor: requiresApproval,
+        schema: S(
+          {
+            session_id: { type: 'string' },
+            tab_id: { type: 'string' },
+            text: { type: 'string' },
+            clear: { type: 'boolean', description: 'clear the editor first (default true)' },
+            submit: { type: 'boolean', description: 'press Enter afterwards' },
+            expect: { type: 'object', description: 'condition to wait for afterwards (see chrome_wait_for)' },
+          },
+          ['text'],
+        ),
+        required: ['text'],
+        handler: async (args, ctx) => {
+          const session = needSession(args, ctx);
+          const tab = await this._tab(session, args.tab_id);
+          let res = await ctx.browser._fillEditor(session, tab, args);
+          if (res.ok && args.submit) await ctx.browser._press(session, tab, 'Enter');
+          if (args.submit) res = { ...res, submitted: true };
+          return ctx.browser._withExpect(session, tab, args, res);
+        },
+      },
+      {
+        name: 'chrome_wait_for',
+        description:
+          'Wait until a page condition holds: {type: text_present|text_absent|element_present|element_absent|dialog_closed|composer_empty, text, role, name}. ' +
+          'Returns ok=true with verified=true when it does, verified=false after the timeout. Read-only.',
+        approval: false,
+        schema: S(
+          {
+            session_id: { type: 'string' },
+            tab_id: { type: 'string' },
+            condition: { type: 'object' },
+            timeout_sec: { type: 'number', description: 'default 15, max 120' },
+          },
+          ['condition'],
+        ),
+        required: ['condition'],
+        handler: async (args, ctx) => {
+          const session = needSession(args, ctx);
+          const tab = await this._tab(session, args.tab_id);
+          const started = Date.now();
+          const verified = await ctx.browser._waitFor(session, tab, args.condition, args.timeout_sec || 15);
+          return { ok: true, tab_id: tab.targetId, verified, condition: args.condition, elapsed_ms: Date.now() - started };
+        },
+      },
+      {
         name: 'chrome_click',
         description:
           'Click an element — by CSS selector or by visible text. Also accepts a zero-based index from the accessibility snapshot.',
@@ -547,6 +844,9 @@ export class BrowserManager {
             selector: { type: 'string', description: 'CSS selector' },
             text: { type: 'string', description: 'visible text of the element to click' },
             index: { type: 'number', description: 'index within the ax snapshot' },
+            ref: { type: 'string', description: 'element ref from chrome_observe' },
+            snapshot_id: { type: 'string', description: 'snapshot_id from chrome_observe (detects stale refs)' },
+            expect: { type: 'object', description: 'condition to wait for afterwards (see chrome_wait_for)' },
           },
           [],
         ),
@@ -554,6 +854,10 @@ export class BrowserManager {
         handler: async (args, ctx) => {
           const session = needSession(args, ctx);
           const tab = await this._tab(session, args.tab_id);
+          if (args.ref) {
+            const res = await ctx.browser._clickRef(session, tab, args);
+            return ctx.browser._withExpect(session, tab, args, res);
+          }
           let expr;
           if (args.selector) {
             expr = `(() => { const el = document.querySelector(${JSON.stringify(args.selector)}); if (!el) return {clicked:false, reason:'not found'}; el.scrollIntoView({block:'center'}); el.click(); return {clicked:true, tag: el.tagName, text: (el.innerText||'').slice(0,120)}; })()`;
@@ -565,7 +869,8 @@ export class BrowserManager {
             return { ok: false, error: 'provide selector, text or index' };
           }
           const res = await this._eval(session, tab, expr);
-          return { ok: !!(res && res.clicked), tab_id: tab.targetId, ...(res || {}) };
+          const out = { ok: !!(res && res.clicked), tab_id: tab.targetId, ...(res || {}) };
+          return ctx.browser._withExpect(session, tab, args, out);
         },
       },
       {
@@ -581,6 +886,7 @@ export class BrowserManager {
             tab_id: { type: 'string' },
             submit: { type: 'boolean', description: 'press Enter afterwards' },
             clear: { type: 'boolean', description: 'clear the field first (default true)' },
+            expect: { type: 'object', description: 'condition to wait for afterwards (see chrome_wait_for)' },
           },
           ['selector', 'text'],
         ),
@@ -605,7 +911,8 @@ export class BrowserManager {
           if (args.submit) {
             await this._press(session, tab, 'Enter');
           }
-          return { ok: true, tab_id: tab.targetId, value: res.value, submitted: !!args.submit };
+          const out = { ok: true, tab_id: tab.targetId, value: res.value, submitted: !!args.submit };
+          return ctx.browser._withExpect(session, tab, args, out);
         },
       },
       {
