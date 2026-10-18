@@ -52,7 +52,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.7.3',
+          version: '0.7.4',
           uptime_sec: Math.round(process.uptime()),
         });
       }
@@ -118,10 +118,20 @@ export function createDirectServer(cfg, engine) {
 
       const approveMatch = /^\/approvals\/([\w-]+)$/.exec(p);
       if (req.method === 'POST' && approveMatch) {
+        // settling a request is a local-only privilege: the agent token must not self-approve
+        const expected = loadConfig().localToken;
+        const presented = bearer(req);
+        if (!expected || !presented || !safeEqual(presented, expected)) {
+          return sendJson(res, 403, {
+            ok: false,
+            error: 'forbidden',
+            reason: 'approvals require the local token — run "arena-bridge approve <id>" on the machine',
+          });
+        }
         const body = await readJson(req, 64 * 1024);
         const decision = body.decision === 'deny' ? 'deny' : 'approve';
         const res2 = decide(approveMatch[1], decision, 'api');
-        return sendJson(res2.ok ? 200 : 400, res2);
+        return sendJson(res, res2.ok ? 200 : 400, res2);
       }
 
       if (req.method === 'POST' && p === '/exec') {

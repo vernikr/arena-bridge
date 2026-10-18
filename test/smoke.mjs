@@ -12,7 +12,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-bridge-test-'));
 process.env.ARENA_BRIDGE_HOME = path.join(TMP, 'home');
 fs.mkdirSync(process.env.ARENA_BRIDGE_HOME, { recursive: true });
 
-const { loadConfig, saveConfig, DEFAULTS } = await import('../src/config.mjs');
+const { loadConfig, saveConfig, DEFAULTS, CONFIG_DIR } = await import('../src/config.mjs');
 const { Engine } = await import('../src/engine.mjs');
 const { createDirectServer } = await import('../src/direct.mjs');
 const { createHubServer } = await import('../src/hub.mjs');
@@ -45,6 +45,7 @@ const cfg = {
   port: 0,
   token: 'test-agent-token',
   deviceToken: 'test-device-token',
+  localToken: 'test-local-token',
   device: 'testbox',
   roots: [WORK],
   protected: [path.join(TMP, 'secret')],
@@ -315,6 +316,41 @@ await test('denied approval blocks the tool', async () => {
 });
 
 saveConfig(loaded); // back to the default policy for the remaining tests
+
+console.log('\n▸ approvals over HTTP');
+
+await test('the local token settles a request, the agent token cannot', async () => {
+  const id = 'aaaaaaaa-1111-2222-3333-444444444444';
+  const dir = path.join(CONFIG_DIR, 'approvals');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, `${id}.json`),
+    JSON.stringify({
+      id,
+      tool: 'bash',
+      args: {},
+      status: 'pending',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600_000,
+      decidedAt: null,
+      decidedBy: null,
+    }),
+  );
+  const refused = await fetch(`${base}/approvals/${id}`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'approve' }),
+  });
+  assert.equal(refused.status, 403, 'the agent must not approve itself');
+  const allowed = await fetch(`${base}/approvals/${id}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loaded.localToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'approve' }),
+  });
+  assert.equal(allowed.status, 200);
+  const rec = JSON.parse(fs.readFileSync(path.join(dir, `${id}.json`), 'utf8'));
+  assert.equal(rec.status, 'approved');
+});
 
 console.log('\n▸ trust window');
 

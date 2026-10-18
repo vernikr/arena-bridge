@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.4
+
+### Fixed
+- Approvals over HTTP work again: `POST /approvals/<id>` now answers with the decision instead
+  of an internal error, the local token is accepted by the API, and the agent token is refused —
+  an agent can no longer approve its own dangerous action.
+- The same rule now applies to the hub mode.
+
 ## 0.7.3
 
 ### Fixed

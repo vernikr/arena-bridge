@@ -96,7 +96,7 @@ def make_handler(cfg, state: HubState):
         ]
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.3"
+        server_version = "arena-bridge/0.7.4"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):
@@ -133,8 +133,12 @@ def make_handler(cfg, state: HubState):
             header = self.headers.get("Authorization", "")
             if not header.lower().startswith("bearer "):
                 return False
-            expected = load_config().get("token")
-            return bool(expected) and header[7:].strip() == expected
+            token = header[7:].strip()
+            cfg_now = load_config()
+            if cfg_now.get("token") and token == cfg_now.get("token"):
+                return True
+            # the local token is for the machine owner: approvals and trust
+            return bool(cfg_now.get("localToken")) and token == cfg_now.get("localToken")
 
         def _call_tool(self, tool, args):
             device = (args or {}).get("device") or cfg.get("device")
@@ -150,7 +154,7 @@ def make_handler(cfg, state: HubState):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "hub", "version": "0.7.3", "devices": list(state.devices)})
+                return self._send(200, {"ok": True, "mode": "hub", "version": "0.7.4", "devices": list(state.devices)})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/devices":
@@ -237,6 +241,19 @@ def make_handler(cfg, state: HubState):
                     payload = responses[0] if len(responses) == 1 else responses
                     return self._send(200, payload)
                 if path.startswith("/approvals/"):
+                    # settling a request is a local-only privilege: the agent token must not self-approve
+                    header = self.headers.get("Authorization", "")
+                    local = header[7:].strip() if header.lower().startswith("bearer ") else None
+                    expected = load_config().get("localToken")
+                    if not expected or not local or local != expected:
+                        return self._send(
+                            403,
+                            {
+                                "ok": False,
+                                "error": "forbidden",
+                                "reason": 'approvals require the local token — run "arena-bridge approve <id>" on the machine',
+                            },
+                        )
                     body = self._json_body()
                     decision = "deny" if body.get("decision") == "deny" else "approve"
                     r = decide(path.rsplit("/", 1)[-1], decision, "api")

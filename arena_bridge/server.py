@@ -16,7 +16,7 @@ from .telegram import parse_command, send_telegram, start_poller
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.3"
+        server_version = "arena-bridge/0.7.4"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -29,8 +29,11 @@ def make_handler(cfg, engine):
                 return False
             token = header[7:].strip()
             # re-read the config per request so a rotated token takes effect without a restart
-            expected = load_config().get("token")
-            return bool(expected) and token == expected
+            cfg_now = load_config()
+            if cfg_now.get("token") and token == cfg_now.get("token"):
+                return True
+            # the local token is for the machine owner: approvals and trust
+            return bool(cfg_now.get("localToken")) and token == cfg_now.get("localToken")
 
         def _send(self, status, payload, content_type="application/json; charset=utf-8", raw=False):
             body = payload if raw else json.dumps(payload, indent=2, default=str).encode()
@@ -72,7 +75,7 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.3"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.4"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/tools":

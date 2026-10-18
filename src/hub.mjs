@@ -1,6 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { sendJson, sendText, readJson, readBody, isAuthorized, safeEqual } from './http.mjs';
+import { sendJson, sendText, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { toolCatalog } from './engine.mjs';
@@ -90,7 +90,7 @@ export function createHubServer(cfg) {
         return sendJson(res, 200, {
           ok: true,
           mode: 'hub',
-          version: '0.7.3',
+          version: '0.7.4',
           devices: [...devices.keys()],
         });
       }
@@ -158,10 +158,20 @@ export function createHubServer(cfg) {
 
       const approveMatch = /^\/approvals\/([\w-]+)$/.exec(p);
       if (req.method === 'POST' && approveMatch) {
+        // settling a request is a local-only privilege: the agent token must not self-approve
+        const expected = loadConfig().localToken;
+        const presented = bearer(req);
+        if (!expected || !presented || !safeEqual(presented, expected)) {
+          return sendJson(res, 403, {
+            ok: false,
+            error: 'forbidden',
+            reason: 'approvals require the local token — run "arena-bridge approve <id>" on the machine',
+          });
+        }
         const body = await readJson(req, 64 * 1024);
         const decision = body.decision === 'deny' ? 'deny' : 'approve';
         const r = decide(approveMatch[1], decision, 'api');
-        return sendJson(r.ok ? 200 : 400, r);
+        return sendJson(res, r.ok ? 200 : 400, r);
       }
 
       if (req.method === 'POST' && p === '/exec') {

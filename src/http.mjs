@@ -72,6 +72,8 @@ export function bearer(req) {
 
 export function isAuthorized(req, cfg) {
   const token = bearer(req);
-  if (!token || !cfg.token) return false;
-  return safeEqual(token, cfg.token);
+  if (!token) return false;
+  if (cfg.token && safeEqual(token, cfg.token)) return true;
+  // the local token is for the machine owner: approvals and trust
+  return !!(cfg.localToken && safeEqual(token, cfg.localToken));
 }
