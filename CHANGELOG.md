@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- Native helper forwards SIGINT as SIGINT and SIGTERM as SIGTERM; signal handling and child exit status verified on macOS.
+
+### Documentation
+- Clarified permission names, update caveats and screen-capture verification; recorded service lifecycle follow-up plan.
+
 ## 0.7.17
 
 ### Fixed

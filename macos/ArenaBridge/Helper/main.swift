@@ -34,8 +34,11 @@ do {
 // The service manager stops the helper, the helper stops the bridge.
 let childProcess = child
 for number in [SIGTERM, SIGINT] {
+    signal(number, SIG_IGN)
     let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
-    source.setEventHandler { childProcess.terminate() }
+    source.setEventHandler {
+        if childProcess.isRunning { kill(childProcess.processIdentifier, number) }
+    }
     source.resume()
     signalSources.append(source)
 }
