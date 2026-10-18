@@ -33,3 +33,60 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [npm, pypi]
+    if: always()
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: build the npm package
+        run: |
+          npm pack
+          mv arena-bridge-*.tgz arena-bridge-npm.tgz
+      - name: build the python package
+        run: |
+          pip install build
+          python -m build
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            arena-bridge-npm.tgz \
+            dist/*.tar.gz \
+            dist/*.whl \
+            --title "arena-bridge $GITHUB_REF_NAME" \
+            --generate-notes
+
+  macos:
+    runs-on: macos-latest
+    needs: [release]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the app for both architectures
+        run: |
+          cd macos/ArenaBridge
+          for arch in arm64 x86_64; do
+            ARCH=$arch ./build.sh
+            cd ..
+            cd ..
+            zip -qry "$RUNNER_TEMP/Arena-Bridge-$arch.zip" "dist/Arena Bridge.app"
+            cd macos/ArenaBridge
+            rm -rf dist
+          done
+          mv "$RUNNER_TEMP"/Arena-Bridge-*.zip .
+      - name: attach the apps to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.zip Arena-Bridge-x86_64.zip --clobber

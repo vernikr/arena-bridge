@@ -366,6 +366,8 @@ struct ArtifactView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var image: NSImage?
+    @State private var elements: [AxElement] = []
+    @State private var showRaw = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -376,6 +378,15 @@ struct ArtifactView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                if !elements.isEmpty {
+                    Picker("", selection: $showRaw) {
+                        Text("Tree").tag(false)
+                        Text("Raw").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 150)
+                    .help("The accessibility tree or the raw answer of the tool")
+                }
                 Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
@@ -383,6 +394,25 @@ struct ArtifactView: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
+            } else if !elements.isEmpty && !showRaw {
+                List(elements) { element in
+                    HStack(spacing: 8) {
+                        Text(element.id)
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(width: 72, alignment: .leading)
+                        Text(element.role)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 110, alignment: .leading)
+                        Text(element.title)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(element.bounds)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .font(.system(size: 11, design: .monospaced))
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     Text(text.isEmpty ? "The file is empty or cannot be read." : text)
@@ -393,13 +423,14 @@ struct ArtifactView: View {
             }
         }
         .padding(16)
-        .frame(width: 820, height: 620)
+        .frame(width: 860, height: 620)
         .onAppear {
             if artifact.isImage {
                 image = NSImage(contentsOfFile: artifact.path)
             }
             if let data = FileManager.default.contents(atPath: artifact.path) {
                 text = String(data: data, encoding: .utf8) ?? ""
+                elements = artifact.isTree ? AxElement.parse(data) : []
             }
         }
     }

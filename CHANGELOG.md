@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.6
+
+### Added
+- Release artifacts: every tag publishes the npm archive, the python sdist and wheel, and the
+  macOS app for arm64 and x86_64 as a GitHub Release.
+- `install.sh`: one command installs the command line tool and the macOS app.
+- `feature-tree.md`: the complete feature tree of the product.
+- The ax-tree artifact opens in the app as a readable list of elements, with a switch to the raw
+  answer of the tool.
+- `mac_see` asks for the accessibility tree on its own when the first answer has no elements.
+
+### Changed
+- The README says in one line how to get past Gatekeeper.
+
 ## 0.7.5
 
 ### Added

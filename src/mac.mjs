@@ -218,6 +218,18 @@ export function macTools(cfg = {}) {
       const denied = isPermissionError(json, res);
       if (res.exit_code !== 0 && !denied && !UNKNOWN.test(res.stderr || '')) break;
     }
+    // no elements yet: ask for the accessibility tree on its own
+    if (!best || !best.elements.length) {
+      for (const variant of [
+        ['see', '--tree', '--no-screenshot', '--json', ...targetFlags(args)],
+        ['see', '--tree', '--no-screenshot', '--no-remote', '--json', ...targetFlags(args)],
+      ]) {
+        const res = await run(peek(), variant, { timeout: 60 });
+        const json = parseJson(res.stdout);
+        const elements = collectElements(json);
+        if (elements.length) return { res, json, elements, variant };
+      }
+    }
     return best;
   };
 

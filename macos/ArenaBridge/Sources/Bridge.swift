@@ -96,6 +96,35 @@ struct Artifact: Identifiable {
     }
 }
 
+/// One element of an accessibility tree.
+struct AxElement: Identifiable {
+    let id: String
+    let role: String
+    let title: String
+    let bounds: String
+
+    /// Read the elements out of a Peekaboo payload.
+    static func parse(_ data: Data) -> [AxElement] {
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+        let payload = (raw["data"] as? [String: Any]) ?? raw
+        let list = (payload["ui_elements"] as? [[String: Any]]) ?? []
+        return list.compactMap { item in
+            guard let identifier = item["id"] as? String else { return nil }
+            let role = (item["ax_role"] as? String) ?? (item["role"] as? String) ?? ""
+            let title = (item["title"] as? String) ?? (item["label"] as? String) ?? (item["description"] as? String) ?? ""
+            var frame = ""
+            if let bounds = item["bounds"] as? [String: Any] {
+                let x = bounds["x"] as? Int ?? 0
+                let y = bounds["y"] as? Int ?? 0
+                let w = bounds["width"] as? Int ?? 0
+                let h = bounds["height"] as? Int ?? 0
+                frame = "\(x),\(y) \(w)×\(h)"
+            }
+            return AxElement(id: identifier, role: role, title: title, bounds: frame)
+        }
+    }
+}
+
 /// One line of the work log.
 struct LogEntry: Identifiable {
     let id: String

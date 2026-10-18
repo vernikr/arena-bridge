@@ -2,10 +2,7 @@ node_modules/
 dist/
 build/
 *.egg-info/
+*.tgz
 __pycache__/
-*.pyc
 .DS_Store
 .env
-.arena-bridge/
-*.tgz
-dist/

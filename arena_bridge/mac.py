@@ -284,6 +284,17 @@ def mac_tools(cfg=None):
                 m in (res["stderr"] or "").lower() for m in UNKNOWN
             ):
                 break
+        # no elements yet: ask for the accessibility tree on its own
+        if not best or not best["elements"]:
+            for variant in (
+                ["see", "--tree", "--no-screenshot", "--json", *_target_flags(args)],
+                ["see", "--tree", "--no-screenshot", "--no-remote", "--json", *_target_flags(args)],
+            ):
+                res = _run(peek(), variant, timeout=60)
+                data = _parse_json(res["stdout"])
+                elements = _collect_elements(data)
+                if elements:
+                    return {**res, "data": data, "elements": elements, "variant": variant}
         return best or {"stdout": "", "stderr": "", "exit_code": -1, "data": None, "elements": [], "variant": []}
 
     def match_element(element, args):
