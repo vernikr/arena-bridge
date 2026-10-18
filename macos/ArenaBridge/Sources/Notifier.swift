@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UserNotifications
 
 /// Local notifications for the moments the user must not miss.
@@ -15,7 +16,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
+    /// Whether macOS lets the app show notifications.
+    func allowed() async -> Bool {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+    }
+
     func post(title: String, body: String) {
+        Logger(subsystem: "com.arenabridge.app", category: "notifier").notice("posted: \(title)")
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -25,8 +33,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Show the banner even while the app is in front.
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                           willPresent notification: UNNotification,
+                                           withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        Logger(subsystem: "com.arenabridge.app", category: "notifier").notice("willPresent: showing the banner")
+        completionHandler([.banner, .sound, .list])
     }
 }

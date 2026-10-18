@@ -127,6 +127,13 @@ struct StatusCard: View {
                     .help("Copy")
                 }
                 HStack(alignment: .firstTextBaseline) {
+                    Text("Notifications")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 90, alignment: .leading)
+                    Text(model.notificationsAllowed ? "on" : "off — enable them in System Settings › Notifications")
+                    Spacer()
+                }
+                HStack(alignment: .firstTextBaseline) {
                     Text("Telegram")
                         .foregroundStyle(.secondary)
                         .frame(width: 90, alignment: .leading)

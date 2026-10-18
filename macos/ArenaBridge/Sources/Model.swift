@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
     @Published var trustRemaining = 0
     @Published var trustTools: [String] = []
     @Published var shownArtifact: Artifact? = nil
+    @Published var notificationsAllowed = false
 
     private let bridge = Bridge()
     private var notified: Set<String> = []
@@ -82,6 +83,8 @@ final class AppModel: ObservableObject {
 
         let audit = await bridge.call("audit", query: ["limit": "120"])
         entries = Array(((audit.1["entries"] as? [[String: Any]]) ?? []).compactMap(LogEntry.parse).reversed())
+
+        notificationsAllowed = await Notifier.shared.allowed()
 
         let trust = Bridge.trustStatus()
         trustEnabled = trust.enabled
