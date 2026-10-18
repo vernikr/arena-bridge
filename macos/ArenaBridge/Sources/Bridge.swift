@@ -74,6 +74,7 @@ struct Approval: Identifiable {
 /// A file the audit log kept as evidence.
 struct Artifact: Identifiable {
     let id: String
+    let entry: String
     let name: String
     let kind: String
     let path: String
@@ -82,10 +83,11 @@ struct Artifact: Identifiable {
     var isImage: Bool { name.hasSuffix(".png") || name.hasSuffix(".jpg") || name.hasSuffix(".jpeg") }
     var isTree: Bool { name.hasSuffix(".json") }
 
-    static func parse(_ raw: [String: Any]) -> Artifact? {
+    static func parse(_ raw: [String: Any], entry: String = "") -> Artifact? {
         guard let name = raw["name"] as? String else { return nil }
         return Artifact(
             id: name,
+            entry: entry,
             name: name,
             kind: raw["kind"] as? String ?? "",
             path: raw["path"] as? String ?? "",
@@ -114,7 +116,7 @@ struct LogEntry: Identifiable {
         let ms = raw["duration_ms"] as? Int
         let duration = ms.map { "\($0) ms" } ?? ""
         var detail = raw["error"] as? String ?? ""
-        let artifacts = (raw["artifacts"] as? [[String: Any]] ?? []).compactMap(Artifact.parse)
+        let artifacts = (raw["artifacts"] as? [[String: Any]] ?? []).compactMap { Artifact.parse($0, entry: id) }
         if detail.isEmpty, !artifacts.isEmpty {
             detail = artifacts.map(\.name).joined(separator: ", ")
         }

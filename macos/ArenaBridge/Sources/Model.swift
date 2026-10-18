@@ -218,9 +218,10 @@ final class AppModel: ObservableObject {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 for picture in pictures {
                     let target = folder.appendingPathComponent(picture.name)
-                    if !FileManager.default.fileExists(atPath: target.path) {
-                        try FileManager.default.copyItem(atPath: picture.path, toPath: target.path)
-                    }
+                    if FileManager.default.fileExists(atPath: target.path) { continue }
+                    let stem = picture.name.replacingOccurrences(of: ".", with: "-")
+                    let stamped = folder.appendingPathComponent("\(picture.entry)-\(stem)")
+                    try? FileManager.default.copyItem(atPath: picture.path, toPath: stamped.path)
                 }
             }
             notice = "Saved: \(destination.path)"
