@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 - The native macOS app: a trust window status with the time left, an "Approve for 3 h" button,
   local notifications when a request needs a decision, the command arguments in the work log,
   a click-through to screenshots and accessibility trees, and a button that copies the agent prompt.
+- The app icon: `macos/ArenaBridge/Resources/AppIcon.png`, turned into an `.icns` by `build.sh`.
 
 ## 0.7.4
 
