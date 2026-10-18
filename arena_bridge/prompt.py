@@ -128,9 +128,10 @@ Use it when a step takes long or when you need a decision: one message is enough
 
 ## Approvals
 {trust_line}
-- When a call answers `APPROVAL_PENDING` it carries an `approval_id`: tell the user to run
-  `arena-bridge approve <approval_id>` on their machine (or `arena-bridge trust --for 1h` to let you
-  work hands-free until the window closes), then retry the call once. `GET /approvals` lists what is waiting.
+- Approve requests while the call is waiting. A returned `APPROVAL_PENDING` with status
+  `timeout` or `expired` identifies a closed request: that `approval_id` cannot be approved.
+  Ask the user to open `arena-bridge trust --for 1h` before retrying once, or arrange a fresh
+  call that they can approve while it is waiting. `GET /approvals` includes historical records; only `pending` is actionable.
 - `APPROVAL_DENIED` means the user said no: do not retry, ask what to do instead.
 
 ## Rules
@@ -138,8 +139,8 @@ Use it when a step takes long or when you need a decision: one message is enough
    Reading or writing anything else returns `PROTECTED` — do not try to work around it.
 2. Side-effecting tools (bash, write/edit/delete, process start/kill, actions on the user's own
    Chrome or on the desktop) may require a local human approval. When the answer contains
-   `APPROVAL_PENDING`, tell the user which approval is pending and stop; they will run
-   `arena-bridge approve <approval_id>` on their machine. Do not retry in a loop.
+   `APPROVAL_PENDING`, stop and follow the recovery hint; never ask to approve a closed id.
+   Do not retry in a loop.
 3. Work step by step: inspect before you change. Prefer `read_file`/`list_dir`/`search_files`
    over blind shell commands. `list_dir` returns the top level only unless you ask for `recursive`.
 4. Long-running work (dev servers, watchers) belongs in `start_process` + `read_process_output`,

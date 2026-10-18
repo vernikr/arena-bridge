@@ -238,7 +238,9 @@ await test('a permission problem is reported with a clear hint', async () => {
 
 await test('a missing peekaboo is reported instead of crashing', async () => {
   const saved = process.env.PEEKABOO_PATH;
+  const savedPath = process.env.PATH;
   process.env.PEEKABOO_PATH = '/nonexistent/peekaboo';
+  process.env.PATH = '';
   const cfg2 = { ...cfg, peekabooPath: '/nonexistent/peekaboo' };
   const engine2 = new Engine(cfg2, { base: WORK });
   const r = await engine2.call('mac_see', { path: path.join(WORK, 'x.png') });
@@ -246,6 +248,7 @@ await test('a missing peekaboo is reported instead of crashing', async () => {
   assert.equal(r.error, 'peekaboo_not_found');
   assert.match(r.hint, /peekaboo/);
   process.env.PEEKABOO_PATH = saved;
+  process.env.PATH = savedPath;
 });
 
 console.log('\n▸ approvals');
@@ -258,7 +261,7 @@ await test('a pending approval is reported clearly instead of hanging', async ()
   assert.equal(r.error, 'APPROVAL_PENDING');
   assert.equal(r.pending, true);
   assert.ok(r.approval_id);
-  assert.match(r.hint, /arena-bridge approve/);
+  assert.match(r.hint, /arena-bridge trust/);
   saveConfig(cfg);
 });
 

@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.19
+
+### Fixed
+- Approval requests now become `timeout` or `expired` records on disk and cannot be accepted after they are no longer actionable.
+- Stale pending requests expire when listed or decided; failed late approvals cannot open a trust window.
+- Agent recovery hints explain that timed-out requests are closed and require a fresh call or trust window.
+- An explicit Peekaboo path is authoritative rather than silently falling back to another installation.
+
 ## 0.7.18
 
 ### Fixed

@@ -11,6 +11,16 @@ function fileOf(id) {
   return path.join(APPROVALS_DIR, `${id}.json`);
 }
 
+function expireIfNeeded(file, rec, now = Date.now()) {
+  if (rec.status === 'pending' && rec.expiresAt && now >= rec.expiresAt) {
+    rec.status = 'expired';
+    rec.decidedAt = now;
+    rec.decidedBy = 'system';
+    fs.writeFileSync(file, JSON.stringify(rec, null, 2), { mode: 0o600 });
+  }
+  return rec;
+}
+
 export function listApprovals() {
   if (!fs.existsSync(APPROVALS_DIR)) return [];
   return fs
@@ -18,7 +28,8 @@ export function listApprovals() {
     .filter((f) => f.endsWith('.json'))
     .map((f) => {
       try {
-        return JSON.parse(fs.readFileSync(path.join(APPROVALS_DIR, f), 'utf8'));
+        const file = path.join(APPROVALS_DIR, f);
+        return expireIfNeeded(file, JSON.parse(fs.readFileSync(file, 'utf8')));
       } catch {
         return null;
       }
@@ -36,6 +47,7 @@ export function decide(id, decision, by = 'cli') {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+  rec = expireIfNeeded(file, rec);
   if (rec.status !== 'pending') return { ok: false, error: `already ${rec.status}` };
   rec.status = decision === 'approve' ? 'approved' : 'denied';
   rec.decidedAt = Date.now();
@@ -117,10 +129,17 @@ export async function requestApproval(tool, args, cfg) {
       continue;
     }
     if (cur.status === 'approved') return { approved: true, rec: cur };
-    if (cur.status === 'denied') return { approved: false, rec: cur };
-    if (cur.expiresAt && Date.now() > cur.expiresAt) {
-      return { approved: false, rec: { ...cur, status: 'expired' } };
+    if (cur.status !== 'pending') return { approved: false, rec: cur };
+    if (cur.expiresAt && Date.now() >= cur.expiresAt) {
+      return { approved: false, rec: expireIfNeeded(fileOf(id), cur) };
     }
   }
-  return { approved: false, rec: { ...rec, status: 'timeout' } };
+  const timedOut = expireIfNeeded(fileOf(id), JSON.parse(fs.readFileSync(fileOf(id), 'utf8')));
+  if (timedOut.status === 'pending') {
+    timedOut.status = 'timeout';
+    timedOut.decidedAt = Date.now();
+    timedOut.decidedBy = 'system';
+    fs.writeFileSync(fileOf(id), JSON.stringify(timedOut, null, 2), { mode: 0o600 });
+  }
+  return { approved: timedOut.status === 'approved', rec: timedOut };
 }

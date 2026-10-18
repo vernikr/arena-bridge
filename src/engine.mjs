@@ -685,11 +685,11 @@ export class Engine {
           status,
           pending,
           reason: pending
-            ? `waiting for a local human decision on tool "${tool.name}"`
+            ? `approval wait ended (${status}) for tool "${tool.name}"; this request is closed`
             : `human ${status} tool "${tool.name}"`,
           approval_id: approval.rec?.id || null,
           hint: pending
-            ? 'Tell the user to run: arena-bridge approve <approval_id> - or open a trust window for hands-free work: arena-bridge trust --for 1h. Then retry the call once.'
+            ? 'This approval_id is closed and cannot be approved. Ask the user to open a trust window: arena-bridge trust --for 1h. Then retry the call once, or arrange a fresh call for approval while it is waiting.'
             : 'The user declined this action. Do not retry it; ask what to do instead.',
         };
       }

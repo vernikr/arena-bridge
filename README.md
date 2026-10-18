@@ -452,8 +452,10 @@ arena-bridge browser close work       # закрыть окно этого пр�
 * **Пути ограничены**: всё вне `roots` — `PROTECTED`. Защищённый список по умолчанию включает
   `~/.ssh`, `~/.aws`, `~/.arena-bridge`, `~/.npmrc`, профили браузеров, ключи.
 * **Подтверждения**: `bash`, запись, удаление, управление вашим Chrome и десктопом ждут
-  `arena-bridge approve <id>`. Ответ `APPROVAL_PENDING` содержит `approval_id` — покажите его
-  пользователю и повторите вызов один раз.
+  `arena-bridge approve <id>`. Подтверждать нужно, пока вызов ожидает решения.
+  После `timeout` или `expired` запрос закрыт и его `approval_id` больше не принимается.
+  Для продолжения откройте `arena-bridge trust --for 1h` и повторите вызов один раз либо
+  согласуйте новый вызов, который пользователь подтвердит во время ожидания.
 * **Журнал**: `~/.arena-bridge/audit.log` (JSONL) — кто, что и когда вызвал.
 * **Транспорт**: сервер слушает `127.0.0.1`, наружу — только туннель с HTTPS.
 
@@ -548,7 +550,7 @@ arena_bridge/  тот же функционал на Python (stdlib only)
 | `port 8787 is already in use` | остановите старый экземпляр (`Ctrl+C`) или `arena-bridge start --port 8788` |
 | туннель не поднимается | `cloudflared` по умолчанию использует QUIC и может быть заблокирован — `arena-bridge tunnel --protocol http2` (это поведение по умолчанию) |
 | агент не видит файлы | проверьте `arena-bridge doctor` и `roots` в `~/.arena-bridge/config.json`; вне `roots` всё равно `PROTECTED` |
-| `APPROVAL_PENDING` | покажите пользователю `arena-bridge approve <id>` или откройте `arena-bridge trust --for 1h` |
+| `APPROVAL_PENDING` | при `timeout`/`expired` старый запрос закрыт: согласуйте новый вызов или попросите открыть `arena-bridge trust --for 1h` |
 | скриншоты не работают | `mac_permissions` — выдайте терминалу Screen Recording и Accessibility |
 | `peekaboo_not_found` | поставьте Peekaboo или укажите путь: `arena-bridge init` + `peekabooPath` в конфиге |
 

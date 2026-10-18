@@ -18,8 +18,9 @@ const NOT_FOUND_HINT =
   'peekaboo is not installed on this machine. Install it (macOS: brew install peekaboo, or download the release from https://github.com/openclaw/Peekaboo) and make sure the binary is on PATH.';
 
 export function findPeekaboo(cfg = {}) {
-  const explicit = cfg.peekabooPath || process.env.PEEKABOO_PATH;
-  if (explicit && fs.existsSync(explicit)) return explicit;
+  if (cfg.peekabooPath) return fs.existsSync(cfg.peekabooPath) ? cfg.peekabooPath : null;
+  const explicit = process.env.PEEKABOO_PATH;
+  if (explicit) return fs.existsSync(explicit) ? explicit : null;
   for (const c of PEEKABOO_CANDIDATES) if (fs.existsSync(c)) return c;
   for (const d of (process.env.PATH || '').split(path.delimiter)) {
     if (!d) continue;

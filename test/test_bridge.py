@@ -277,6 +277,38 @@ def _():
     assert j["ok"] is False and j["error"] == "APPROVAL_DENIED", j
     assert j["pending"] is False, j
 
+
+@test("timed-out approvals are settled and cannot be approved later")
+def _():
+    cfg_timeout = dict(cfg_ap)
+    cfg_timeout["approvalWaitSec"] = 1
+    save_config(cfg_timeout)
+    old_wait = engine2.cfg["approvalWaitSec"]
+    engine2.cfg["approvalWaitSec"] = 1
+    result = {}
+
+    def worker():
+        result["value"] = json_request(
+            f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo timeout-case"}}
+        )
+
+    t = threading.Thread(target=worker)
+    t.start()
+    pending = None
+    for _ in range(20):
+        time.sleep(0.1)
+        pending = next((a for a in list_approvals() if a["status"] == "pending" and a["tool"] == "bash"), None)
+        if pending:
+            break
+    assert pending is not None
+    t.join(timeout=5)
+    status, j = result["value"]
+    assert j["error"] == "APPROVAL_PENDING", j
+    stored = next(a for a in list_approvals() if a["id"] == pending["id"])
+    assert stored["status"] == "timeout"
+    assert decide(pending["id"], "approve", "late-test")["ok"] is False
+    engine2.cfg["approvalWaitSec"] = old_wait
+
 print("\n▸ trust window")
 
 from arena_bridge.trust import clear_trust, save_trust, trust_state  # noqa: E402

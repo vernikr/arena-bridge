@@ -316,6 +316,28 @@ await test('denied approval blocks the tool', async () => {
   assert.equal(j.pending, false);
 });
 
+await test('timed-out approvals are settled and cannot be approved later', async () => {
+  const oldWait = cfgApproval.approvalWaitSec;
+  saveConfig({ ...cfgApproval, approvalWaitSec: 1 });
+  const p = fetch(`${base2}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'bash', args: { command: 'echo timeout-case' } }),
+  }).then((r) => r.json());
+  let pending = null;
+  for (let i = 0; i < 20 && !pending; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    pending = listApprovals().find((a) => a.status === 'pending' && a.tool === 'bash');
+  }
+  assert.ok(pending);
+  const j = await p;
+  assert.equal(j.error, 'APPROVAL_PENDING');
+  const stored = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'approvals', `${pending.id}.json`), 'utf8'));
+  assert.equal(stored.status, 'timeout');
+  assert.equal(decide(pending.id, 'approve', 'late-test').ok, false);
+  saveConfig({ ...cfgApproval, approvalWaitSec: oldWait });
+});
+
 saveConfig(loaded); // back to the default policy for the remaining tests
 
 await test('a symlinked root still matches its files', async () => {

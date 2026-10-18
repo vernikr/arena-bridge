@@ -35,6 +35,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python3 test/test_bridge.py
+      - run: python3 test/test_approvals.py
       - run: python3 test/test_browser.py
       - run: python3 test/test_mac.py
       - run: python3 test/test_service.py

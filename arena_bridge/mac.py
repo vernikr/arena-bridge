@@ -38,9 +38,11 @@ UNKNOWN = (
 
 def find_peekaboo(cfg=None):
     cfg = cfg or {}
-    explicit = cfg.get("peekabooPath") or os.environ.get("PEEKABOO_PATH")
-    if explicit and os.path.exists(explicit):
-        return explicit
+    if cfg.get("peekabooPath"):
+        return cfg["peekabooPath"] if os.path.exists(cfg["peekabooPath"]) else None
+    explicit = os.environ.get("PEEKABOO_PATH")
+    if explicit:
+        return explicit if os.path.exists(explicit) else None
     for candidate in PEEKABOO_CANDIDATES:
         if os.path.exists(candidate):
             return candidate

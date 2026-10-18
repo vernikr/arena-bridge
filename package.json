@@ -1,6 +1,6 @@
 {
   "name": "arena-bridge",
-  "version": "0.7.18",
+  "version": "0.7.19",
   "description": "Give a cloud AI agent (Arena.ai Agent Mode, Claude, Cursor, ...) controlled access to your own machine over HTTP/MCP: files, shell, Chrome and the macOS desktop, with an approval gate, trust windows and an audit log.",
   "type": "module",
   "bin": {
@@ -19,9 +19,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
-    "test:node": "node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
-    "test:python": "python3 test/test_bridge.py && python3 test/test_browser.py && python3 test/test_mac.py && python3 test/test_service.py",
+    "test": "node --test test/approvals.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
+    "test:node": "node --test test/approvals.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
+    "test:python": "python3 test/test_approvals.py && python3 test/test_bridge.py && python3 test/test_browser.py && python3 test/test_mac.py && python3 test/test_service.py",
     "pack:check": "npm pack --dry-run"
   },
   "repository": {

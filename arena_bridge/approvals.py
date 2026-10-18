@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 import time
@@ -15,6 +17,16 @@ def _file(approval_id: str) -> Path:
     return approvals_dir() / f"{approval_id}.json"
 
 
+def _expire_if_needed(path: Path, rec: dict, now: int | None = None) -> dict:
+    now = now or int(time.time() * 1000)
+    if rec.get("status") == "pending" and rec.get("expiresAt") and now >= rec["expiresAt"]:
+        rec["status"] = "expired"
+        rec["decidedAt"] = now
+        rec["decidedBy"] = "system"
+        path.write_text(json.dumps(rec, indent=2))
+    return rec
+
+
 def list_approvals():
     d = approvals_dir()
     if not d.exists():
@@ -22,7 +34,7 @@ def list_approvals():
     out = []
     for f in d.glob("*.json"):
         try:
-            out.append(json.loads(f.read_text()))
+            out.append(_expire_if_needed(f, json.loads(f.read_text())))
         except Exception:
             continue
     out.sort(key=lambda a: a.get("createdAt", 0), reverse=True)
@@ -37,6 +49,7 @@ def decide(approval_id: str, decision: str, by: str = "cli"):
         rec = json.loads(f.read_text())
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    rec = _expire_if_needed(f, rec)
     if rec.get("status") != "pending":
         return {"ok": False, "error": f"already {rec.get('status')}"}
     rec["status"] = "approved" if decision == "approve" else "denied"
@@ -118,8 +131,14 @@ def request_approval(tool: str, args: dict, cfg: dict) -> dict:
             continue
         if cur.get("status") == "approved":
             return {"approved": True, "rec": cur}
-        if cur.get("status") == "denied":
+        if cur.get("status") != "pending":
             return {"approved": False, "rec": cur}
-        if cur.get("expiresAt") and int(time.time() * 1000) > cur["expiresAt"]:
-            return {"approved": False, "rec": {**cur, "status": "expired"}}
-    return {"approved": False, "rec": {**rec, "status": "timeout"}}
+        if cur.get("expiresAt") and int(time.time() * 1000) >= cur["expiresAt"]:
+            return {"approved": False, "rec": _expire_if_needed(_file(approval_id), cur)}
+    timed_out = _expire_if_needed(_file(approval_id), json.loads(_file(approval_id).read_text()))
+    if timed_out.get("status") == "pending":
+        timed_out["status"] = "timeout"
+        timed_out["decidedAt"] = int(time.time() * 1000)
+        timed_out["decidedBy"] = "system"
+        _file(approval_id).write_text(json.dumps(timed_out, indent=2))
+    return {"approved": timed_out.get("status") == "approved", "rec": timed_out}
