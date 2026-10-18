@@ -21,6 +21,34 @@ def runner_path() -> Path:
     return config_dir() / APP_NAME
 
 
+def stable_node() -> str:
+    """The version manager keeps node in a folder that every new shell creates and that is
+    deleted afterwards. macOS binds a permission to the exact file, so the service uses the
+    permanent installation instead."""
+    exec_path = sys.executable
+    if "fnm_multishells" not in exec_path:
+        return exec_path
+    versions = Path.home() / ".local" / "share" / "fnm" / "node-versions"
+    try:
+        dirs = sorted(
+            (p for p in versions.iterdir() if (p / "installation" / "bin" / "node").exists()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return exec_path
+    return str(dirs[0] / "installation" / "bin" / "node") if dirs else exec_path
+
+
+def service_path() -> str:
+    """The PATH of the service: permanent folders only."""
+    parts = [p for p in (os.environ.get("PATH") or "/usr/local/bin:/usr/bin:/bin").split(":")
+             if p and "fnm_multishells" not in p]
+    home = str(Path.home() / ".local" / "bin")
+    node_bin = str(Path(stable_node()).parent)
+    return ":".join([home, node_bin] + [p for p in parts if p not in (home, node_bin)])
+
+
 def log_dir() -> Path:
     return config_dir() / "logs"
 
@@ -73,7 +101,7 @@ def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
         "KeepAlive": True,
         "StandardOutPath": str(logs / "bridge.log"),
         "StandardErrorPath": str(logs / "bridge.err.log"),
-        "EnvironmentVariables": {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")},
+        "EnvironmentVariables": {"PATH": service_path()},
     }
     with open(plist, "wb") as fh:
         plistlib.dump(payload, fh)

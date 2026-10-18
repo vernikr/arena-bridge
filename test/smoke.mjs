@@ -600,6 +600,12 @@ await test('the app name is the same in node, python and swift', async () => {
   assert.equal(pickSwift(swift, 'bundleID'), APP_ID);
 });
 
+await test('the background service uses permanent paths only', async () => {
+  const { servicePath, stableNode } = await import('../src/service.mjs');
+  assert.ok(!servicePath().includes('fnm_multishells'), servicePath());
+  assert.ok(!stableNode().includes('fnm_multishells'), stableNode());
+});
+
 await test('the background service starts the app, not the node binary', async () => {
   const { plistXml, runnerPath } = await import('../src/service.mjs');
   const xml = plistXml({});

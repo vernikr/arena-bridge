@@ -18,6 +18,38 @@ export function runnerPath() {
   return path.join(CONFIG_DIR, APP_NAME);
 }
 
+/**
+ * The node of the version manager lives in a folder that every new shell creates and that is
+ * deleted afterwards. macOS binds a permission to the exact file, so a service that starts from
+ * such a folder loses its screen recording permission. The service always uses the permanent
+ * installation instead.
+ */
+export function stableNode() {
+  const exec = process.execPath;
+  if (!exec.includes('fnm_multishells')) return exec;
+  const versions = path.join(os.homedir(), '.local', 'share', 'fnm', 'node-versions');
+  try {
+    const dirs = fs.readdirSync(versions)
+      .map((d) => path.join(versions, d))
+      .filter((d) => fs.existsSync(path.join(d, 'installation', 'bin', 'node')))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    if (dirs[0]) return path.join(dirs[0], 'installation', 'bin', 'node');
+  } catch {
+    /* keep the current one */
+  }
+  return exec;
+}
+
+/** The PATH of the service: permanent folders only. */
+export function servicePath() {
+  const parts = (process.env.PATH || '/usr/local/bin:/usr/bin:/bin')
+    .split(':')
+    .filter((p) => p && !p.includes('fnm_multishells'));
+  const home = path.join(os.homedir(), '.local', 'bin');
+  const nodeBin = path.dirname(stableNode());
+  return [home, nodeBin, ...parts.filter((p) => p !== home && p !== nodeBin)].join(':');
+}
+
 export function logDir() {
   return path.join(CONFIG_DIR, 'logs');
 }
@@ -31,7 +63,7 @@ function cliEntry() {
 function runnerScript() {
   return `#!/bin/sh
 # ${APP_NAME}: the background service of the bridge.
-exec "${process.execPath}" "${cliEntry()}" "$@"
+exec "${stableNode()}" "${cliEntry()}" "$@"
 `;
 }
 
@@ -59,7 +91,7 @@ ${extra.map((a) => `    <string>${a}</string>`).join('\n')}
   <key>StandardErrorPath</key><string>${path.join(logs, 'bridge.err.log')}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${process.env.PATH || '/usr/local/bin:/usr/bin:/bin'}</string>
+    <key>PATH</key><string>${servicePath()}</string>
   </dict>
 </dict>
 </plist>

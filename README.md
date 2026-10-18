@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-160%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-161%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -316,6 +316,15 @@ Apple Silicon. Готовые сборки для обеих архитекту�
 
 Иконка приложения лежит в `macos/ArenaBridge/Resources/AppIcon.png`; `build.sh` сам собирает
 из неё `.icns` и кладёт в бандл. Вокруг знака прозрачно — на светлом фоне иконка не белая.
+
+### Разрешения macOS
+
+Мосту нужны два разрешения: «Запись экрана» (снимки) и «Управление доступностью» (дерево
+элементов). В списке «Запись экрана» они выглядят как `node` и `daemon-*.sock` — так macOS
+показывает программы без своего значка. Строку `node` можно удалить кнопкой «−», но вернётся
+она, когда Peekaboo снова попросит экран: он написан на node. Служба моста запускается из
+постоянных папок (`~/.local/share/fnm/node-versions/...`), а не из временной папки версии
+менеджера, поэтому разрешение само по себе не слетает.
 
 ### Как переименовать
 

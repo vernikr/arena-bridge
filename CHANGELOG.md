@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.15
+
+### Fixed
+- The background service starts from permanent folders only. The version manager keeps node in a
+  folder that every new shell creates and that is deleted afterwards, and macOS binds the
+  permission to the exact file: the service lost the screen recording permission when that
+  folder disappeared. The node of the permanent installation and the folder of the user are used
+  now, so the permission stays.
+
 ## 0.7.14
 
 ### Fixed
