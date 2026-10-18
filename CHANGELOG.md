@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.10
+
+### Fixed
+- The app build script prints the architecture without a shell variable error.
+
 ## 0.7.9
 
 ### Fixed

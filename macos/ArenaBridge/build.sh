@@ -11,7 +11,7 @@ ARCH="${ARCH:-$(uname -m)}"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
-echo "building for $ARCH…"
+echo "building for ${ARCH}..."
 swiftc -O -swift-version 5 -parse-as-library \
   -target "$ARCH-apple-macosx13.0" \
   -o "$BUNDLE/Contents/MacOS/ArenaBridge" \
