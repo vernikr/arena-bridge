@@ -614,9 +614,55 @@ await test('the background service uses permanent paths only', async () => {
 
 await test('the background service starts the app, not the node binary', async () => {
   const { plistXml, runnerPath } = await import('../src/service.mjs');
-  const xml = plistXml({});
-  assert.ok(xml.includes(`<string>${runnerPath()}</string>`), xml);
-  assert.ok(!xml.includes(process.execPath), 'the node binary must not be the entry point');
+  const previous = process.env.ARENA_BRIDGE_APP;
+  process.env.ARENA_BRIDGE_APP = path.join(TMP, 'no-such.app');
+  try {
+    const xml = plistXml({});
+    assert.ok(xml.includes(`<string>${runnerPath()}</string>`), xml);
+    assert.ok(!xml.includes(process.execPath), 'the node binary must not be the entry point');
+  } finally {
+    if (previous === undefined) delete process.env.ARENA_BRIDGE_APP;
+    else process.env.ARENA_BRIDGE_APP = previous;
+  }
+});
+
+await test('the service starts the helper of the app bundle when it is installed', async () => {
+  const { programArguments, agentPath, plistXml, stableNode } = await import('../src/service.mjs');
+  const bundle = path.join(TMP, 'Arena Bridge.app');
+  const helper = path.join(bundle, 'Contents', 'Helpers', 'arena-bridge-agent');
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  fs.writeFileSync(path.join(bundle, 'Contents', 'Info.plist'), '<plist/>');
+  fs.writeFileSync(helper, '#!/bin/sh\nexit 0\n');
+  fs.chmodSync(helper, 0o755);
+  const previous = process.env.ARENA_BRIDGE_APP;
+  process.env.ARENA_BRIDGE_APP = bundle;
+  try {
+    assert.equal(agentPath(), helper);
+    const args = programArguments({ bin: 'ngrok', domain: 'x.ngrok-free.dev' });
+    assert.equal(args[0], helper, 'the helper is the entry point');
+    assert.equal(args[1], stableNode(), 'the helper gets the permanent node');
+    assert.ok(args[2].endsWith('arena-bridge.mjs'), args[2]);
+    assert.equal(args[3], 'tunnel');
+    assert.deepEqual(args.slice(4), ['--bin', 'ngrok', '--domain', 'x.ngrok-free.dev']);
+    const xml = plistXml({});
+    assert.ok(xml.includes(`<string>${helper}</string>`), xml);
+  } finally {
+    if (previous === undefined) delete process.env.ARENA_BRIDGE_APP;
+    else process.env.ARENA_BRIDGE_APP = previous;
+  }
+});
+
+await test('the service falls back to the wrapper without the app', async () => {
+  const { programArguments, agentPath, runnerPath } = await import('../src/service.mjs');
+  const previous = process.env.ARENA_BRIDGE_APP;
+  process.env.ARENA_BRIDGE_APP = path.join(TMP, 'no-such.app');
+  try {
+    assert.equal(agentPath(), null);
+    assert.deepEqual(programArguments({}), [runnerPath(), 'tunnel']);
+  } finally {
+    if (previous === undefined) delete process.env.ARENA_BRIDGE_APP;
+    else process.env.ARENA_BRIDGE_APP = previous;
+  }
 });
 
 await test('isPortOpen detects a listening port', async () => {

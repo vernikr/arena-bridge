@@ -445,6 +445,56 @@ def _():
     assert runner_path().name == APP_NAME, runner_path()
 
 
+@test("the service starts the helper of the app bundle when it is installed")
+def _():
+    import plistlib
+    from arena_bridge.service import agent_path, program_arguments, service_payload
+
+    bundle = TMP / "Arena Bridge.app"
+    helper = bundle / "Contents" / "Helpers" / "arena-bridge-agent"
+    helper.parent.mkdir(parents=True, exist_ok=True)
+    (bundle / "Contents" / "Info.plist").write_text("<plist/>")
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o755)
+    os.environ["ARENA_BRIDGE_APP"] = str(bundle)
+    try:
+        assert agent_path() == helper, agent_path()
+        args = program_arguments(bin="ngrok", domain="x.ngrok-free.dev")
+        assert args[0] == str(helper), args
+        assert args[1:4] == [sys.executable, "-m", "arena_bridge"], args
+        assert args[4] == "tunnel", args
+        assert args[5:] == ["--bin", "ngrok", "--domain", "x.ngrok-free.dev"], args
+        # the written plist holds the helper as the entry point
+        plist = TMP / "agent.plist"
+        with open(plist, "wb") as fh:
+            plistlib.dump(service_payload(bin="ngrok"), fh)
+        with open(plist, "rb") as fh:
+            payload = plistlib.load(fh)
+        assert payload["ProgramArguments"][0] == str(helper), payload["ProgramArguments"]
+        assert payload["ProgramArguments"][1:4] == [
+            sys.executable,
+            "-m",
+            "arena_bridge",
+        ], payload["ProgramArguments"]
+        assert payload["ProgramArguments"][4] == "tunnel", payload["ProgramArguments"]
+        assert payload["ProgramArguments"][5:] == ["--bin", "ngrok"], payload["ProgramArguments"]
+        assert payload["KeepAlive"] is True and payload["RunAtLoad"] is True, payload
+    finally:
+        os.environ.pop("ARENA_BRIDGE_APP", None)
+
+
+@test("the service falls back to the wrapper without the app")
+def _():
+    from arena_bridge.service import agent_path, program_arguments, runner_path
+
+    os.environ["ARENA_BRIDGE_APP"] = str(TMP / "no-such.app")
+    try:
+        assert agent_path() is None, agent_path()
+        assert program_arguments() == [str(runner_path()), "tunnel"], program_arguments()
+    finally:
+        os.environ.pop("ARENA_BRIDGE_APP", None)
+
+
 server.shutdown()
 server2.shutdown()
 hub.shutdown()

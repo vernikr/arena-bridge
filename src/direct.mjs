@@ -73,7 +73,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.7.16',
+          version: '0.7.17',
           uptime_sec: Math.round(process.uptime()),
         });
       }

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_DIR, ensureDirs } from './config.mjs';
-import { APP_NAME, SERVICE_LABEL as LABEL } from './app.mjs';
+import { APP_NAME, SERVICE_LABEL as LABEL, AGENT_NAME } from './app.mjs';
 
 export function plistPath() {
   return path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
@@ -16,6 +16,35 @@ export function plistPath() {
  */
 export function runnerPath() {
   return path.join(CONFIG_DIR, APP_NAME);
+}
+
+/**
+ * The app bundle that holds the helper. It gives the screen and the accessibility
+ * permissions to the app and not to the node binary.
+ */
+export function appBundlePath() {
+  const explicit = process.env.ARENA_BRIDGE_APP;
+  const candidates = explicit
+    ? [explicit]
+    : [
+        path.join('/Applications', `${APP_NAME}.app`),
+        path.join(os.homedir(), 'Applications', `${APP_NAME}.app`),
+      ];
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(path.join(candidate, 'Contents', 'Info.plist'))) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The helper inside the bundle starts the bridge. macOS gives the permissions to the
+ * app that starts the request, so the system settings show the name of the app.
+ */
+export function agentPath() {
+  const bundle = appBundlePath();
+  if (!bundle) return null;
+  const helper = path.join(bundle, 'Contents', 'Helpers', AGENT_NAME);
+  return fs.existsSync(helper) ? helper : null;
 }
 
 /**
@@ -67,13 +96,25 @@ exec "${stableNode()}" "${cliEntry()}" "$@"
 `;
 }
 
-export function plistXml({ bin, domain, authtoken, port } = {}) {
-  const logs = logDir();
+/**
+ * The command the service starts. The helper inside the app bundle gives the screen and the
+ * accessibility permissions to the app, so the system settings show its name. Without the app
+ * the service starts the wrapper script.
+ */
+export function programArguments({ bin, domain, authtoken, port } = {}) {
   const extra = [];
   if (bin) extra.push('--bin', String(bin));
   if (domain) extra.push('--domain', String(domain));
   if (authtoken) extra.push('--authtoken', String(authtoken));
   if (port) extra.push('--port', String(port));
+  const helper = agentPath();
+  if (helper) return [helper, stableNode(), cliEntry(), 'tunnel', ...extra];
+  return [runnerPath(), 'tunnel', ...extra];
+}
+
+export function plistXml(options = {}) {
+  const logs = logDir();
+  const program = programArguments(options);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -81,9 +122,7 @@ export function plistXml({ bin, domain, authtoken, port } = {}) {
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${runnerPath()}</string>
-    <string>tunnel</string>
-${extra.map((a) => `    <string>${a}</string>`).join('\n')}
+${program.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

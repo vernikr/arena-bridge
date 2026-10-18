@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .app import APP_NAME, SERVICE_LABEL as LABEL
+from .app import AGENT_NAME, APP_NAME, SERVICE_LABEL as LABEL
 from .config import config_dir, ensure_dirs
 
 
@@ -19,6 +19,33 @@ def plist_path() -> Path:
 def runner_path() -> Path:
     """The launchd agent starts this script, so the system settings show the app name."""
     return config_dir() / APP_NAME
+
+
+def app_bundle_path() -> Path | None:
+    """The app bundle that holds the helper. It gives the screen and the accessibility
+    permissions to the app and not to the python binary."""
+    explicit = os.environ.get("ARENA_BRIDGE_APP")
+    if explicit:
+        candidates = [Path(explicit)]
+    else:
+        candidates = [
+            Path("/Applications") / f"{APP_NAME}.app",
+            Path.home() / "Applications" / f"{APP_NAME}.app",
+        ]
+    for candidate in candidates:
+        if (candidate / "Contents" / "Info.plist").exists():
+            return candidate
+    return None
+
+
+def agent_path() -> Path | None:
+    """The helper inside the bundle starts the bridge. macOS gives the permissions to the
+    app that starts the request, so the system settings show the name of the app."""
+    bundle = app_bundle_path()
+    if not bundle:
+        return None
+    helper = bundle / "Contents" / "Helpers" / AGENT_NAME
+    return helper if helper.exists() else None
 
 
 def stable_node() -> str:
@@ -81,28 +108,44 @@ def service_status() -> dict:
     }
 
 
-def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
-    ensure_dirs()
-    logs = log_dir()
-    logs.mkdir(parents=True, exist_ok=True)
-    plist = plist_path()
-    plist.parent.mkdir(parents=True, exist_ok=True)
-    arguments = ["tunnel"]
+def program_arguments(bin=None, domain=None, authtoken=None, port=None) -> list[str]:
+    """The command the service starts. The helper inside the app bundle gives the screen and
+    the accessibility permissions to the app, so the system settings show its name. Without the
+    app the service starts the wrapper script."""
+    extra = []
     for flag, value in (("--bin", bin), ("--domain", domain), ("--authtoken", authtoken), ("--port", port)):
         if value:
-            arguments += [flag, str(value)]
-    runner = runner_path()
-    runner.write_text(runner_script(), encoding="utf-8")
-    runner.chmod(0o755)
-    payload = {
+            extra += [flag, str(value)]
+    helper = agent_path()
+    if helper:
+        return [str(helper), *cli_entry(), "tunnel", *extra]
+    return [str(runner_path()), "tunnel", *extra]
+
+
+def service_payload(bin=None, domain=None, authtoken=None, port=None) -> dict:
+    """The content of the launchd agent."""
+    logs = log_dir()
+    return {
         "Label": LABEL,
-        "ProgramArguments": arguments,
+        "ProgramArguments": program_arguments(bin, domain, authtoken, port),
         "RunAtLoad": True,
         "KeepAlive": True,
         "StandardOutPath": str(logs / "bridge.log"),
         "StandardErrorPath": str(logs / "bridge.err.log"),
         "EnvironmentVariables": {"PATH": service_path()},
     }
+
+
+def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
+    ensure_dirs()
+    logs = log_dir()
+    logs.mkdir(parents=True, exist_ok=True)
+    plist = plist_path()
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    runner = runner_path()
+    runner.write_text(runner_script(), encoding="utf-8")
+    runner.chmod(0o755)
+    payload = service_payload(bin, domain, authtoken, port)
     with open(plist, "wb") as fh:
         plistlib.dump(payload, fh)
     _launchctl(["bootout", f"gui/{os.getuid()}/{LABEL}"])

@@ -5,3 +5,4 @@ from __future__ import annotations
 APP_NAME = "Arena Bridge"
 APP_ID = "com.arenabridge.app"
 SERVICE_LABEL = "ai.arena.bridge"
+AGENT_NAME = "arena-bridge-agent"

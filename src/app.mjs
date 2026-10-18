@@ -6,3 +6,6 @@ export const APP_ID = 'com.arenabridge.app';
 
 /** The label of the launchd service. */
 export const SERVICE_LABEL = 'ai.arena.bridge';
+
+/** The helper inside the app bundle that starts the bridge. */
+export const AGENT_NAME = 'arena-bridge-agent';

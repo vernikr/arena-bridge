@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.17
+
+### Fixed
+- The permission list of macOS shows the name of the app and not `node`. The background service now
+  starts through a small helper inside the signed app bundle, so macOS gives the screen and the
+  accessibility permissions to «Arena Bridge». Without the app the service starts the old way, so the
+  command line only installation keeps working.
+
 ## 0.7.16
 
 ### Fixed
