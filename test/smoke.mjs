@@ -317,6 +317,21 @@ await test('denied approval blocks the tool', async () => {
 
 saveConfig(loaded); // back to the default policy for the remaining tests
 
+await test('a symlinked root still matches its files', async () => {
+  const { checkPath } = await import('../src/policy.mjs');
+  const real = path.join(TMP, 'real-root');
+  const link = path.join(TMP, 'link-root');
+  fs.mkdirSync(real, { recursive: true });
+  fs.writeFileSync(path.join(real, 'inside.txt'), 'x');
+  try {
+    fs.symlinkSync(real, link, 'dir');
+  } catch {
+    return; // symlinks are not available here
+  }
+  const res = checkPath(path.join(link, 'inside.txt'), { roots: [link], protected: [] });
+  assert.equal(res.ok, true, JSON.stringify(res));
+});
+
 console.log('\n▸ approvals over HTTP');
 
 await test('the local token settles a request, the agent token cannot', async () => {

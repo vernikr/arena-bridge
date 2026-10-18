@@ -26,6 +26,15 @@ export function resolveTarget(p, base = process.cwd()) {
   return path.join(real, ...tail);
 }
 
+/** Resolve a configured path the same way as a target, so symlinks never break the comparison. */
+function resolveConfigured(p, base) {
+  try {
+    return resolveTarget(p, base);
+  } catch {
+    return path.resolve(String(p ?? ''));
+  }
+}
+
 export function isInside(child, parent) {
   const rel = path.relative(parent, child);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -42,7 +51,7 @@ export function checkPath(p, cfg, base = process.cwd(), _opts = {}) {
   } catch (e) {
     return { ok: false, error: 'INVALID_PATH', reason: e.message };
   }
-  for (const prot of cfg.protected || []) {
+  for (const prot of (cfg.protected || []).map((r) => resolveConfigured(r, base))) {
     if (isInside(abs, prot)) {
       return {
         ok: false,
@@ -52,7 +61,7 @@ export function checkPath(p, cfg, base = process.cwd(), _opts = {}) {
       };
     }
   }
-  const roots = cfg.roots || [];
+  const roots = (cfg.roots || []).map((r) => resolveConfigured(r, base));
   if (!roots.some((r) => isInside(abs, r))) {
     return {
       ok: false,

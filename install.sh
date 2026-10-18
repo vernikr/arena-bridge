@@ -82,7 +82,7 @@ install_app() {
   unzip -q "$TMP/app.zip" -d "$TMP"
   APP="$(find "$TMP" -maxdepth 3 -name '*.app' -print -quit)"
   [ -n "$APP" ] || die "the archive has no app inside"
-  TARGET="/Applications/$(basename "$APP")"
+  TARGET="/Applications/Arena Bridge.app"
   if [ -w /Applications ]; then
     rm -rf "$TARGET"
     cp -R "$APP" "$TARGET"

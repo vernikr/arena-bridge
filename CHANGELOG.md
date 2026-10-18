@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.7
+
+### Fixed
+- The path policy compares the authorized roots the same way as the target, so a root that goes
+  through a symlink (for example the temporary folder on macOS) no longer looks "outside".
+- The release workflow installs twine and always attaches the macOS app to the release.
+
 ## 0.7.6
 
 ### Added

@@ -284,6 +284,22 @@ from arena_bridge.trust import clear_trust, save_trust, trust_state  # noqa: E40
 save_config(cfg_ap)  # approvals on: only a trust window can lift them
 
 
+@test("a symlinked root still matches its files")
+def _():
+    from arena_bridge.policy import check_path
+
+    real = TMP / "real-root"
+    link = TMP / "link-root"
+    real.mkdir(parents=True, exist_ok=True)
+    (real / "inside.txt").write_text("x")
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except OSError:
+        return
+    ok, _, err, _ = check_path(str(link / "inside.txt"), {"roots": [str(link)], "protected": []})
+    assert ok, err
+
+
 @test("an open trust window removes the approval requirement")
 def _():
     save_trust({"enabled": True, "until": int(time.time() * 1000) + 3600000, "tools": [], "paths": [], "createdAt": int(time.time() * 1000)})

@@ -31,6 +31,14 @@ def resolve_target(p, base=None) -> Path:
     return Path(os.path.normpath(str(real.joinpath(*tail))))
 
 
+def _resolve_configured(p, base=None) -> Path:
+    """Resolve a configured path the same way as a target, so symlinks never break the comparison."""
+    try:
+        return resolve_target(p, base)
+    except ValueError:
+        return Path(os.path.normpath(str(p)))
+
+
 def is_inside(child: Path, parent: Path) -> bool:
     try:
         child.relative_to(parent)
@@ -47,11 +55,11 @@ def check_path(p, cfg, base=None, write=False):
         return False, None, "INVALID_PATH", str(e)
 
     for prot in cfg.get("protected") or []:
-        if is_inside(abs_path, Path(prot)):
+        if is_inside(abs_path, _resolve_configured(prot, base)):
             return False, abs_path, "PROTECTED", f"path is inside a protected location ({prot})"
 
     roots = cfg.get("roots") or []
-    if not any(is_inside(abs_path, Path(r)) for r in roots):
+    if not any(is_inside(abs_path, _resolve_configured(r, base)) for r in roots):
         return False, abs_path, "PROTECTED", f"path is outside the authorized roots ({', '.join(roots)})"
 
     return True, abs_path, None, None
