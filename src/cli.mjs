@@ -359,6 +359,19 @@ function cmdTrust(args) {
     return;
   }
   if (args.flags.status || (!args.flags.for && !args.flags.tools && !args.flags.paths)) {
+    if (args.flags.json) {
+      const remaining = state && state.active ? Math.max(0, Math.round((state.until - Date.now()) / 1000)) : 0;
+      console.log(
+        JSON.stringify({
+          enabled: !!(state && state.active),
+          until: state && state.active ? state.until : null,
+          remaining_sec: remaining,
+          tools: state ? state.tools : [],
+          paths: state ? state.paths : [],
+        }),
+      );
+      return;
+    }
     if (!state || !state.active) {
       console.log('no active trust window (every side-effecting action needs approval)');
     } else {

@@ -47,6 +47,14 @@ const fake = http.createServer((req, res) => {
     if (method === 'getUpdates') {
       return reply({ ok: true, result: queue.splice(0, queue.length) });
     }
+    if (method === 'answerCallbackQuery') {
+      sent.push({ method, payload });
+      return reply({ ok: true, result: true });
+    }
+    if (method === 'editMessageText') {
+      sent.push({ method, payload });
+      return reply({ ok: true, result: { message_id: payload.message_id } });
+    }
     return reply({ ok: false, error_code: 404, description: `unknown method ${method}` });
   });
 });
@@ -158,6 +166,65 @@ await test('a pending approval is announced in Telegram', async () => {
   assert.equal(r.error, 'APPROVAL_PENDING');
   assert.equal(sent.length, before + 1, 'the user is told about the request');
   assert.match(sent.at(-1).text, /\/approve/);
+});
+
+await test('the approval message carries the inline buttons', async () => {
+  const before = sent.length;
+  saveConfig({ ...cfg, requireApproval: true, approvalWaitSec: 2 });
+  const r = await engine.call('bash', { command: 'echo hi' });
+  saveConfig(cfg);
+  assert.equal(r.ok, false);
+  const message = sent.at(-1);
+  const keyboard = message.reply_markup?.inline_keyboard;
+  assert.ok(keyboard, 'the message has a keyboard');
+  const labels = keyboard.flat().map((b) => b.text);
+  assert.deepEqual(labels, ['Approve once', 'Approve for 3h', 'Deny']);
+  assert.match(keyboard.flat()[0].callback_data, /^approve:/);
+  assert.match(keyboard.flat()[1].callback_data, /^approve3h:/);
+  assert.match(keyboard.flat()[2].callback_data, /^deny:/);
+});
+
+await test('a button press settles the request and trusts the tool for 3 hours', async () => {
+  const id = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
+  const dir = path.join(CONFIG_DIR, 'approvals');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, `${id}.json`),
+    JSON.stringify({
+      id,
+      tool: 'bash',
+      args: {},
+      status: 'pending',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600_000,
+      decidedAt: null,
+      decidedBy: null,
+    }),
+  );
+  queue.push({
+    update_id: 9,
+    callback_query: {
+      id: 'cb-1',
+      data: `approve3h:${id}`,
+      from: { username: 'me' },
+      message: { message_id: 77, chat: { id: 42 }, date: 1 },
+    },
+  });
+  const server = createDirectServer({ ...cfg, telegram: { ...cfg.telegram, poll: true } }, engine);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  let status = null;
+  for (let i = 0; i < 40 && status !== 'approved'; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    status = JSON.parse(fs.readFileSync(path.join(dir, `${id}.json`), 'utf8')).status;
+  }
+  await new Promise((r) => server.close(r));
+  assert.equal(status, 'approved', 'the button settles the request');
+  const trust = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'trust.json'), 'utf8'));
+  assert.deepEqual(trust.tools, ['bash'], 'the tool is trusted');
+  assert.ok(trust.until > Date.now() + 2 * 3600_000, 'the window lasts about 3 hours');
+  const edited = sent.filter((m) => m.method === 'editMessageText').at(-1);
+  assert.match(edited.payload.text, /Approved/);
+  assert.deepEqual(edited.payload.reply_markup.inline_keyboard, [], 'the buttons are gone');
 });
 
 await test('the user can approve a request from the chat', async () => {

@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.5
+
+### Added
+- Approvals in Telegram carry native buttons: Approve once, Approve for 3h, Deny. "Approve for 3h"
+  also opens a trust window for the same tool.
+- `arena-bridge trust --status --json` prints the trust window as JSON.
+- The native macOS app: a trust window status with the time left, an "Approve for 3 h" button,
+  local notifications when a request needs a decision, the command arguments in the work log,
+  a click-through to screenshots and accessibility trees, and a button that copies the agent prompt.
+
 ## 0.7.4
 
 ### Fixed

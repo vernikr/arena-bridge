@@ -71,6 +71,29 @@ struct Approval: Identifiable {
     }
 }
 
+/// A file the audit log kept as evidence.
+struct Artifact: Identifiable {
+    let id: String
+    let name: String
+    let kind: String
+    let path: String
+    let bytes: Int
+
+    var isImage: Bool { name.hasSuffix(".png") || name.hasSuffix(".jpg") || name.hasSuffix(".jpeg") }
+    var isTree: Bool { name.hasSuffix(".json") }
+
+    static func parse(_ raw: [String: Any]) -> Artifact? {
+        guard let name = raw["name"] as? String else { return nil }
+        return Artifact(
+            id: name,
+            name: name,
+            kind: raw["kind"] as? String ?? "",
+            path: raw["path"] as? String ?? "",
+            bytes: raw["bytes"] as? Int ?? 0
+        )
+    }
+}
+
 /// One line of the work log.
 struct LogEntry: Identifiable {
     let id: String
@@ -79,6 +102,8 @@ struct LogEntry: Identifiable {
     let status: String
     let duration: String
     let detail: String
+    let summary: String
+    let artifacts: [Artifact]
 
     static func parse(_ raw: [String: Any]) -> LogEntry? {
         guard let id = raw["id"] as? String else { return nil }
@@ -89,10 +114,38 @@ struct LogEntry: Identifiable {
         let ms = raw["duration_ms"] as? Int
         let duration = ms.map { "\($0) ms" } ?? ""
         var detail = raw["error"] as? String ?? ""
-        if detail.isEmpty, let artifacts = raw["artifacts"] as? [[String: Any]], !artifacts.isEmpty {
-            detail = artifacts.compactMap { $0["name"] as? String }.joined(separator: ", ")
+        let artifacts = (raw["artifacts"] as? [[String: Any]] ?? []).compactMap(Artifact.parse)
+        if detail.isEmpty, !artifacts.isEmpty {
+            detail = artifacts.map(\.name).joined(separator: ", ")
         }
-        return LogEntry(id: id, time: time, tool: tool, status: status, duration: duration, detail: detail)
+        let args = raw["args"] as? [String: Any] ?? [:]
+        return LogEntry(
+            id: id,
+            time: time,
+            tool: tool,
+            status: status,
+            duration: duration,
+            detail: detail,
+            summary: summarize(args),
+            artifacts: artifacts
+        )
+    }
+
+    /// A one line description of what the call actually asked for.
+    static func summarize(_ args: [String: Any]) -> String {
+        if let command = args["command"] as? String { return command }
+        let interesting = ["url", "path", "app", "window", "text", "selector", "query", "mode", "profile", "element"]
+        var parts: [String] = []
+        for key in interesting {
+            if let value = args[key] { parts.append("\(key)=\(value)") }
+        }
+        if parts.isEmpty {
+            for (key, value) in args.sorted(by: { $0.key < $1.key }) {
+                parts.append("\(key)=\(value)")
+            }
+        }
+        let joined = parts.joined(separator: "  ")
+        return joined.count > 160 ? String(joined.prefix(160)) + "…" : joined
     }
 }
 
@@ -136,6 +189,36 @@ struct Bridge {
         } catch {
             return (0, [:])
         }
+    }
+
+    /// One API call that returns plain text.
+    func callText(_ path: String) async -> (Int, String) {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.timeoutInterval = 12
+        if let token = config.token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return (code, String(data: data, encoding: .utf8) ?? "")
+        } catch {
+            return (0, "")
+        }
+    }
+
+    /// The trust window state, as the command line tool reports it.
+    static func trustStatus() -> (enabled: Bool, remainingSec: Int, tools: [String]) {
+        let result = run(["trust", "--status", "--json"])
+        guard result.code == 0,
+              let data = result.output.data(using: .utf8),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return (false, 0, []) }
+        return (
+            raw["enabled"] as? Bool ?? false,
+            raw["remaining_sec"] as? Int ?? 0,
+            raw["tools"] as? [String] ?? []
+        )
     }
 
     /// The path of the bridge command line tool.

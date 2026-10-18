@@ -3,11 +3,11 @@ import fsp from 'node:fs/promises';
 import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
-import { listApprovals, decide } from './approvals.mjs';
+import { listApprovals, decide, settle } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
 import { tailAudit, readArtifact, auditDir } from './audit.mjs';
-import { startPoller, parseCommand, sendTelegram } from './telegram.mjs';
+import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
 
 export function createDirectServer(cfg, engine) {
   const mcpCtx = {
@@ -37,6 +37,27 @@ export function createDirectServer(cfg, engine) {
     }
   };
 
+  const handleTelegramCallback = async (cb) => {
+    const current = loadConfig();
+    const [action, id] = String(cb.data || '').split(':');
+    if (!id || !['approve', 'approve3h', 'deny'].includes(action)) {
+      await answerCallback(current, cb.callback_id, 'Unknown action');
+      return;
+    }
+    const trustSec = action === 'approve3h' ? 3 * 3600 : 0;
+    const res = settle(id, action === 'deny' ? 'deny' : 'approve', 'telegram', { trustSec });
+    const tool = res.approval?.tool || 'the tool';
+    const text = !res.ok
+      ? `Cannot ${action}: ${res.error || 'unknown error'}`
+      : action === 'deny'
+        ? `Denied ${id}`
+        : trustSec
+          ? `Approved ${id} — ${tool} is trusted for the next 3 hours`
+          : `Approved ${id}`;
+    await answerCallback(current, cb.callback_id, res.ok ? 'Done' : 'Error');
+    await editMessageText(current, { chatId: cb.chat_id, messageId: cb.message_id, text });
+  };
+
   const server = http.createServer(async (req, res) => {
     let url;
     try {
@@ -52,7 +73,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.7.4',
+          version: '0.7.5',
           uptime_sec: Math.round(process.uptime()),
         });
       }
@@ -188,7 +209,7 @@ export function createDirectServer(cfg, engine) {
     }
   });
 
-  const poller = startPoller(cfg, { onMessage: handleTelegramMessage });
+  const poller = startPoller(cfg, { onMessage: handleTelegramMessage, onCallback: handleTelegramCallback });
   server.on('close', () => poller?.stop());
 
   return server;

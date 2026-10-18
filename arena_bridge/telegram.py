@@ -133,7 +133,43 @@ def _rate_ok(limit: int = RATE_LIMIT, window: float = RATE_WINDOW) -> bool:
     return True
 
 
-def send_telegram(cfg: dict, text: str = "", chat_id=None, title: str = "", silent: bool = False) -> dict:
+def approval_keyboard(approval_id: str):
+    """The inline keyboard under an approval message."""
+    return [
+        [
+            {"text": "Approve once", "callback_data": f"approve:{approval_id}"},
+            {"text": "Approve for 3h", "callback_data": f"approve3h:{approval_id}"},
+        ],
+        [{"text": "Deny", "callback_data": f"deny:{approval_id}"}],
+    ]
+
+
+def answer_callback(cfg: dict, callback_id: str, text: str = "") -> dict:
+    if not callback_id:
+        return {"ok": False, "error": "telegram_no_callback"}
+    payload = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = str(text)[:200]
+    return api_call(cfg, "answerCallbackQuery", payload)
+
+
+def edit_message_text(cfg: dict, chat_id, message_id, text: str) -> dict:
+    if not chat_id or not message_id:
+        return {"ok": False, "error": "telegram_no_message"}
+    return api_call(
+        cfg,
+        "editMessageText",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": str(text or ""),
+            "reply_markup": {"inline_keyboard": []},
+        },
+    )
+
+
+def send_telegram(cfg: dict, text: str = "", chat_id=None, title: str = "", silent: bool = False,
+                  buttons=None) -> dict:
     s = telegram_settings(cfg)
     if not s["enabled"]:
         return {
@@ -169,6 +205,8 @@ def send_telegram(cfg: dict, text: str = "", chat_id=None, title: str = "", sile
     payload = {"chat_id": target, "text": (title + "\n" + body) if title else body}
     if silent:
         payload["disable_notification"] = True
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": buttons}
     res = api_call(cfg, "sendMessage", payload)
     if not res["ok"]:
         return res
@@ -253,7 +291,7 @@ def parse_command(text) -> dict | None:
     return {"cmd": parts[0].lower(), "args": " ".join(parts[1:]).strip()}
 
 
-def start_poller(cfg: dict, on_message=None):
+def start_poller(cfg: dict, on_message=None, on_callback=None):
     """Listen for incoming messages in a background thread."""
     s = telegram_settings(cfg)
     if not s["enabled"] or not s["poll"]:
@@ -271,7 +309,11 @@ def start_poller(cfg: dict, on_message=None):
         while not stop.is_set():
             try:
                 cfg_now = current_config(cfg)
-                res = api_call(cfg_now, "getUpdates", {"offset": offset, "timeout": 20, "allowed_updates": ["message"]})
+                res = api_call(
+                    cfg_now,
+                    "getUpdates",
+                    {"offset": offset, "timeout": 20, "allowed_updates": ["message", "callback_query"]},
+                )
                 if not res.get("ok"):
                     state = _read_state()
                     state["lastError"] = res.get("reason") or res.get("error")
@@ -287,6 +329,25 @@ def start_poller(cfg: dict, on_message=None):
                     state = _read_state()
                     state["offset"] = offset
                     _write_state(state)
+                    cb = upd.get("callback_query") or {}
+                    if cb:
+                        item = {
+                            "id": upd.get("update_id"),
+                            "callback_id": cb.get("id"),
+                            "data": cb.get("data") or "",
+                            "chat_id": ((cb.get("message") or {}).get("chat") or {}).get("id"),
+                            "message_id": (cb.get("message") or {}).get("message_id"),
+                            "from": (cb.get("from") or {}).get("username")
+                            or (cb.get("from") or {}).get("first_name")
+                            or "unknown",
+                            "date": (cb.get("message") or {}).get("date"),
+                        }
+                        if on_callback:
+                            try:
+                                on_callback(item)
+                            except Exception:
+                                pass
+                        continue
                     msg = upd.get("message") or {}
                     if not msg:
                         continue

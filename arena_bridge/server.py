@@ -6,17 +6,17 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .audit import audit_dir, read_artifact, tail_audit
-from .approvals import decide, list_approvals
+from .approvals import decide, list_approvals, settle
 from .config import load_config
 from .mcp import handle_mcp_payload
 from .policy import check_path
 from .prompt import build_prompt
-from .telegram import parse_command, send_telegram, start_poller
+from .telegram import answer_callback, edit_message_text, parse_command, send_telegram, start_poller
 
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.4"
+        server_version = "arena-bridge/0.7.5"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -75,7 +75,7 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.4"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.5"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/tools":
@@ -270,11 +270,35 @@ def _telegram_message_handler(cfg):
     return handle
 
 
+def _telegram_callback_handler(cfg):
+    def handle(item):
+        data = str(item.get("data") or "")
+        action, _, approval_id = data.partition(":")
+        if action not in ("approve", "approve3h", "deny") or not approval_id:
+            answer_callback(cfg, item.get("callback_id"), "Unknown action")
+            return
+        trust_sec = 3 * 3600 if action == "approve3h" else 0
+        res = settle(approval_id, "deny" if action == "deny" else "approve", "telegram", trust_sec)
+        tool = (res.get("approval") or {}).get("tool") or "the tool"
+        if not res.get("ok"):
+            text = "Cannot {}: {}".format(action, res.get("error") or "unknown error")
+        elif action == "deny":
+            text = "Denied {}".format(approval_id)
+        elif trust_sec:
+            text = "Approved {} — {} is trusted for the next 3 hours".format(approval_id, tool)
+        else:
+            text = "Approved {}".format(approval_id)
+        answer_callback(cfg, item.get("callback_id"), "Done" if res.get("ok") else "Error")
+        edit_message_text(cfg, item.get("chat_id"), item.get("message_id"), text)
+
+    return handle
+
+
 def serve(cfg, engine):
     handler = make_handler(cfg, engine)
     server = ThreadingHTTPServer((cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8787))), handler)
     server.daemon_threads = True
-    poller = start_poller(cfg, _telegram_message_handler(cfg))
+    poller = start_poller(cfg, _telegram_message_handler(cfg), _telegram_callback_handler(cfg))
     if poller:
         server.telegram_poller = poller
     return server

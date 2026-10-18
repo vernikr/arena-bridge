@@ -29,6 +29,9 @@ struct ContentView: View {
             SetupView()
                 .environmentObject(model)
         }
+        .sheet(item: $model.shownArtifact) { artifact in
+            ArtifactView(artifact: artifact)
+        }
         .onReceive(Timer.publish(every: 6, on: .main, in: .common).autoconnect()) { _ in
             Task { await model.refresh() }
         }
@@ -173,8 +176,42 @@ struct ActionsCard: View {
                     Label("Setup…", systemImage: "gearshape")
                 }
 
+                Button {
+                    model.copyPrompt()
+                } label: {
+                    Label("Copy the agent prompt", systemImage: "doc.on.doc")
+                }
+
                 Spacer()
             }
+            Divider()
+            HStack(spacing: 10) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
+                Text("Trust window")
+                    .foregroundStyle(.secondary)
+                if model.trustEnabled {
+                    Text("active — \(model.trustRemainingText) left")
+                        .foregroundStyle(.green)
+                    if !model.trustTools.isEmpty {
+                        Text(model.trustTools.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Button("Close") {
+                        model.closeTrust()
+                    }
+                } else {
+                    Text("closed — every action needs your decision")
+                        .foregroundStyle(.secondary)
+                    Button("Open for 3 h") {
+                        model.openTrust(hours: 3)
+                    }
+                    .help("The agent may act without asking for the next 3 hours")
+                }
+                Spacer()
+            }
+            .font(.callout)
         }
     }
 }
@@ -205,10 +242,17 @@ struct ApprovalsCard: View {
                                     .foregroundStyle(.tertiary)
                             }
                             Spacer()
-                            Button("Approve") { model.decide(approval, approve: true) }
-                                .buttonStyle(.borderedProminent)
-                            Button("Deny") { model.decide(approval, approve: false) }
-                                .buttonStyle(.bordered)
+                            VStack(alignment: .trailing, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Button("Approve") { model.decide(approval, approve: true) }
+                                        .buttonStyle(.borderedProminent)
+                                    Button("Deny") { model.decide(approval, approve: false) }
+                                        .buttonStyle(.bordered)
+                                }
+                                Button("Approve for 3 h") { model.decide(approval, approve: true, trustHours: 3) }
+                                    .buttonStyle(.bordered)
+                                    .help("Approve and trust this tool for the next 3 hours")
+                            }
                         }
                         if approval.id != model.approvals.last?.id { Divider() }
                     }
@@ -252,7 +296,9 @@ struct LogCard: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 3) {
                         ForEach(model.visibleEntries) { entry in
-                            LogLine(entry: entry)
+                            LogLine(entry: entry) { artifact in
+                                model.shownArtifact = artifact
+                            }
                         }
                     }
                 }
@@ -266,24 +312,89 @@ struct LogCard: View {
 
 struct LogLine: View {
     let entry: LogEntry
+    let show: (Artifact) -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(entry.time.formatted(date: .omitted, time: .standard))
-                .foregroundStyle(.secondary)
-            Text(entry.tool)
-                .frame(width: 120, alignment: .leading)
-            Text(entry.status)
-                .foregroundStyle(entry.status == "ok" ? Color.green : Color.orange)
-                .frame(width: 90, alignment: .leading)
-            Text(entry.detail)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(entry.time.formatted(date: .omitted, time: .standard))
+                    .foregroundStyle(.secondary)
+                Text(entry.tool)
+                    .frame(width: 120, alignment: .leading)
+                Text(entry.status)
+                    .foregroundStyle(entry.status == "ok" ? Color.green : Color.orange)
+                    .frame(width: 90, alignment: .leading)
+                Text(entry.detail)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+                ForEach(entry.artifacts) { artifact in
+                    Button {
+                        show(artifact)
+                    } label: {
+                        Text(artifact.name)
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 10))
+                    .help("Open \(artifact.name)")
+                }
+            }
+            if !entry.summary.isEmpty {
+                Text(entry.summary)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.leading, 18)
+            }
         }
         .font(.system(size: 11, design: .monospaced))
         .padding(.horizontal, 6)
+    }
+}
+
+/// A screenshot or an accessibility tree, opened from the log.
+struct ArtifactView: View {
+    let artifact: Artifact
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var image: NSImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(artifact.name)
+                    .font(.headline)
+                Text(artifact.bytes > 0 ? "\(artifact.bytes) bytes" : "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text.isEmpty ? "The file is empty or cannot be read." : text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 820, height: 620)
+        .onAppear {
+            if artifact.isImage {
+                image = NSImage(contentsOfFile: artifact.path)
+            }
+            if let data = FileManager.default.contents(atPath: artifact.path) {
+                text = String(data: data, encoding: .utf8) ?? ""
+            }
+        }
     }
 }
 

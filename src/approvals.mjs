@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { APPROVALS_DIR, ensureDirs } from './config.mjs';
-import { sendTelegram } from './telegram.mjs';
+import { sendTelegram, approvalKeyboard } from './telegram.mjs';
+import { saveTrust } from './trust.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -41,6 +42,24 @@ export function decide(id, decision, by = 'cli') {
   rec.decidedBy = by;
   fs.writeFileSync(file, JSON.stringify(rec, null, 2), { mode: 0o600 });
   return { ok: true, approval: rec };
+}
+
+/**
+ * Settle a request and, when asked, open a trust window for the same tool.
+ */
+export function settle(id, decision, by = 'cli', { trustSec = 0 } = {}) {
+  const res = decide(id, decision, by);
+  if (res.ok && trustSec > 0) {
+    const tool = res.approval?.tool;
+    saveTrust({
+      enabled: true,
+      until: Date.now() + trustSec * 1000,
+      tools: tool ? [tool] : [],
+      paths: [],
+      createdAt: Date.now(),
+    });
+  }
+  return res;
 }
 
 function redact(args) {
@@ -82,7 +101,8 @@ export async function requestApproval(tool, args, cfg) {
       text:
         `Tool: ${tool}\n` +
         `id: ${id}\n` +
-        `Reply /approve ${id} or /deny ${id} in Telegram, or run: arena-bridge approve ${id}`,
+        `Use the buttons below, reply /approve ${id} or /deny ${id}, or run: arena-bridge approve ${id}`,
+      buttons: approvalKeyboard(id),
     }).catch(() => {});
   }
 

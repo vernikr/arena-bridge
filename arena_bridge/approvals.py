@@ -5,7 +5,8 @@ import uuid
 from pathlib import Path
 
 from .config import approvals_dir, ensure_dirs
-from .telegram import send_telegram
+from .telegram import approval_keyboard, send_telegram
+from .trust import save_trust
 
 _SECRET_RE = re.compile(r"token|secret|password|key", re.IGNORECASE)
 
@@ -43,6 +44,23 @@ def decide(approval_id: str, decision: str, by: str = "cli"):
     rec["decidedBy"] = by
     f.write_text(json.dumps(rec, indent=2))
     return {"ok": True, "approval": rec}
+
+
+def settle(approval_id: str, decision: str, by: str = "cli", trust_sec: int = 0) -> dict:
+    """Settle a request and, when asked, open a trust window for the same tool."""
+    res = decide(approval_id, decision, by)
+    if res.get("ok") and trust_sec > 0:
+        tool = (res.get("approval") or {}).get("tool")
+        save_trust(
+            {
+                "enabled": True,
+                "until": int(time.time() * 1000) + trust_sec * 1000,
+                "tools": [tool] if tool else [],
+                "paths": [],
+                "createdAt": int(time.time() * 1000),
+            }
+        )
+    return res
 
 
 def _redact(args: dict) -> dict:
@@ -83,8 +101,9 @@ def request_approval(tool: str, args: dict, cfg: dict) -> dict:
                 text=(
                     "Tool: {}\n"
                     "id: {}\n"
-                    "Reply /approve {} or /deny {} in Telegram, or run: arena-bridge approve {}"
+                    "Use the buttons below, reply /approve {} or /deny {}, or run: arena-bridge approve {}"
                 ).format(tool, approval_id, approval_id, approval_id, approval_id),
+                buttons=approval_keyboard(approval_id),
             )
         except Exception:
             pass

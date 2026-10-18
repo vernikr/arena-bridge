@@ -4,6 +4,10 @@ import SwiftUI
 struct ArenaBridgeApp: App {
     @StateObject private var model = AppModel()
 
+    init() {
+        Notifier.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,7 +41,10 @@ class FakeBot(BaseHTTPRequestHandler):
             SENT.append(payload)
             body = {"ok": True, "result": {"message_id": len(SENT), "chat": {"id": int(payload.get("chat_id", 0))}}}
         elif method == "getUpdates":
-            body = {"ok": True, "result": QUEUE.pop(0) if QUEUE else []}
+            body = {"ok": True, "result": [QUEUE.pop(0)] if QUEUE else []}
+        elif method in ("answerCallbackQuery", "editMessageText"):
+            SENT.append({"method": method, "payload": payload})
+            body = {"ok": True, "result": True}
         else:
             body = {"ok": False, "error_code": 404, "description": "unknown method"}
         raw = json.dumps(body).encode()
@@ -183,6 +187,89 @@ def _():
     assert r["error"] == "APPROVAL_PENDING"
     assert len(SENT) == before + 1, "the user is told about the request"
     assert "/approve" in SENT[-1]["text"]
+
+
+@test("the approval message carries the inline buttons")
+def _():
+    before = len(SENT)
+    gate = Engine({**cfg, "requireApproval": True, "approvalWaitSec": 2}, base=str(WORK))
+    r = gate.call("bash", {"command": "echo hi"})
+    assert r["ok"] is False
+    keyboard = (SENT[-1].get("reply_markup") or {}).get("inline_keyboard")
+    assert keyboard, "the message has a keyboard"
+    labels = [b["text"] for row in keyboard for b in row]
+    assert labels == ["Approve once", "Approve for 3h", "Deny"], labels
+    assert keyboard[0][0]["callback_data"].startswith("approve:")
+    assert keyboard[0][1]["callback_data"].startswith("approve3h:")
+    assert keyboard[1][0]["callback_data"].startswith("deny:")
+
+
+def _callback_handler():
+    from arena_bridge.approvals import settle
+    from arena_bridge.telegram import answer_callback, edit_message_text
+
+    def handle(item):
+        action, _, aid = str(item.get("data") or "").partition(":")
+        if action not in ("approve", "approve3h", "deny") or not aid:
+            return
+        trust_sec = 3 * 3600 if action == "approve3h" else 0
+        res = settle(aid, "deny" if action == "deny" else "approve", "telegram", trust_sec)
+        text = "Approved {}".format(aid) if res.get("ok") else "Cannot {}".format(action)
+        answer_callback(cfg, item.get("callback_id"), "Done")
+        edit_message_text(cfg, item.get("chat_id"), item.get("message_id"), text)
+
+    return handle
+
+
+@test("a button press settles the request and trusts the tool for 3 hours")
+def _():
+    from arena_bridge.approvals import list_approvals
+
+    aid = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+    path = HOME / "approvals" / (aid + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "id": aid,
+                "tool": "bash",
+                "args": {},
+                "status": "pending",
+                "createdAt": int(time.time() * 1000),
+                "expiresAt": int(time.time() * 1000) + 600000,
+                "decidedAt": None,
+                "decidedBy": None,
+            }
+        )
+    )
+    QUEUE.append(
+        {
+            "update_id": 9,
+            "callback_query": {
+                "id": "cb-1",
+                "data": "approve3h:" + aid,
+                "from": {"username": "me"},
+                "message": {"message_id": 77, "chat": {"id": 42}, "date": 1},
+            },
+        }
+    )
+    polling = {**cfg, "telegram": {**cfg["telegram"], "poll": True}}
+    poller = tg.start_poller(polling, None, _callback_handler())
+    for _ in range(40):
+        pending = [a for a in list_approvals() if a["id"] == aid]
+        if pending and pending[0]["status"] == "approved":
+            break
+        time.sleep(0.25)
+    if poller:
+        poller["stop"]()
+    rec = json.loads(path.read_text())
+    assert rec["status"] == "approved", "the button settles the request"
+    trust = json.loads((HOME / "trust.json").read_text())
+    assert trust["tools"] == ["bash"], trust
+    assert trust["until"] > int(time.time() * 1000) + 2 * 3600 * 1000
+    edited = [m for m in SENT if m.get("method") == "editMessageText"][-1]
+    assert "Approved" in edited["payload"]["text"]
+    assert edited["payload"]["reply_markup"]["inline_keyboard"] == []
 
 
 @test("the audit log masks credentials")

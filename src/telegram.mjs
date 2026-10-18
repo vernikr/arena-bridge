@@ -111,9 +111,22 @@ export function rateOk(limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS) {
 }
 
 /**
+ * The inline keyboard under an approval message: approve once, approve for 3 hours, deny.
+ */
+export function approvalKeyboard(id) {
+  return [
+    [
+      { text: 'Approve once', callback_data: `approve:${id}` },
+      { text: 'Approve for 3h', callback_data: `approve3h:${id}` },
+    ],
+    [{ text: 'Deny', callback_data: `deny:${id}` }],
+  ];
+}
+
+/**
  * Send a text message to one of the allowed chats.
  */
-export async function sendTelegram(cfg, { text, chatId, title, silent } = {}) {
+export async function sendTelegram(cfg, { text, chatId, title, silent, buttons } = {}) {
   const s = telegramSettings(cfg);
   if (!s.enabled) {
     return {
@@ -151,17 +164,16 @@ export async function sendTelegram(cfg, { text, chatId, title, silent } = {}) {
     };
   }
   const text_ = title ? `${title}\n${body}` : body;
-  let res = await apiCall(cfg, 'sendMessage', {
+  const markup = buttons && buttons.length ? { inline_keyboard: buttons } : undefined;
+  const payload = {
     chat_id: target,
     text: text_,
     disable_notification: !!silent,
-  });
+    ...(markup ? { reply_markup: markup } : {}),
+  };
+  let res = await apiCall(cfg, 'sendMessage', payload);
   if (!res.ok && /parse entities|Markdown/i.test(res.reason || '')) {
-    res = await apiCall(cfg, 'sendMessage', {
-      chat_id: target,
-      text: text_,
-      disable_notification: !!silent,
-    });
+    res = await apiCall(cfg, 'sendMessage', payload);
   }
   if (!res.ok) return res;
   return {
@@ -170,6 +182,29 @@ export async function sendTelegram(cfg, { text, chatId, title, silent } = {}) {
     message_id: res.result?.message_id ?? null,
     sent_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Acknowledge a button press so Telegram stops showing the spinner.
+ */
+export async function answerCallback(cfg, callbackId, text = '') {
+  if (!callbackId) return { ok: false, error: 'telegram_no_callback' };
+  const payload = { callback_query_id: callbackId };
+  if (text) payload.text = String(text).slice(0, 200);
+  return apiCall(cfg, 'answerCallbackQuery', payload);
+}
+
+/**
+ * Replace the text of a message and drop its keyboard.
+ */
+export async function editMessageText(cfg, { chatId, messageId, text } = {}) {
+  if (!chatId || !messageId) return { ok: false, error: 'telegram_no_message' };
+  return apiCall(cfg, 'editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text: String(text ?? ''),
+    reply_markup: { inline_keyboard: [] },
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -258,7 +293,7 @@ export function parseCommand(text) {
  * Poll the bot for incoming messages and hand them to the callback.
  * Returns a handle with stop().
  */
-export function startPoller(cfg, { onMessage } = {}) {
+export function startPoller(cfg, { onMessage, onCallback } = {}) {
   const s = telegramSettings(cfg);
   if (!s.enabled || !s.poll) return null;
   let stopped = false;
@@ -282,7 +317,7 @@ export function startPoller(cfg, { onMessage } = {}) {
         const res = await apiCall(fresh(), 'getUpdates', {
           offset,
           timeout: 20,
-          allowed_updates: ['message'],
+          allowed_updates: ['message', 'callback_query'],
         });
         if (!res.ok) {
           const state = readState();
@@ -301,6 +336,26 @@ export function startPoller(cfg, { onMessage } = {}) {
           const state = readState();
           state.offset = offset;
           writeState(state);
+          const cb = upd.callback_query;
+          if (cb) {
+            const item = {
+              id: upd.update_id,
+              callback_id: cb.id,
+              data: cb.data || '',
+              chat_id: cb.message?.chat?.id ?? null,
+              message_id: cb.message?.message_id ?? null,
+              from: cb.from?.username || cb.from?.first_name || 'unknown',
+              date: cb.message?.date || null,
+            };
+            if (onCallback) {
+              try {
+                await onCallback(item);
+              } catch {
+                /* the callback must not kill the loop */
+              }
+            }
+            continue;
+          }
           const msg = upd.message;
           if (!msg) continue;
           const item = {

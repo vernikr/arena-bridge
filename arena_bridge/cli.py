@@ -267,6 +267,20 @@ def cmd_trust(args):
         print("✓ trust window cleared — every side-effecting action needs approval again")
         return
     if args.status or not (args.for_ or args.tools or args.paths):
+        if args.json:
+            remaining = int(max(0, (state.get("until") - int(time.time() * 1000)) / 1000)) if state.get("active") else 0
+            print(
+                json.dumps(
+                    {
+                        "enabled": bool(state.get("active")),
+                        "until": state.get("until") if state.get("active") else None,
+                        "remaining_sec": remaining,
+                        "tools": state.get("tools") or [],
+                        "paths": state.get("paths") or [],
+                    }
+                )
+            )
+            return
         if not state.get("active"):
             print("no active trust window (every side-effecting action needs approval)")
         else:
@@ -643,6 +657,7 @@ def build_parser():
     trust.add_argument("--paths", help="comma separated list of paths to trust (bash is not covered)")
     trust.add_argument("--off", action="store_true", help="close the trust window")
     trust.add_argument("--status", action="store_true", help="show the current trust window")
+    trust.add_argument("--json", action="store_true", help="print the trust window as JSON")
     trust.set_defaults(func=cmd_trust)
 
     rotate = sub.add_parser("rotate", help="generate a new agent token")
