@@ -436,7 +436,15 @@ def mac_tools(cfg=None):
         flags = _target_flags(args)
         on = ["--on", str(args["on"])] if args.get("on") else []
         variants = [
-            ["scroll", "--direction", direction, "--ticks", str(args.get("ticks") or 3), *on, *flags],
+            [
+                "scroll",
+                "--direction",
+                direction,
+                "--amount",
+                str(args.get("amount") if args.get("amount") is not None else (args.get("ticks") or 3)),
+                *on,
+                *flags,
+            ],
             ["scroll", "--direction", direction, *on, *flags],
         ]
         return _finish(_run_variants(bin_path, variants, timeout=30), "scroll")
@@ -794,6 +802,7 @@ def mac_tools(cfg=None):
                 {
                     "direction": {"type": "string", "description": "up or down"},
                     "ticks": {"type": "number", "description": "how many steps, default 3"},
+                    "amount": {"type": "number", "description": "how many steps to scroll (same as ticks)"},
                     "on": {"type": "string", "description": "element id from mac_see"},
                     "app": {"type": "string"},
                     "window_id": {"type": "string"},

@@ -423,6 +423,7 @@ export function macTools(cfg = {}) {
         {
           direction: { type: 'string', description: 'up or down' },
           ticks: { type: 'number', description: 'how many steps, default 3' },
+          amount: { type: 'number', description: 'how many steps to scroll (same as ticks)' },
           on: { type: 'string', description: 'element id from mac_see' },
           app: { type: 'string' },
           window_id: { type: 'string' },
@@ -439,7 +440,7 @@ export function macTools(cfg = {}) {
         const res = await runVariants(
           p.bin,
           [
-            ['scroll', '--direction', dir, '--ticks', String(args.ticks || 3), ...on, ...flags],
+            ['scroll', '--direction', dir, '--amount', String(args.amount ?? args.ticks ?? 3), ...on, ...flags],
             ['scroll', '--direction', dir, ...on, ...flags],
           ],
           { timeout: 30 },

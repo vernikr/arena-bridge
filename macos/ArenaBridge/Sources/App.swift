@@ -11,7 +11,6 @@ struct ArenaBridgeApp: App {
                 .frame(minWidth: 600, minHeight: 680)
                 .task { await model.refresh() }
         }
-        .windowTitle("Arena Bridge")
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Bridge") {
@@ -20,8 +19,8 @@ struct ArenaBridgeApp: App {
                 Button("Setup…") { model.showSetup = true }
                     .keyboardShortcut(",", modifiers: .command)
                 Divider()
-                Button("Start") { Task { await model.start() } }
-                Button("Stop") { Task { await model.stop() } }
+                Button("Start") { model.start() }
+                Button("Stop") { model.stop() }
             }
         }
     }

@@ -129,7 +129,7 @@ struct Bridge {
             let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             var payload: [String: Any] = [:]
-            if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 payload = json
             }
             return (code, payload)

@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.3
+
+### Fixed
+- `mac_scroll` speaks the current Peekaboo grammar: the removed `--ticks` option was replaced
+  with `--amount`, and the tool also accepts `amount` as an argument.
+
 ## 0.7.2
 
 ### Fixed

@@ -29,6 +29,9 @@ struct ContentView: View {
             SetupView()
                 .environmentObject(model)
         }
+        .onReceive(Timer.publish(every: 6, on: .main, in: .common).autoconnect()) { _ in
+            Task { await model.refresh() }
+        }
     }
 }
 
@@ -253,7 +256,7 @@ struct LogCard: View {
                         }
                     }
                 }
-                .frame(height: 190)
+                .frame(height: 150)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }

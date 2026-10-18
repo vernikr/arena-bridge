@@ -65,7 +65,7 @@ final class AppModel: ObservableObject {
             .compactMap(Approval.parse)
             .sorted { $0.created > $1.created }
 
-        let audit = await bridge.call("audit", query: ["limit": "200"])
+        let audit = await bridge.call("audit", query: ["limit": "120"])
         entries = Array(((audit.1["entries"] as? [[String: Any]]) ?? []).compactMap(LogEntry.parse).reversed())
     }
 
@@ -107,8 +107,10 @@ final class AppModel: ObservableObject {
     func saveLog() {
         let panel = NSSavePanel()
         panel.title = "Save the work log"
-        panel.nameFieldStringValue = "arena-bridge-log-\(DateFormatter().string(from: Date(), pattern: "yyyy-MM-dd-HHmm")).txt"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd-HHmm"
+        panel.nameFieldStringValue = "arena-bridge-log-\(stamp.string(from: Date())).txt"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         var text = "Arena Bridge — work log\n"
@@ -119,8 +121,8 @@ final class AppModel: ObservableObject {
             text += line + "\n"
         }
         do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            notice = "Saved: \(url.path)"
+            try text.write(to: destination, atomically: true, encoding: .utf8)
+            notice = "Saved: \(destination.path)"
             failure = nil
         } catch {
             failure = error.localizedDescription
