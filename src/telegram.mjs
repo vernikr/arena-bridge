@@ -78,7 +78,7 @@ export async function apiCall(cfg, method, payload = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(40_000),
+      signal: AbortSignal.timeout(90_000),
     });
     data = await res.json().catch(() => null);
   } catch (e) {
@@ -281,7 +281,7 @@ export function startPoller(cfg, { onMessage } = {}) {
       try {
         const res = await apiCall(fresh(), 'getUpdates', {
           offset,
-          timeout: 25,
+          timeout: 20,
           allowed_updates: ['message'],
         });
         if (!res.ok) {

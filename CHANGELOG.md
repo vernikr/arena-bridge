@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.1
+
+### Fixed
+- The Telegram listener no longer gives up on a long poll when the network is slow: the request
+  ceiling is now generous enough for the 20-second long poll to answer.
+
 ## 0.7.0
 
 ### Added

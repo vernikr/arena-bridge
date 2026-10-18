@@ -91,7 +91,7 @@ def api_call(cfg: dict, method: str, payload: dict | None = None) -> dict:
     body = json.dumps(payload or {}).encode()
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=40) as res:
+        with urllib.request.urlopen(req, timeout=90) as res:
             data = json.loads(res.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -271,7 +271,7 @@ def start_poller(cfg: dict, on_message=None):
         while not stop.is_set():
             try:
                 cfg_now = current_config(cfg)
-                res = api_call(cfg_now, "getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": ["message"]})
+                res = api_call(cfg_now, "getUpdates", {"offset": offset, "timeout": 20, "allowed_updates": ["message"]})
                 if not res.get("ok"):
                     state = _read_state()
                     state["lastError"] = res.get("reason") or res.get("error")
