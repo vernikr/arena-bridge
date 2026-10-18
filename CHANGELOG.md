@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.12
+
+### Fixed
+- The Python package now imports on Python 3.9, matching the declared minimum version.
+- CI checks the Python implementation on Python 3.9 and 3.11.
+
 ## 0.7.11
 
 ### Changed

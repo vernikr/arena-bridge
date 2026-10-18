@@ -1,5 +1,7 @@
 """Telegram link: the bridge can message the user and read what they send back."""
 
+from __future__ import annotations
+
 import json
 import os
 import re

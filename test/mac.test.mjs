@@ -10,12 +10,12 @@ import assert from 'node:assert/strict';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
-const { Engine } = await import(path.join(root, 'src', 'engine.mjs'));
-const { loadConfig, saveConfig, CONFIG_DIR, DEFAULTS } = await import(path.join(root, 'src', 'config.mjs'));
-
 const HOME = path.join(os.tmpdir(), `ab-mac-${process.pid}`);
 process.env.ARENA_BRIDGE_HOME = HOME;
 fs.mkdirSync(HOME, { recursive: true });
+
+const { Engine } = await import(path.join(root, 'src', 'engine.mjs'));
+const { loadConfig, saveConfig, DEFAULTS } = await import(path.join(root, 'src', 'config.mjs'));
 
 const WORK = path.join(HOME, 'work');
 fs.mkdirSync(WORK, { recursive: true });
