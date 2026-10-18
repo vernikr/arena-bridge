@@ -14,7 +14,11 @@ for arg in "$@"; do
 done
 
 case "$1" in
-  see | image)
+  image)
+    echo '{"success":false,"data":null,"error":{"code":"INVALID_ARGUMENT","message":"Command peekaboo image was removed in v4.","hint":"Use peekaboo see --no-elements."}}'
+    exit 1
+    ;;
+  see)
     if [ -n "$FAKE_PEEKABOO_NO_PERMS" ]; then
       echo '{"success":false,"data":null,"error":{"code":"PERMISSION_ERROR_SCREEN_RECORDING","message":"Screen Recording permission is required"}}'
       exit 1

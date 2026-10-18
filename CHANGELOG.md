@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.10
+
+### Fixed
+- The screenshot fallback no longer relies on a Peekaboo command that was removed in v4, so the
+  bridge can still grab a picture when the accessibility tree is empty.
+- The permission message now names the exact place to fix it (System Settings → Privacy &
+  Security → Screen Recording / Accessibility → "Peekaboo Bridge") and explains that the local
+  Peekaboo runtime inherits the grant from whatever starts the bridge.
+
 ## 0.6.9
 
 ### Fixed

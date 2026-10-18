@@ -201,7 +201,8 @@ export function macTools(cfg = {}) {
       [...base, '--json', '--path', outPath],
       [...base, '--path', outPath, '--json'],
       [...base, '--no-remote', '--json', '--path', outPath],
-      ['image', '--mode', mode, ...targetFlags(args), '--json', '--path', outPath],
+      ['see', '--mode', mode, ...targetFlags(args), '--no-elements', '--json', '--path', outPath],
+      ['see', '--mode', mode, ...targetFlags(args), '--no-elements', '--no-remote', '--json', '--path', outPath],
     ];
   };
 
@@ -893,9 +894,10 @@ function isPermissionError(json, res) {
 }
 
 const PERMISSION_HINT =
-  'The Peekaboo host that captures the screen lost its macOS permissions (this happens after a Peekaboo update). ' +
-  'Re-grant Screen Recording and Accessibility to "Peekaboo Bridge" in System Settings → Privacy & Security, ' +
-  'or let the bridge use the local runtime (--no-remote). Run mac_permissions for the current state.';
+  'macOS did not let the bridge capture the screen. This usually happens right after a Peekaboo update: ' +
+  'open System Settings → Privacy & Security → Screen Recording (and Accessibility), turn on ' +
+  '"Peekaboo Bridge" and quit and reopen Peekaboo. The bridge also falls back to the local Peekaboo ' +
+  'runtime, which needs the same grant for the app that starts the bridge (for example Terminal).';
 
 function menuFlags(args) {
   const f = [];
