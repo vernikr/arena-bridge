@@ -5,6 +5,7 @@ import os
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .audit import audit_dir, read_artifact, tail_audit
 from .approvals import decide, list_approvals
 from .config import load_config
 from .mcp import handle_mcp_payload
@@ -14,7 +15,7 @@ from .prompt import build_prompt
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.6.7"
+        server_version = "arena-bridge/0.6.8"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -70,7 +71,7 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.6.7"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.6.8"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/tools":
@@ -92,6 +93,28 @@ def make_handler(cfg, engine):
                         "maxOutputBytes": cfg.get("maxOutputBytes"),
                     },
                 )
+            if path == "/audit":
+                limit = min(200, int(self._query_one(query, "limit") or 30))
+                return self._send(200, {"ok": True, "entries": tail_audit(limit), "artifacts_dir": str(audit_dir())})
+            if path == "/audit/artifact":
+                entry = self._query_one(query, "entry")
+                name = self._query_one(query, "file")
+                if not entry or not name:
+                    return self._send(400, {"ok": False, "error": "entry and file query parameters are required"})
+                art = read_artifact(entry, name)
+                if not art:
+                    return self._send(404, {"ok": False, "error": "artifact_not_found"})
+                lower = art["file"].lower()
+                ctype = (
+                    "image/png"
+                    if lower.endswith(".png")
+                    else "image/jpeg"
+                    if lower.endswith((".jpg", ".jpeg"))
+                    else "application/json; charset=utf-8"
+                    if lower.endswith(".json")
+                    else "text/plain; charset=utf-8"
+                )
+                return self._send(200, art["data"], content_type=ctype)
             if path == "/approvals":
                 return self._send(200, {"ok": True, "approvals": list_approvals()})
             if path == "/files":

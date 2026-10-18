@@ -652,6 +652,9 @@ export class BrowserManager {
           }
           const { data } = await session.cdp.send('Page.captureScreenshot', params, tab.sessionId);
           const b64 = String(data || '');
+          if (ctx.artifact && b64) {
+            ctx.artifact('screenshot', 'page.png', Buffer.from(b64, 'base64'), { source: 'chrome_screenshot' });
+          }
           if (args.path) {
             const chk = checkPath(args.path, ctx.cfg, ctx.base, { write: true });
             if (!chk.ok) return { ok: false, error: chk.error, reason: chk.reason };

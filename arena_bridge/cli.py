@@ -454,10 +454,29 @@ def cmd_rotate(args):
 
 
 def cmd_audit(args):
+    action = getattr(args, "action", None)
+    if action == "dir":
+        print(audit_dir())
+        return
+    if action == "prune":
+        res = prune_artifacts(getattr(args, "days", 14) or 14)
+        print(f"removed {res['removed']} artifact folder(s), {res['freed_bytes']} bytes")
+        return
+    if action == "artifacts":
+        for item in list_artifacts():
+            files = ", ".join(f"{f['name']} ({f['bytes']} B)" for f in item["files"])
+            print(f"{item['entry']}  {files}")
+        return
+    if action and len(action) > 6:
+        rec = next((e for e in tail_audit(500) if e.get("id") == action), None)
+        print(json.dumps(rec, indent=2, default=str) if rec else f"no entry with id {action}")
+        return
     for rec in tail_audit(args.n):
+        arts = " ".join(a.get("name", "") for a in (rec.get("artifacts") or []))
         print(
             f"{rec.get('ts')} {str(rec.get('tool')):18} {str(rec.get('status')):16} "
-            f"{rec.get('duration_ms', '')}{' ' + str(rec.get('error')) if rec.get('error') else ''}"
+            f"{rec.get('duration_ms', '')}{'  ' + arts if arts else ''}"
+            f"{' ' + str(rec.get('error')) if rec.get('error') else ''}"
         )
 
 
@@ -558,7 +577,9 @@ def build_parser():
     rotate.set_defaults(func=cmd_rotate)
 
     audit = sub.add_parser("audit", help="show the audit log")
+    audit.add_argument("action", nargs="?", default="list", help="list, dir, artifacts, prune or an entry id")
     audit.add_argument("-n", type=int, default=30)
+    audit.add_argument("--days", type=int, default=14)
     audit.set_defaults(func=cmd_audit)
 
     doctor = sub.add_parser("doctor", help="check the installation")

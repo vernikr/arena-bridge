@@ -308,6 +308,20 @@ def mac_tools(cfg=None):
                     "reason": (res["stderr"] or "").strip()[:800],
                     "hint": "Grant Screen Recording permission to the app that runs the bridge.",
                 }
+        artifact = getattr(ctx, "artifact", None)
+        if artifact:
+            try:
+                if saved:
+                    artifact("screenshot", "screen.png", Path(out_path).read_bytes(), {"source": "mac_see"})
+                if data is not None:
+                    artifact(
+                        "ax-tree",
+                        "ax-tree.json",
+                        json.dumps(data, indent=2, default=str),
+                        {"source": "mac_see", "elements": len(elements)},
+                    )
+            except Exception:
+                pass
         out = {
             "ok": True,
             "path": out_path,
@@ -494,6 +508,14 @@ def mac_tools(cfg=None):
             return _not_found()
         seen = search_see(args)
         matches = [e for e in seen["elements"] if match_element(e, args)][: int(args.get("limit") or 25)]
+        artifact = getattr(ctx, "artifact", None)
+        if artifact and seen.get("data") is not None:
+            artifact(
+                "ax-tree",
+                "ax-tree.json",
+                json.dumps(seen["data"], indent=2, default=str),
+                {"source": "mac_element", "elements": len(seen["elements"]), "query": args.get("name") or args.get("role")},
+            )
         return {
             "ok": True,
             "matches": matches,
@@ -528,6 +550,9 @@ def mac_tools(cfg=None):
             timeout=30,
         )
         data = _parse_json(res["stdout"])
+        artifact = getattr(ctx, "artifact", None)
+        if artifact and data is not None:
+            artifact("menu-tree", "menu-tree.json", json.dumps(data, indent=2, default=str), {"source": "mac_menu"})
         payload = data
         if isinstance(data, dict):
             payload = (
@@ -580,6 +605,9 @@ def mac_tools(cfg=None):
             timeout=30,
         )
         data = _parse_json(res["stdout"])
+        artifact = getattr(ctx, "artifact", None)
+        if artifact and data is not None:
+            artifact("spaces", "spaces.json", json.dumps(data, indent=2, default=str), {"source": "mac_spaces"})
         payload = data
         if isinstance(data, dict):
             payload = data.get("spaces") or data.get("data", {}).get("spaces") or data
@@ -608,8 +636,10 @@ def mac_tools(cfg=None):
         limit = min(120, max(1, int(args.get("timeout") or 20)))
         deadline = time.time() + limit
         scanned = 0
+        last = None
         while time.time() < deadline:
             seen = search_see(args)
+            last = seen
             scanned = len(seen["elements"])
             hit = next((e for e in seen["elements"] if match_element(e, args)), None)
             if args.get("disappear"):
@@ -618,6 +648,14 @@ def mac_tools(cfg=None):
             elif hit is not None:
                 return {"ok": True, "found": True, "element": hit, "scanned": scanned}
             time.sleep(2)
+        artifact = getattr(ctx, "artifact", None)
+        if artifact and last and last.get("data") is not None:
+            artifact(
+                "ax-tree",
+                "ax-tree.json",
+                json.dumps(last["data"], indent=2, default=str),
+                {"source": "mac_wait", "elements": scanned},
+            )
         return {
             "ok": False,
             "found": False,

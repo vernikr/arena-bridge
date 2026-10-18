@@ -235,6 +235,22 @@ await test('MCP initialize / tools/list / tools/call work', async () => {
   assert.ok(call.result.content[0].text.includes('hostname'));
 });
 
+await test('the log and its artifacts are served over HTTP', async () => {
+  const r = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'list_dir', args: { path: '.' } }),
+  });
+  assert.equal((await r.json()).ok, true);
+  const log = await fetch(`${base}/audit?limit=5`, { headers: auth });
+  const j = await log.json();
+  assert.equal(j.ok, true);
+  assert.ok(j.entries.length >= 1, 'the log has entries');
+  assert.ok(j.entries[0].id, 'entries carry an id');
+  const bad = await fetch(`${base}/audit/artifact?entry=nope&file=x.png`, { headers: auth });
+  assert.equal(bad.status, 404);
+});
+
 console.log('\n▸ approval gate');
 
 const cfgApproval = { ...loaded, requireApproval: true, approvalWaitSec: 10 };

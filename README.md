@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-115%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-120%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -95,6 +95,7 @@ arena-bridge setup --root ~/projects
 | Группа | Инструменты | Что это |
 | --- | --- | --- |
 | Файлы | `list_dir` `read_file` `write_file` `edit_file` `delete_path` `search_files` `file_get` `file_put` | работа с файлами в разрешённых папках |
+| Журнал | `audit_log` `audit_artifact` | что делалось, какие снимки и деревья Accessibility сохранены |
 | Шелл | `bash` `sysinfo` | команды и сведения о машине |
 | Процессы | `start_process` `read_process_output` `write_process` `kill_process` | фоновые дев-серверы |
 | Chrome | `chrome_launch` `chrome_profiles` `chrome_attach` `chrome_open` `chrome_navigate` `chrome_snapshot` `chrome_click` `chrome_type` `chrome_press` `chrome_screenshot` `chrome_evaluate` `chrome_tabs` `chrome_stop` | браузер через CDP |
@@ -196,6 +197,25 @@ macOS отдаёт приложениям два разных слоя: карт
 даётся один раз в **Системные настройки → Конфиденциальность и безопасность → Универсальный
 доступ** (для терминала, из которого запущен мост). `mac_permissions` показывает текущее
 состояние разрешений.
+
+---
+
+## Журнал работы с артефактами
+
+Каждый вызов записывается: аргументы, результат, время выполнения. Рядом с журналом хранятся
+**доказательства** — снимки экрана, деревья Accessibility, деревья меню, список рабочих столов.
+
+```bash
+arena-bridge audit                 # последние вызовы
+arena-bridge audit artifacts       # сохранённые файлы (скриншоты, деревья)
+arena-bridge audit <id>            # одна запись целиком
+arena-bridge audit prune           # удалить старые артефакты (по умолчанию старше 14 дней)
+arena-bridge audit dir             # где всё это лежит
+```
+
+Агенту доступно то же самое: `audit_log` (вызовы) и `audit_artifact` (сам артефакт — PNG в base64
+или дерево Accessibility в JSON), а также `GET /audit` и `GET /audit/artifact?entry=<id>&file=<name>`.
+Полезно, чтобы оглянуться назад: что было на экране и что находилось в интерфейсе.
 
 ---
 
@@ -309,6 +329,8 @@ GET  /health          liveness (без авторизации)
 GET  /tools           каталог инструментов с JSON-схемами
 GET  /prompt          этот промпт для агента
 GET  /approvals       ожидающие подтверждения
+GET  /audit           журнал работы с артефактами
+GET  /audit/artifact  сохранённый артефакт (entry=, file=)
 POST /call            {"tool":"bash","args":{...}}
 POST /exec            {"command":"...","cwd":"...","timeout_sec":120}
 GET|PUT|DELETE /files?path=/abs/path

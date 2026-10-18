@@ -187,6 +187,31 @@ await test('mac_wait can wait for something to disappear', async () => {
   assert.equal(r.gone, true);
 });
 
+await test('a screenshot and the accessibility tree are kept as artifacts', async () => {
+  const r = await engine.call('mac_see', { path: path.join(WORK, 'shot2.png') });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const log = await engine.call('audit_log', { tool: 'mac_see', limit: 10 });
+  const entry = log.entries.find((e) => e.tool === 'mac_see' && (e.artifacts || []).length);
+  assert.ok(entry, 'the log entry carries artifacts');
+  const names = entry.artifacts.map((a) => a.name);
+  assert.ok(names.includes('screen.png'), names.join(','));
+  assert.ok(names.includes('ax-tree.json'), names.join(','));
+  const tree = await engine.call('audit_artifact', { entry: entry.id, file: 'ax-tree.json' });
+  assert.equal(tree.ok, true, JSON.stringify(tree));
+  assert.ok(tree.content.data.ui_elements, 'the tree is readable');
+  const shot = await engine.call('audit_artifact', { entry: entry.id, file: 'screen.png' });
+  assert.equal(shot.kind, 'image');
+  assert.ok(shot.image_base64.length > 0);
+});
+
+await test('the artifact of a call is listed with its size', async () => {
+  const log = await engine.call('audit_log', { limit: 20 });
+  assert.equal(log.ok, true);
+  const withArtifacts = log.entries.filter((e) => (e.artifacts || []).length);
+  assert.ok(withArtifacts.length >= 1, 'at least one entry has artifacts');
+  assert.ok(withArtifacts[0].artifacts[0].bytes > 0);
+});
+
 await test('mac_permissions explains what macOS still asks for', async () => {
   const r = await engine.call('mac_permissions', {});
   assert.equal(r.ok, true);

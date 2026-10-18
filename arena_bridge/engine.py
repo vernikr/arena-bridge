@@ -9,11 +9,13 @@ import signal
 import subprocess
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .approvals import request_approval
 from .mac import mac_tools
-from .audit import audit
+from .audit import audit, tail_audit, save_artifact, read_artifact, audit_dir
 from .browser import BrowserManager
 from .config import config_path, load_config
 from .policy import check_path, is_inside, resolve_target
@@ -458,6 +460,52 @@ def _h_kill_process(args, ctx):
 # catalog
 # --------------------------------------------------------------------------- #
 
+def _h_audit_log(args, ctx):
+    limit = min(200, int(args.get("limit") or 30))
+    entries = tail_audit(limit * 4)
+    if args.get("tool"):
+        entries = [e for e in entries if e.get("tool") == args["tool"]]
+    if args.get("since"):
+        try:
+            since = datetime.fromisoformat(str(args["since"]).replace("Z", "+00:00")).timestamp()
+            entries = [
+                e
+                for e in entries
+                if datetime.fromisoformat(str(e.get("ts")).replace("Z", "+00:00")).timestamp() >= since
+            ]
+        except Exception:
+            pass
+    entries = entries[-limit:]
+    return {"ok": True, "count": len(entries), "entries": entries, "artifacts_dir": str(audit_dir())}
+
+
+def _h_audit_artifact(args, ctx):
+    art = read_artifact(args.get("entry"), args.get("file"))
+    if not art:
+        return {"ok": False, "error": "artifact_not_found", "hint": "Run audit_log to see the available artifacts."}
+    data = art["data"]
+    if art["file"].lower().endswith((".png", ".jpg", ".jpeg")):
+        return {
+            "ok": True,
+            "kind": "image",
+            "file": art["file"],
+            "bytes": len(data),
+            "image_base64": base64.b64encode(data).decode("ascii"),
+        }
+    text = data.decode("utf-8", "replace")
+    try:
+        content = json.loads(text)
+    except ValueError:
+        content = text[:200000]
+    return {
+        "ok": True,
+        "kind": "json" if isinstance(content, (dict, list)) else "text",
+        "file": art["file"],
+        "bytes": len(data),
+        "content": content,
+    }
+
+
 TOOLS = [
     {
         "name": "bash",
@@ -570,6 +618,38 @@ TOOLS = [
         "handler": _h_file_put,
     },
     {
+        "name": "audit_log",
+        "description": (
+            "Read the detailed log of what happened on this machine: every tool call with its arguments, "
+            "outcome and saved artifacts (screenshots, accessibility trees). Read-only."
+        ),
+        "approval": False,
+        "schema": _schema(
+            {
+                "limit": {"type": "number", "description": "how many entries to return, default 30"},
+                "tool": {"type": "string", "description": "only entries of this tool"},
+                "since": {"type": "string", "description": "only entries newer than this ISO timestamp"},
+            }
+        ),
+        "handler": _h_audit_log,
+    },
+    {
+        "name": "audit_artifact",
+        "description": (
+            "Fetch a saved artifact of a logged call: a screenshot (PNG as base64) or an accessibility tree (JSON). "
+            "Read-only."
+        ),
+        "approval": False,
+        "schema": _schema(
+            {
+                "entry": {"type": "string", "description": "entry id from audit_log"},
+                "file": {"type": "string", "description": 'artifact file name, e.g. "screen.png" or "ax-tree.json"'},
+            },
+            ["entry", "file"],
+        ),
+        "handler": _h_audit_artifact,
+    },
+    {
         "name": "sysinfo",
         "description": "Read-only information about the remote machine: OS, user, uptime, memory, disks, network interfaces.",
         "approval": False,
@@ -614,6 +694,24 @@ TOOLS = [
 ]
 
 
+class _CallContext:
+    """Per-call view of the engine that can collect artifacts."""
+
+    def __init__(self, engine, entry_id):
+        self._engine = engine
+        self.entryId = entry_id
+        self.artifacts = []
+
+    def __getattr__(self, name):
+        return getattr(self._engine, name)
+
+    def artifact(self, kind, name, data, meta=None):
+        saved = save_artifact(self.entryId, kind, name, data, meta or {})
+        if saved:
+            self.artifacts.append(saved)
+        return saved
+
+
 class Engine:
     def __init__(self, cfg: dict, base=None):
         self.cfg = cfg
@@ -640,6 +738,12 @@ class Engine:
         if not tool:
             return {"ok": False, "error": f"unknown tool: {name}"}
         started = time.time()
+        entry_id = "{}-{}-{}".format(
+            datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "-"),
+            str(name).replace("_", "-"),
+            uuid.uuid4().hex[:6],
+        )
+        ctx = _CallContext(self, entry_id)
 
         need_approval = tool["approval"]
         approval_for = tool.get("approval_for")
@@ -656,13 +760,13 @@ class Engine:
             trust = trust_state()
             if trust_allows(trust, name, args, self.cfg):
                 if self.cfg.get("audit", True):
-                    audit({"tool": name, "args": args, "status": "ok", "via": "trust_window"})
-                return tool["handler"](args, self)
+                    audit({"id": entry_id, "tool": name, "args": args, "status": "ok", "via": "trust_window"})
+                return tool["handler"](args, ctx)
             decision = request_approval(name, args, self.cfg)
             if not decision["approved"]:
                 status = decision["rec"].get("status", "denied")
                 if self.cfg.get("audit", True):
-                    audit({"tool": name, "args": args, "status": "approval_denied", "approval_status": status})
+                    audit({"id": entry_id, "tool": name, "args": args, "status": "approval_denied", "approval_status": status})
                 pending = status in ("pending", "timeout", "expired")
                 return {
                     "ok": False,
@@ -684,21 +788,23 @@ class Engine:
                 }
 
         try:
-            res = tool["handler"](args, self)
+            res = tool["handler"](args, ctx)
         except Exception as e:  # pragma: no cover - defensive
             if self.cfg.get("audit", True):
-                audit({"tool": name, "args": args, "status": "exception", "error": str(e)})
+                audit({"id": entry_id, "tool": name, "args": args, "status": "exception", "error": str(e)})
             return {"ok": False, "error": str(e)}
 
         if self.cfg.get("audit", True):
             audit(
                 {
+                    "id": entry_id,
                     "tool": name,
                     "args": args,
                     "status": "ok" if res.get("ok") else "error",
                     "duration_ms": int((time.time() - started) * 1000),
                     "exit_code": res.get("exit_code"),
                     "error": None if res.get("ok") else res.get("error"),
+                    "artifacts": ctx.artifacts or None,
                 }
             )
         return res

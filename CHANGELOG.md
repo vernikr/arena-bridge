@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.8
+
+### Added
+- Detailed work log: every call is recorded with its arguments, outcome and duration, and the
+  evidence is kept next to the log — screenshots taken on the desktop, the accessibility trees
+  that were read, menu trees and the list of Spaces.
+  - `audit_log` / `audit_artifact` tools and `GET /audit`, `GET /audit/artifact` endpoints let the
+    agent look back at what it saw.
+  - `arena-bridge audit` lists the calls, `arena-bridge audit artifacts` lists the saved files,
+    `arena-bridge audit <id>` prints one entry, `arena-bridge audit prune` removes old artifacts.
+
 ## 0.6.7
 
 ### Added

@@ -284,6 +284,21 @@ export function macTools(cfg = {}) {
           out.hint += ' No elements found — run mac_permissions: the element list comes from the macOS Accessibility API.';
         }
         if (args.include_raw && seen.json) out.raw = seen.json;
+        if (ctx.artifact) {
+          try {
+            if (fs.existsSync(outPath.abs)) {
+              ctx.artifact('screenshot', 'screen.png', fs.readFileSync(outPath.abs), { source: 'mac_see' });
+            }
+            if (seen.json) {
+              ctx.artifact('ax-tree', 'ax-tree.json', JSON.stringify(seen.json, null, 2), {
+                source: 'mac_see',
+                elements: seen.elements.length,
+              });
+            }
+          } catch {
+            /* artifacts are best effort */
+          }
+        }
         return out;
       },
     },
@@ -593,11 +608,18 @@ export function macTools(cfg = {}) {
         [],
       ),
       required: [],
-      handler: async (args) => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const seen = await searchSee(args);
         const matches = seen.elements.filter((e) => matchElement(e, args)).slice(0, Number(args.limit) || 25);
+        if (ctx.artifact && seen.json) {
+          ctx.artifact('ax-tree', 'ax-tree.json', JSON.stringify(seen.json, null, 2), {
+            source: 'mac_element',
+            elements: seen.elements.length,
+            query: args.name || args.role || null,
+          });
+        }
         return {
           ok: true,
           matches,
@@ -645,7 +667,7 @@ export function macTools(cfg = {}) {
       approval: false,
       schema: S({ app: { type: 'string' } }, []),
       required: [],
-      handler: async (args) => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const flags = menuFlags(args);
@@ -659,6 +681,9 @@ export function macTools(cfg = {}) {
           { timeout: 30 },
         );
         const json = parseJson(res.stdout);
+        if (ctx.artifact && json) {
+          ctx.artifact('menu-tree', 'menu-tree.json', JSON.stringify(json, null, 2), { source: 'mac_menu' });
+        }
         return {
           ok: res.exit_code === 0,
           menus: json ? (json.menus || json.data?.menus || json.data?.menu_structure || json) : undefined,
@@ -716,7 +741,7 @@ export function macTools(cfg = {}) {
       approval: false,
       schema: S({}, []),
       required: [],
-      handler: async () => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const res = await runVariants(
@@ -729,6 +754,9 @@ export function macTools(cfg = {}) {
           { timeout: 30 },
         );
         const json = parseJson(res.stdout);
+        if (ctx.artifact && json) {
+          ctx.artifact('spaces', 'spaces.json', JSON.stringify(json, null, 2), { source: 'mac_spaces' });
+        }
         return {
           ok: res.exit_code === 0,
           spaces: json ? (json.spaces || json.data?.spaces || json) : undefined,
@@ -744,7 +772,7 @@ export function macTools(cfg = {}) {
       approval: true,
       schema: S({ to: { type: 'string', description: 'space id or index from mac_spaces' } }, ['to']),
       required: ['to'],
-      handler: async (args) => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const res = await runVariants(
@@ -775,14 +803,16 @@ export function macTools(cfg = {}) {
         [],
       ),
       required: [],
-      handler: async (args) => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) return p;
         const limit = Math.min(120, Math.max(1, Number(args.timeout) || 20));
         const deadline = Date.now() + limit * 1000;
         let scanned = 0;
+        let last = null;
         while (Date.now() < deadline) {
           const seen = await searchSee(args);
+          last = seen;
           scanned = seen.elements.length;
           const hit = seen.elements.find((e) => matchElement(e, args));
           if (args.disappear) {
@@ -791,6 +821,12 @@ export function macTools(cfg = {}) {
             return { ok: true, found: true, element: hit, scanned };
           }
           await new Promise((r) => setTimeout(r, 2000));
+        }
+        if (ctx.artifact && last?.json) {
+          ctx.artifact('ax-tree', 'ax-tree.json', JSON.stringify(last.json, null, 2), {
+            source: 'mac_wait',
+            elements: scanned,
+          });
         }
         return {
           ok: false,
@@ -808,7 +844,7 @@ export function macTools(cfg = {}) {
       approval: false,
       schema: S({}, []),
       required: [],
-      handler: async () => {
+      handler: async (args, ctx) => {
         const p = checkPeek(peek());
         if (!p.ok) {
           return {

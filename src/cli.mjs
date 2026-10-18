@@ -9,7 +9,7 @@ import { createHubServer } from './hub.mjs';
 import { runDevice } from './device.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide } from './approvals.mjs';
-import { tailAudit } from './audit.mjs';
+import { tailAudit, auditDir, listArtifacts, pruneArtifacts } from './audit.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
@@ -377,10 +377,33 @@ function cmdTrust(args) {
 }
 
 function cmdAudit(args) {
+  const what = args._[1];
+  if (what === 'dir') {
+    console.log(auditDir());
+    return;
+  }
+  if (what === 'prune') {
+    const res = pruneArtifacts(Number(args.flags.days || 14));
+    console.log(`removed ${res.removed} artifact folder(s), ${res.freed_bytes} bytes`);
+    return;
+  }
+  if (what === 'artifacts') {
+    for (const item of listArtifacts()) {
+      const files = item.files.map((f) => `${f.name} (${f.bytes} B)`).join(', ');
+      console.log(`${item.entry}  ${files}`);
+    }
+    return;
+  }
+  if (what && what.length > 6) {
+    const rec = tailAudit(500).find((e) => e.id === what);
+    console.log(rec ? JSON.stringify(rec, null, 2) : `no entry with id ${what}`);
+    return;
+  }
   const n = Number(args.flags.n || 30);
   for (const rec of tailAudit(n)) {
+    const arts = (rec.artifacts || []).map((a) => a.name).join(' ');
     console.log(
-      `${rec.ts} ${String(rec.tool).padEnd(18)} ${String(rec.status).padEnd(16)} ${rec.duration_ms ?? ''}${
+      `${rec.ts} ${String(rec.tool).padEnd(18)} ${String(rec.status).padEnd(14)} ${String(rec.duration_ms ?? '').padStart(6)}ms${arts ? '  ' + arts : ''}${
         rec.error ? ' ' + rec.error : ''
       }`,
     );

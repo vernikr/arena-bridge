@@ -734,6 +734,9 @@ class BrowserManager:
                 params["captureBeyondViewport"] = True
         res = session["cdp"].send("Page.captureScreenshot", params, tab["sessionId"])
         b64 = str(res.get("data", ""))
+        artifact = getattr(ctx, "artifact", None)
+        if artifact and b64:
+            artifact("screenshot", "page.png", base64.b64decode(b64), {"source": "chrome_screenshot"})
         if args.get("path"):
             ok, abs_path, err, reason = check_path(args["path"], ctx.cfg, ctx.base, write=True)
             if not ok:

@@ -97,6 +97,13 @@ ${tools.join('\n')}
 9. \`mac_spaces\` lists the macOS virtual desktops; \`mac_space_switch\` moves the agent to another
    Space so the user keeps the screen they are looking at.
 
+## Work log with evidence
+Every call is logged with its arguments, result and duration. Screenshots taken on the desktop and
+the accessibility trees that were read are stored next to the log.
+- \`audit_log\` — the recent calls (filter by tool or time).
+- \`audit_artifact\` — fetch a saved artifact: a screenshot (base64 PNG) or an accessibility tree (JSON).
+Use them when you need to look back at what was on the screen or what the interface contained.
+
 ## Approvals
 ${trustLine}
 - When a call answers \`APPROVAL_PENDING\` it carries an \`approval_id\`: tell the user to run

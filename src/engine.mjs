@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { checkPath, resolveTarget, isInside } from './policy.mjs';
-import { audit } from './audit.mjs';
+import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
 import { requestApproval } from './approvals.mjs';
 import { loadConfig, CONFIG_PATH } from './config.mjs';
 import { BrowserManager } from './browser.mjs';
@@ -394,6 +394,63 @@ export function toolCatalog() {
       },
     },
     {
+      name: 'audit_log',
+      description:
+        'Read the detailed log of what happened on this machine: every tool call with its arguments, outcome and saved artifacts (screenshots, accessibility trees). Read-only.',
+      approval: false,
+      schema: S(
+        {
+          limit: { type: 'number', description: 'how many entries to return, default 30' },
+          tool: { type: 'string', description: 'only entries of this tool' },
+          since: { type: 'string', description: 'only entries newer than this ISO timestamp' },
+        },
+        [],
+      ),
+      required: [],
+      handler: async (args) => {
+        const n = Math.min(200, Number(args.limit) || 30);
+        let entries = tailAudit(n * 4);
+        if (args.tool) entries = entries.filter((e) => e.tool === args.tool);
+        if (args.since) {
+          const since = Date.parse(String(args.since));
+          if (!Number.isNaN(since)) entries = entries.filter((e) => Date.parse(e.ts) >= since);
+        }
+        entries = entries.slice(-n);
+        return { ok: true, count: entries.length, entries, artifacts_dir: auditDir() };
+      },
+    },
+    {
+      name: 'audit_artifact',
+      description:
+        'Fetch a saved artifact of a logged call: a screenshot (PNG as base64) or an accessibility tree (JSON). Read-only.',
+      approval: false,
+      schema: S(
+        {
+          entry: { type: 'string', description: 'entry id from audit_log' },
+          file: { type: 'string', description: 'artifact file name, e.g. "screen.png" or "ax-tree.json"' },
+        },
+        ['entry', 'file'],
+      ),
+      required: ['entry', 'file'],
+      handler: async (args) => {
+        const art = readArtifact(args.entry, args.file);
+        if (!art) {
+          return { ok: false, error: 'artifact_not_found', hint: 'Run audit_log to see the available artifacts.' };
+        }
+        if (/\.(png|jpe?g)$/i.test(art.file)) {
+          return { ok: true, kind: 'image', file: art.file, bytes: art.data.length, image_base64: art.data.toString('base64') };
+        }
+        const text = art.data.toString('utf8');
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          /* not json */
+        }
+        return { ok: true, kind: json ? 'json' : 'text', file: art.file, bytes: art.data.length, content: json ?? text.slice(0, 200000) };
+      },
+    },
+    {
       name: 'sysinfo',
       description: 'Read-only information about the remote machine: OS, user, uptime, memory, disks, network interfaces.',
       approval: false,
@@ -581,6 +638,17 @@ export class Engine {
     if (!tool) return { ok: false, error: `unknown tool: ${name}` };
     const started = Date.now();
     let approval = null;
+    const entryId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(name).replace(/[^\w.-]/g, '_')}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const ctx = Object.create(this);
+    ctx.entryId = entryId;
+    ctx.artifacts = [];
+    ctx.artifact = (kind, file, data, meta) => {
+      const saved = saveArtifact(entryId, kind, file, data, meta);
+      if (saved) ctx.artifacts.push(saved);
+      return saved;
+    };
 
     // pick up policy changes (roots, protected, requireApproval) without a restart
     try {
@@ -598,16 +666,16 @@ export class Engine {
       const trust = trustState();
       if (trustAllows(trust, tool.name, args, this.cfg)) {
         if (this.cfg.audit !== false) {
-          audit({ tool: tool.name, args, status: 'ok', via: 'trust_window' });
+          audit({ id: entryId, tool: tool.name, args, status: 'ok', via: 'trust_window' });
         }
-        const res = await tool.handler(args, this);
+        const res = await tool.handler(args, ctx);
         return res;
       }
       approval = await requestApproval(tool.name, args, this.cfg);
       if (!approval.approved) {
         const status = approval.rec?.status || 'denied';
         if (this.cfg.audit !== false) {
-          audit({ tool: tool.name, args, status: 'approval_denied', approval_status: status });
+          audit({ id: entryId, tool: tool.name, args, status: 'approval_denied', approval_status: status });
         }
         const pending = status === 'pending' || status === 'timeout' || status === 'expired';
         return {
@@ -627,21 +695,31 @@ export class Engine {
     }
 
     try {
-      const res = await tool.handler(args, this);
+      const res = await tool.handler(args, ctx);
       if (this.cfg.audit !== false) {
         audit({
+          id: entryId,
           tool: tool.name,
           args,
           status: res.ok ? 'ok' : 'error',
           duration_ms: Date.now() - started,
           exit_code: res.exit_code,
           error: res.ok ? undefined : res.error,
+          artifacts: ctx.artifacts.length ? ctx.artifacts : undefined,
         });
       }
       return res;
     } catch (e) {
       if (this.cfg.audit !== false) {
-        audit({ tool: tool.name, args, status: 'exception', duration_ms: Date.now() - started, error: e.message });
+        audit({
+          id: entryId,
+          tool: tool.name,
+          args,
+          status: 'exception',
+          duration_ms: Date.now() - started,
+          error: e.message,
+          artifacts: ctx.artifacts.length ? ctx.artifacts : undefined,
+        });
       }
       return { ok: false, error: e.message };
     }

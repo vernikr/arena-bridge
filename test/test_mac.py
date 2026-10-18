@@ -196,6 +196,33 @@ def _():
     assert r["gone"] is True
 
 
+@test("a screenshot and the accessibility tree are kept as artifacts")
+def _():
+    r = engine.call("mac_see", {"path": str(WORK / "shot2.png")})
+    assert r["ok"], r
+    log = engine.call("audit_log", {"tool": "mac_see", "limit": 10})
+    entry = next((e for e in log["entries"] if e.get("tool") == "mac_see" and e.get("artifacts")), None)
+    assert entry, "the log entry carries artifacts"
+    names = [a["name"] for a in entry["artifacts"]]
+    assert "screen.png" in names, names
+    assert "ax-tree.json" in names, names
+    tree = engine.call("audit_artifact", {"entry": entry["id"], "file": "ax-tree.json"})
+    assert tree["ok"], tree
+    assert tree["content"]["data"]["ui_elements"], "the tree is readable"
+    shot = engine.call("audit_artifact", {"entry": entry["id"], "file": "screen.png"})
+    assert shot["kind"] == "image"
+    assert len(shot["image_base64"]) > 0
+
+
+@test("the artifact of a call is listed with its size")
+def _():
+    log = engine.call("audit_log", {"limit": 20})
+    assert log["ok"], log
+    with_artifacts = [e for e in log["entries"] if e.get("artifacts")]
+    assert with_artifacts, "at least one entry has artifacts"
+    assert with_artifacts[0]["artifacts"][0]["bytes"] > 0
+
+
 @test("a missing peekaboo is reported instead of crashing")
 def _():
     saved = os.environ["PEEKABOO_PATH"]

@@ -6,6 +6,7 @@ import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
+import { tailAudit, readArtifact, auditDir } from './audit.mjs';
 
 export function createDirectServer(cfg, engine) {
   const mcpCtx = {
@@ -29,7 +30,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.6.7',
+          version: '0.6.8',
           uptime_sec: Math.round(process.uptime()),
         });
       }
@@ -60,6 +61,29 @@ export function createDirectServer(cfg, engine) {
           approvalWaitSec: cfg.approvalWaitSec,
           maxOutputBytes: cfg.maxOutputBytes,
         });
+      }
+
+      if (req.method === 'GET' && p === '/audit') {
+        const limit = Math.min(200, Number(url.searchParams.get('limit')) || 30);
+        return sendJson(res, 200, { ok: true, entries: tailAudit(limit), artifacts_dir: auditDir() });
+      }
+
+      if (req.method === 'GET' && p === '/audit/artifact') {
+        const entry = url.searchParams.get('entry');
+        const file = url.searchParams.get('file');
+        if (!entry || !file) {
+          return sendJson(res, 400, { ok: false, error: 'entry and file query parameters are required' });
+        }
+        const art = readArtifact(entry, file);
+        if (!art) return sendJson(res, 404, { ok: false, error: 'artifact_not_found' });
+        const type = /\.png$/i.test(art.file)
+          ? 'image/png'
+          : /\.jpe?g$/i.test(art.file)
+            ? 'image/jpeg'
+            : /\.json$/i.test(art.file)
+              ? 'application/json; charset=utf-8'
+              : 'text/plain; charset=utf-8';
+        return sendRaw(res, 200, art.data, type);
       }
 
       if (req.method === 'GET' && p === '/approvals') {
