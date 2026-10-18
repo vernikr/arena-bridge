@@ -15,9 +15,11 @@ os.environ["ARENA_BRIDGE_HOME"] = str(TMP / "home")
 (TMP / "home").mkdir(parents=True, exist_ok=True)
 
 from arena_bridge.cdp import CDPClient, browser_ws_url  # noqa: E402
-from arena_bridge.config import defaults, save_config  # noqa: E402
+from arena_bridge.config import defaults, save_config, config_dir  #noqa: E402
 from arena_bridge.engine import Engine  # noqa: E402
 from arena_bridge.ws import WebSocketClient  # noqa: E402
+
+assert str(config_dir()).startswith(str(TMP)), "the test must not touch the real configuration"
 
 ROOT = Path(__file__).resolve().parent.parent
 FAKE = ROOT / "test" / "fake-cdp.mjs"

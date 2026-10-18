@@ -15,7 +15,8 @@ process.env.ARENA_BRIDGE_HOME = HOME;
 fs.mkdirSync(HOME, { recursive: true });
 
 const { Engine } = await import(path.join(root, 'src', 'engine.mjs'));
-const { loadConfig, saveConfig, DEFAULTS } = await import(path.join(root, 'src', 'config.mjs'));
+const { loadConfig, saveConfig, DEFAULTS, CONFIG_DIR } = await import(path.join(root, 'src', 'config.mjs'));
+assert.ok(CONFIG_DIR.startsWith(os.tmpdir()), 'the test must not touch the real configuration');
 
 const WORK = path.join(HOME, 'work');
 fs.mkdirSync(WORK, { recursive: true });

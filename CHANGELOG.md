@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.14
+
+### Fixed
+- The tests never write to the real configuration of the machine: every test checks that the
+  folder it uses is a temporary one.
+
 ## 0.7.13
 
 ### Fixed

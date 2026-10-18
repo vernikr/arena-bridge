@@ -21,7 +21,7 @@ os.environ["ARENA_BRIDGE_HOME"] = str(TMP / "home")
 (TMP / "home").mkdir(parents=True, exist_ok=True)
 
 from arena_bridge.approvals import decide, list_approvals  # noqa: E402
-from arena_bridge.config import defaults, save_config  # noqa: E402
+from arena_bridge.config import defaults, save_config, config_dir  #noqa: E402
 from arena_bridge.device import run_device  # noqa: E402
 from arena_bridge.engine import Engine  # noqa: E402
 from arena_bridge.hub import serve as serve_hub  # noqa: E402
@@ -280,6 +280,8 @@ def _():
 print("\n▸ trust window")
 
 from arena_bridge.trust import clear_trust, save_trust, trust_state  # noqa: E402
+
+assert str(config_dir()).startswith(str(TMP)), "the test must not touch the real configuration"
 
 save_config(cfg_ap)  # approvals on: only a trust window can lift them
 

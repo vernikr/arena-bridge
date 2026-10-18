@@ -14,8 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 HOME = Path(tempfile.mkdtemp(prefix="ab-py-tg-"))
 os.environ["ARENA_BRIDGE_HOME"] = str(HOME)
 
-from arena_bridge.config import defaults, save_config  # noqa: E402
+from arena_bridge.config import defaults, save_config, config_dir  #noqa: E402
 from arena_bridge.engine import Engine  # noqa: E402
+
+assert str(config_dir()).startswith(str(HOME)), "the test must not touch the real configuration"
 from arena_bridge import telegram as tg  # noqa: E402
 
 WORK = HOME / "work"

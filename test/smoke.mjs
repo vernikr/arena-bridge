@@ -13,6 +13,7 @@ process.env.ARENA_BRIDGE_HOME = path.join(TMP, 'home');
 fs.mkdirSync(process.env.ARENA_BRIDGE_HOME, { recursive: true });
 
 const { loadConfig, saveConfig, DEFAULTS, CONFIG_DIR } = await import('../src/config.mjs');
+assert.ok(CONFIG_DIR.startsWith(os.tmpdir()), 'the test must not touch the real configuration');
 const { Engine } = await import('../src/engine.mjs');
 const { createDirectServer } = await import('../src/direct.mjs');
 const { createHubServer } = await import('../src/hub.mjs');

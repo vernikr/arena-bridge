@@ -15,8 +15,10 @@ os.chmod(FAKE_PEEKABOO, 0o755)
 os.environ["PEEKABOO_PATH"] = str(FAKE_PEEKABOO)
 os.environ["FAKE_PEEKABOO_LOG"] = str(HOME / "peek.log")
 
-from arena_bridge.config import defaults, load_config, save_config  # noqa: E402
+from arena_bridge.config import defaults, load_config, save_config, config_dir  #noqa: E402
 from arena_bridge.engine import Engine  # noqa: E402
+
+assert str(config_dir()).startswith(str(HOME)), "the test must not touch the real configuration"
 
 WORK = HOME / "work"
 (WORK / "nested" / "deep").mkdir(parents=True)
