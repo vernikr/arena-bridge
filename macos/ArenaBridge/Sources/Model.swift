@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Combine
 
 /// Everything the window shows, and every action it can take.
 @MainActor
@@ -29,6 +30,21 @@ final class AppModel: ObservableObject {
 
     private let bridge = Bridge()
     private var notified: Set<String> = []
+    private var timer: AnyCancellable?
+    private var tick = 0
+
+    init() {
+        timer = Timer.publish(every: 4, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in Task { await self?.step() } }
+    }
+
+    /// The state of the window follows the machine: every few seconds, and the work log
+    /// now and then because it is the heaviest part.
+    func step() async {
+        tick += 1
+        await refresh(log: tick % 8 == 0, showBusy: false)
+    }
 
     var visibleEntries: [LogEntry] {
         let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
@@ -49,9 +65,9 @@ final class AppModel: ObservableObject {
 
     // -- reading -------------------------------------------------------- //
 
-    func refresh() async {
-        busy = true
-        defer { busy = false }
+    func refresh(log: Bool = true, showBusy: Bool = true) async {
+        if showBusy { busy = true }
+        defer { if showBusy { busy = false } }
         let service = Bridge.serviceState()
         serviceInstalled = service.installed
         running = service.running
@@ -81,8 +97,10 @@ final class AppModel: ObservableObject {
             .sorted { $0.created > $1.created }
         announceApprovals()
 
-        let audit = await bridge.call("audit", query: ["limit": "120"])
-        entries = Array(((audit.1["entries"] as? [[String: Any]]) ?? []).compactMap(LogEntry.parse).reversed())
+        if log {
+            let audit = await bridge.call("audit", query: ["limit": "120"])
+            entries = Array(((audit.1["entries"] as? [[String: Any]]) ?? []).compactMap(LogEntry.parse).reversed())
+        }
 
         notificationsAllowed = await Notifier.shared.allowed()
 

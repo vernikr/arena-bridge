@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.11
+
+### Changed
+- The app window follows the machine: the state, the approvals and the trust window refresh
+  themselves every few seconds, and the work log is reloaded now and then.
+- The app reads the trust window straight from its file, so the status is exact.
+
 ## 0.7.10
 
 ### Fixed
