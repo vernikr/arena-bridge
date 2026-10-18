@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { APPROVALS_DIR, ensureDirs } from './config.mjs';
+import { sendTelegram } from './telegram.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,6 +74,17 @@ export async function requestApproval(tool, args, cfg) {
     decidedBy: null,
   };
   fs.writeFileSync(fileOf(id), JSON.stringify(rec, null, 2), { mode: 0o600 });
+
+  // tell the user about it right away, so a pending request is not a dead end
+  if (cfg.telegram?.enabled && cfg.telegram?.botToken) {
+    sendTelegram(cfg, {
+      title: 'Approval needed',
+      text:
+        `Tool: ${tool}\n` +
+        `id: ${id}\n` +
+        `Reply /approve ${id} or /deny ${id} in Telegram, or run: arena-bridge approve ${id}`,
+    }).catch(() => {});
+  }
 
   const waitSec = Math.min(cfg.approvalWaitSec ?? 90, cfg.approvalTtlSec ?? 900);
   const deadline = now + waitSec * 1000;

@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.0
+
+### Added
+- **Telegram link.** The bridge can now talk to the user outside the agent chat:
+  - `notify_user` — send a message (progress, a question, a result); with
+    `{"wait_for_reply": true}` the call waits for the answer in Telegram.
+  - `telegram_inbox` — read the messages the user sent to the bot.
+  - `telegram_status` — the bot, the allowed chats, the number of unread messages.
+  - `arena-bridge telegram setup|test|status|inbox|poll` — the same link from the terminal.
+- **Approvals from Telegram.** A pending request is announced in the chat right away, and
+  the user can settle it with `/approve <id>` or `/deny <id>` (the terminal still works:
+  `arena-bridge approve <id>`).
+- The bridge listens for incoming bot messages on its own (the launchd service does it
+  automatically); the inbox lives in `~/.arena-bridge/telegram/`.
+
+### Security
+- The bot token stays in `~/.arena-bridge/config.json` (0600), which the agent cannot read.
+- The bridge may only write to the chats listed in `--chat-id`; 20 messages per minute,
+  4000 characters per message.
+
 ## 0.6.10
 
 ### Fixed

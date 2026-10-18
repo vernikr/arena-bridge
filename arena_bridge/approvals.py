@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 from .config import approvals_dir, ensure_dirs
+from .telegram import send_telegram
 
 _SECRET_RE = re.compile(r"token|secret|password|key", re.IGNORECASE)
 
@@ -72,6 +73,21 @@ def request_approval(tool: str, args: dict, cfg: dict) -> dict:
         "decidedBy": None,
     }
     _file(approval_id).write_text(json.dumps(rec, indent=2))
+
+    # tell the user about it right away, so a pending request is not a dead end
+    if (cfg.get("telegram") or {}).get("enabled") and (cfg.get("telegram") or {}).get("botToken"):
+        try:
+            send_telegram(
+                cfg,
+                title="Approval needed",
+                text=(
+                    "Tool: {}\n"
+                    "id: {}\n"
+                    "Reply /approve {} or /deny {} in Telegram, or run: arena-bridge approve {}"
+                ).format(tool, approval_id, approval_id, approval_id, approval_id),
+            )
+        except Exception:
+            pass
 
     wait = min(int(cfg.get("approvalWaitSec", 90)), int(cfg.get("approvalTtlSec", 900)))
     deadline = time.time() + wait

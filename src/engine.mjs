@@ -10,6 +10,7 @@ import { loadConfig, CONFIG_PATH } from './config.mjs';
 import { BrowserManager } from './browser.mjs';
 import { macTools } from './mac.mjs';
 import { trustState, trustAllows } from './trust.mjs';
+import { telegramTools } from './telegram.mjs';
 
 /* ------------------------------------------------------------------ *
  * helpers
@@ -630,7 +631,7 @@ export class Engine {
   }
 
   catalog() {
-    return [...toolCatalog(), ...this.browser.tools(), ...macTools(this.cfg)];
+    return [...toolCatalog(), ...this.browser.tools(), ...macTools(this.cfg), ...telegramTools(this.cfg)];
   }
 
   async call(name, args = {}, { requireApproval } = {}) {

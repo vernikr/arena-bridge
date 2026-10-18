@@ -48,6 +48,14 @@ export const DEFAULTS = {
   maxUploadBytes: 16 * 1024 * 1024,
   commandTimeoutSec: 120,
   audit: true,
+  telegram: {
+    enabled: false, // notify the user in Telegram
+    botToken: null, // bot token from @BotFather
+    chatIds: [], // chats the bridge may write to
+    poll: true, // listen for incoming messages and approval commands
+    apiId: null, // optional MTProto app id (not used by the bot)
+    apiHash: null, // optional MTProto app hash (not used by the bot)
+  },
 };
 
 export function expandHome(p) {

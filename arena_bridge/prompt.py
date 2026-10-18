@@ -77,6 +77,7 @@ The token is: {token}
 | wait for a control to appear or vanish | `mac_wait` |
 | work on a separate virtual desktop | `mac_spaces`, `mac_space_switch` |
 | look at files | `list_dir` (top level only; add `{{"recursive":true}}` to go deeper), `read_file`, `search_files` |
+| tell the user something or ask a question | `notify_user` (Telegram), `telegram_inbox` to read the answer |
 
 ## Browser control (Chrome over CDP)
 1. `chrome_launch` starts a browser that belongs to you — own profile, no personal data.
@@ -115,6 +116,15 @@ the accessibility trees that were read are stored next to the log.
 - `audit_log` — the recent calls (filter by tool or time).
 - `audit_artifact` — fetch a saved artifact: a screenshot (base64 PNG) or an accessibility tree (JSON).
 Use them when you need to look back at what was on the screen or what the interface contained.
+
+## Talking to the user (Telegram)
+When Telegram is configured for this bridge, you can reach the user outside this chat:
+- `notify_user` — send a message (progress, a question, a finished result).
+  Add `{{"wait_for_reply": true}}` to keep the call open until the user answers in Telegram.
+- `telegram_inbox` — read the messages the user sent in Telegram (answers, requests, corrections).
+- `telegram_status` — the bot, the allowed chats, the number of unread messages.
+- The user can settle a pending approval from Telegram: `/approve <approval_id>` or `/deny <approval_id>`.
+Use it when a step takes long or when you need a decision: one message is enough, no need to repeat it.
 
 ## Approvals
 {trust_line}

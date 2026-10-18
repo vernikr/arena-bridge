@@ -7,12 +7,34 @@ import { listApprovals, decide } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
 import { tailAudit, readArtifact, auditDir } from './audit.mjs';
+import { startPoller, parseCommand, sendTelegram } from './telegram.mjs';
 
 export function createDirectServer(cfg, engine) {
   const mcpCtx = {
     cfg,
     listTools: () => engine.mcpTools(),
     callTool: (name, args) => engine.call(name, args),
+  };
+
+  const handleTelegramMessage = async (item) => {
+    const cmd = parseCommand(item.text);
+    if (!cmd) return;
+    const current = loadConfig();
+    const say = (text) => sendTelegram(current, { text, chatId: item.chat_id });
+    if ((cmd.cmd === 'approve' || cmd.cmd === 'deny') && cmd.args) {
+      const res = decide(cmd.args, cmd.cmd === 'approve' ? 'approve' : 'deny', 'telegram');
+      await say(res.ok ? `${cmd.cmd === 'approve' ? 'Approved' : 'Denied'} ${cmd.args}` : `Cannot ${cmd.cmd}: ${res.error}`);
+      return;
+    }
+    if (cmd.cmd === 'status') {
+      const pending = listApprovals().filter((a) => a.status === 'pending').length;
+      await say(`arena-bridge on ${cfg.device}\nPending approvals: ${pending}`);
+      return;
+    }
+    if (cmd.cmd === 'help') {
+      await say('Commands: /approve <id>, /deny <id>, /status');
+      return;
+    }
   };
 
   const server = http.createServer(async (req, res) => {
@@ -30,7 +52,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.6.10',
+          version: '0.7.0',
           uptime_sec: Math.round(process.uptime()),
         });
       }
@@ -60,6 +82,10 @@ export function createDirectServer(cfg, engine) {
           allowShell: cfg.allowShell,
           approvalWaitSec: cfg.approvalWaitSec,
           maxOutputBytes: cfg.maxOutputBytes,
+          telegram: {
+            enabled: !!cfg.telegram?.enabled,
+            chat_ids: cfg.telegram?.chatIds || [],
+          },
         });
       }
 
@@ -151,6 +177,9 @@ export function createDirectServer(cfg, engine) {
       return sendJson(res, 500, { ok: false, error: e.message });
     }
   });
+
+  const poller = startPoller(cfg, { onMessage: handleTelegramMessage });
+  server.on('close', () => poller?.stop());
 
   return server;
 }

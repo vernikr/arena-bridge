@@ -10,7 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 HOME = Path(tempfile.mkdtemp(prefix="ab-py-mac-"))
 os.environ["ARENA_BRIDGE_HOME"] = str(HOME)
-os.environ["PEEKABOO_PATH"] = str(Path(__file__).resolve().parent / "fake-peekaboo.sh")
+FAKE_PEEKABOO = Path(__file__).resolve().parent / "fake-peekaboo.sh"
+os.chmod(FAKE_PEEKABOO, 0o755)
+os.environ["PEEKABOO_PATH"] = str(FAKE_PEEKABOO)
 os.environ["FAKE_PEEKABOO_LOG"] = str(HOME / "peek.log")
 
 from arena_bridge.config import defaults, load_config, save_config  # noqa: E402

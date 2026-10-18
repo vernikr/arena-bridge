@@ -3,7 +3,7 @@ import os
 import secrets
 from pathlib import Path
 
-VERSION = "0.6.10"
+VERSION = "0.7.0"
 
 
 def config_dir() -> Path:
@@ -65,6 +65,14 @@ def defaults() -> dict:
         "maxUploadBytes": 16 * 1024 * 1024,
         "commandTimeoutSec": 120,
         "audit": True,
+        "telegram": {
+            "enabled": False,
+            "botToken": None,
+            "chatIds": [],
+            "poll": True,
+            "apiId": None,
+            "apiHash": None,
+        },
     }
 
 

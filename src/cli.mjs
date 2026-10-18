@@ -17,6 +17,13 @@ import { findPeekaboo } from './mac.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
 import { serviceStatus, serviceInstall, serviceUninstall } from './service.mjs';
+import {
+  sendTelegram,
+  telegramSettings,
+  readInbox,
+  inboxState,
+  startPoller,
+} from './telegram.mjs';
 
 const REPEATABLE_FLAGS = new Set(['root']);
 
@@ -74,6 +81,12 @@ Commands:
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status
   audit [-n N]         Show the audit log
+  telegram             Talk to the user in Telegram
+                       setup --token <bot token> --chat-id <id>
+                       test              send a test message
+                       status            show the bot, the chats, the unread count
+                       inbox [-n N]      show the messages the user sent
+                       poll              listen for messages in the foreground
   doctor               Check the installation and configuration
   url                  Print the public URL the agent should use
   version              Show the installed version and the latest one on npm
@@ -583,6 +596,85 @@ function cmdRotate(args) {
   );
 }
 
+async function cmdTelegram(args) {
+  const cfg = loadConfig();
+  const sub = args._[1] || 'status';
+
+  if (sub === 'setup') {
+    const t = { ...(cfg.telegram || {}) };
+    if (args.flags.token) t.botToken = String(args.flags.token);
+    if (args.flags['chat-id']) {
+      t.chatIds = String(args.flags['chat-id'])
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+    }
+    if (args.flags['api-id']) t.apiId = String(args.flags['api-id']);
+    if (args.flags['api-hash']) t.apiHash = String(args.flags['api-hash']);
+    if (args.flags['no-poll']) t.poll = false;
+    if (args.flags.poll) t.poll = true;
+    t.enabled = !!(t.botToken && (t.chatIds || []).length);
+    cfg.telegram = t;
+    saveConfig(cfg);
+    console.log(t.enabled ? '✓ Telegram configured' : '✗ both --token and --chat-id are required');
+    if (t.enabled) {
+      const res = await sendTelegram(cfg, {
+        title: 'arena-bridge',
+        text: 'Telegram is connected. The agent can now message you and read your answers.',
+      });
+      console.log(res.ok ? '✓ test message sent' : `✗ ${res.error}: ${res.reason || ''}`);
+    }
+    return;
+  }
+
+  if (sub === 'test') {
+    const res = await sendTelegram(cfg, {
+      title: 'arena-bridge',
+      text: 'Test message from the bridge. If you can read this, the link works.',
+    });
+    console.log(res.ok ? '✓ message sent' : `✗ ${res.error}: ${res.reason || ''}`);
+    if (!res.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (sub === 'inbox') {
+    const limit = Math.min(100, Number(args.flags.n) || 20);
+    const items = readInbox({ limit });
+    if (!items.length) console.log('(no messages yet)');
+    for (const i of items) {
+      console.log(`#${i.id} ${i.from} ${i.read ? '' : '(new) '}${i.text}`);
+    }
+    return;
+  }
+
+  if (sub === 'poll') {
+    const s = telegramSettings(cfg);
+    if (!s.enabled) {
+      console.log('✗ Telegram is not configured. Run: arena-bridge telegram setup --token <bot token> --chat-id <id>');
+      process.exitCode = 1;
+      return;
+    }
+    console.log('listening for Telegram messages (Ctrl+C to stop)…');
+    const poller = startPoller(cfg, {
+      onMessage: async (item) => console.log(`#${item.id} ${item.from}: ${item.text}`),
+    });
+    await new Promise(() => {});
+    return poller;
+  }
+
+  const s = telegramSettings(cfg);
+  const st = inboxState();
+  console.log(`enabled   : ${s.enabled}`);
+  console.log(`bot       : ${st.bot?.username ? '@' + st.bot.username : '(unknown)'}`);
+  console.log(`chats     : ${s.chatIds.join(', ') || '(none)'}`);
+  console.log(`polling   : ${s.poll}`);
+  console.log(`messages  : ${st.total} (${st.unread} unread)`);
+  if (st.lastError) console.log(`last error: ${st.lastError}`);
+  if (!s.enabled) {
+    console.log('\nRun: arena-bridge telegram setup --token <bot token> --chat-id <your id>');
+  }
+}
+
 function cmdDoctor() {
   const cfg = loadConfig();
   const checks = [];
@@ -638,6 +730,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdApprove(args);
     case 'audit':
       return cmdAudit(args);
+    case 'telegram':
+      return cmdTelegram(args);
     case 'rotate':
       return cmdRotate(args);
     case 'trust':

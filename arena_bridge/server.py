@@ -11,11 +11,12 @@ from .config import load_config
 from .mcp import handle_mcp_payload
 from .policy import check_path
 from .prompt import build_prompt
+from .telegram import parse_command, send_telegram, start_poller
 
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.6.10"
+        server_version = "arena-bridge/0.7.0"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -71,7 +72,7 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.6.10"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.0"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/tools":
@@ -91,6 +92,10 @@ def make_handler(cfg, engine):
                         "allowShell": cfg.get("allowShell"),
                         "approvalWaitSec": cfg.get("approvalWaitSec"),
                         "maxOutputBytes": cfg.get("maxOutputBytes"),
+                        "telegram": {
+                            "enabled": bool((cfg.get("telegram") or {}).get("enabled")),
+                            "chat_ids": (cfg.get("telegram") or {}).get("chatIds") or [],
+                        },
                     },
                 )
             if path == "/audit":
@@ -234,8 +239,39 @@ def make_handler(cfg, engine):
     return Handler
 
 
+def _telegram_message_handler(cfg):
+    def handle(item):
+        cmd = parse_command(item.get("text"))
+        if not cmd:
+            return
+        chat_id = item.get("chat_id")
+
+        def say(text):
+            send_telegram(cfg, text=text, chat_id=chat_id)
+
+        if cmd["cmd"] in ("approve", "deny") and cmd["args"]:
+            res = decide(cmd["args"], "approve" if cmd["cmd"] == "approve" else "deny", "telegram")
+            say(
+                "{} {}".format("Approved" if cmd["cmd"] == "approve" else "Denied", cmd["args"])
+                if res.get("ok")
+                else "Cannot {}: {}".format(cmd["cmd"], res.get("error"))
+            )
+            return
+        if cmd["cmd"] == "status":
+            pending = len([a for a in list_approvals() if a.get("status") == "pending"])
+            say("arena-bridge on {}\nPending approvals: {}".format(cfg.get("device"), pending))
+            return
+        if cmd["cmd"] == "help":
+            say("Commands: /approve <id>, /deny <id>, /status")
+
+    return handle
+
+
 def serve(cfg, engine):
     handler = make_handler(cfg, engine)
     server = ThreadingHTTPServer((cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8787))), handler)
     server.daemon_threads = True
+    poller = start_poller(cfg, _telegram_message_handler(cfg))
+    if poller:
+        server.telegram_poller = poller
     return server

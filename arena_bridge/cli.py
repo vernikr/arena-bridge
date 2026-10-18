@@ -25,6 +25,7 @@ from .config import (
     save_config,
 )
 from .engine import Engine
+from .telegram import inbox_state, read_inbox, send_telegram, start_poller, telegram_settings
 from .prompt import build_prompt
 
 
@@ -480,6 +481,78 @@ def cmd_audit(args):
         )
 
 
+def cmd_telegram(args):
+    cfg = load_config()
+    action = getattr(args, "action", "status") or "status"
+
+    if action == "setup":
+        t = dict(cfg.get("telegram") or {})
+        if args.token:
+            t["botToken"] = args.token
+        if args.chat_id:
+            t["chatIds"] = [v.strip() for v in str(args.chat_id).split(",") if v.strip()]
+        if args.api_id:
+            t["apiId"] = args.api_id
+        if args.api_hash:
+            t["apiHash"] = args.api_hash
+        if args.no_poll:
+            t["poll"] = False
+        t["enabled"] = bool(t.get("botToken") and t.get("chatIds"))
+        cfg["telegram"] = t
+        save_config(cfg)
+        print("✓ Telegram configured" if t["enabled"] else "✗ both --token and --chat-id are required")
+        if t["enabled"]:
+            res = send_telegram(
+                cfg,
+                title="arena-bridge",
+                text="Telegram is connected. The agent can now message you and read your answers.",
+            )
+            print("✓ test message sent" if res.get("ok") else f"✗ {res.get('error')}: {res.get('reason') or ''}")
+        return
+
+    if action == "test":
+        res = send_telegram(
+            cfg,
+            title="arena-bridge",
+            text="Test message from the bridge. If you can read this, the link works.",
+        )
+        print("✓ message sent" if res.get("ok") else f"✗ {res.get('error')}: {res.get('reason') or ''}")
+        if not res.get("ok"):
+            sys.exit(1)
+        return
+
+    if action == "inbox":
+        items = read_inbox(limit=args.n)
+        if not items:
+            print("(no messages yet)")
+        for i in items:
+            print(f"#{i.get('id')} {i.get('from')} {'' if i.get('read') else '(new) '}{i.get('text')}")
+        return
+
+    if action == "poll":
+        if not telegram_settings(cfg)["enabled"]:
+            print("✗ Telegram is not configured. Run: arena-bridge telegram setup --token <bot token> --chat-id <id>")
+            sys.exit(1)
+        print("listening for Telegram messages (Ctrl+C to stop)…")
+        start_poller(cfg, on_message=lambda i: print(f"#{i.get('id')} {i.get('from')}: {i.get('text')}"))
+        while True:
+            time.sleep(1)
+        return
+
+    st = telegram_settings(cfg)
+    state = inbox_state()
+    bot = state.get("bot") or {}
+    print(f"enabled   : {st['enabled']}")
+    print(f"bot       : {'@' + bot['username'] if bot.get('username') else '(unknown)'}")
+    print(f"chats     : {', '.join(st['chatIds']) or '(none)'}")
+    print(f"polling   : {st['poll']}")
+    print(f"messages  : {state['total']} ({state['unread']} unread)")
+    if state.get("lastError"):
+        print(f"last error: {state['lastError']}")
+    if not st["enabled"]:
+        print("\nRun: arena-bridge telegram setup --token <bot token> --chat-id <your id>")
+
+
 def cmd_doctor(args):
     cfg = load_config()
     checks = [
@@ -581,6 +654,16 @@ def build_parser():
     audit.add_argument("-n", type=int, default=30)
     audit.add_argument("--days", type=int, default=14)
     audit.set_defaults(func=cmd_audit)
+
+    telegram = sub.add_parser("telegram", help="talk to the user in Telegram")
+    telegram.add_argument("action", nargs="?", default="status", choices=["setup", "test", "status", "inbox", "poll"])
+    telegram.add_argument("--token", help="bot token from @BotFather")
+    telegram.add_argument("--chat-id", help="chat id the bridge may write to (comma separated)")
+    telegram.add_argument("--api-id", help="optional MTProto app id (not used by the bot)")
+    telegram.add_argument("--api-hash", help="optional MTProto app hash (not used by the bot)")
+    telegram.add_argument("--no-poll", action="store_true", help="do not listen for incoming messages")
+    telegram.add_argument("-n", type=int, default=20)
+    telegram.set_defaults(func=cmd_telegram)
 
     doctor = sub.add_parser("doctor", help="check the installation")
     doctor.set_defaults(func=cmd_doctor)

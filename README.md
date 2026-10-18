@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green.svg?style=flat-square" alt="node">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square" alt="dependencies">
-  <img src="https://img.shields.io/badge/tests-124%20passed-brightgreen.svg?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-147%20passed-brightgreen.svg?style=flat-square" alt="tests">
 </p>
 
 <p align="center">
@@ -100,6 +100,7 @@ arena-bridge setup --root ~/projects
 | Процессы | `start_process` `read_process_output` `write_process` `kill_process` | фоновые дев-серверы |
 | Chrome | `chrome_launch` `chrome_profiles` `chrome_attach` `chrome_open` `chrome_navigate` `chrome_snapshot` `chrome_click` `chrome_type` `chrome_press` `chrome_screenshot` `chrome_evaluate` `chrome_tabs` `chrome_stop` | браузер через CDP |
 | Десктоп | `mac_see` `mac_element` `mac_click` `mac_set` `mac_type` `mac_key` `mac_scroll` `mac_move` `mac_drag` `mac_menu` `mac_menu_click` `mac_wait` `mac_spaces` `mac_space_switch` `mac_apps` `mac_windows` `mac_app_launch` `mac_app_focus` `mac_app_quit` `mac_permissions` | macOS через Peekaboo |
+| Telegram | `notify_user` `telegram_inbox` `telegram_status` | сообщения вам и ваши ответы |
 
 Полный каталог с JSON-схемами: `GET /tools` или `arena-bridge tools`.
 
@@ -118,6 +119,7 @@ arena-bridge setup --root ~/projects
 | кликнуть в нативном приложении | `mac_click` (id элемента, видимый текст или координаты) |
 | напечатать | `mac_type`, затем `mac_key` для Enter/Tab/cmd+s |
 | посмотреть файлы | `list_dir` (только верхний уровень; глубже — `{"recursive":true}`) |
+| написать вам или спросить | `notify_user` (Telegram), ответ читать через `telegram_inbox` |
 
 ---
 
@@ -216,6 +218,43 @@ arena-bridge audit dir             # где всё это лежит
 Агенту доступно то же самое: `audit_log` (вызовы) и `audit_artifact` (сам артефакт — PNG в base64
 или дерево Accessibility в JSON), а также `GET /audit` и `GET /audit/artifact?entry=<id>&file=<name>`.
 Полезно, чтобы оглянуться назад: что было на экране и что находилось в интерфейсе.
+
+---
+
+## Связь с Telegram
+
+Агент может писать вам в Telegram и читать ваши ответы — даже если вы сейчас не в чате с ним.
+
+```bash
+# один раз: привязать бота (токен от @BotFather и ваш chat id)
+arena-bridge telegram setup --token 123456:AA... --chat-id 190771108
+
+# проверить связь
+arena-bridge telegram test
+
+# посмотреть, что вам писали
+arena-bridge telegram inbox
+```
+
+Что это даёт:
+- `notify_user` — агент пишет вам: «сделал», «нужно ваше решение», «вот результат».
+  С `{"wait_for_reply": true}` вызов ждёт вашего ответа прямо в Telegram.
+- `telegram_inbox` — агент читает то, что вы написали боту: ответы, правки, поручения.
+- `telegram_status` — бот, список чатов, число непрочитанных сообщений.
+- **Подтверждения из Telegram.** Когда агенту нужно ваше «да», мост сам пишет вам:
+  `/approve <id>` — разрешить, `/deny <id>` — отказать. Из терминала тоже можно:
+  `arena-bridge approve <id>`.
+
+Как это устроено и что защищено:
+- токен бота лежит только в `~/.arena-bridge/config.json` (права `0600`); агент этот файл
+  прочитать не может — он в списке защищённых путей;
+- писать можно только в те чаты, что перечислены в `--chat-id` (по умолчанию — ваш);
+- не больше 20 сообщений в минуту, одно сообщение — до 4000 символов;
+- входящие сообщения мост слушает сам (служба launchd — автоматически), входящие лежат
+  в `~/.arena-bridge/telegram/`.
+
+Одно уточнение: для бота `api_id`/`api_hash` не нужны — они пригодятся только для режима
+«личного аккаунта» (MTProto), который пока не включён.
 
 ---
 
@@ -319,6 +358,7 @@ arena-bridge audit -n 50       # что происходило
 | `service` | macOS-фоновый сервис: `install` / `uninstall` / `status` |
 | `browser` | профили браузера агента: `list` / `open <name>` / `close <name>` |
 | `rotate` | сменить агентский или девайсный токен |
+| `telegram` | связь с Telegram: `setup` / `test` / `status` / `inbox` / `poll` |
 
 ---
 

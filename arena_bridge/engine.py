@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .approvals import request_approval
 from .mac import mac_tools
+from .telegram import telegram_tools
 from .audit import audit, tail_audit, save_artifact, read_artifact, audit_dir
 from .browser import BrowserManager
 from .config import config_path, load_config
@@ -720,7 +721,7 @@ class Engine:
         self.browser = BrowserManager(cfg)
 
     def catalog(self):
-        return TOOLS + self.browser.tools() + mac_tools(self.cfg)
+        return TOOLS + self.browser.tools() + mac_tools(self.cfg) + telegram_tools(self.cfg)
 
     def mcp_tools(self):
         return [
