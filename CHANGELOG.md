@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.13
+
+### Fixed
+- The app icon keeps its transparency: the area around the shape is empty, not a white sheet.
+
+### Changed
+- The background service in the system settings is called like the app, not "node" or "python".
+- The name of the app lives in one constant per runtime (`APP_NAME` in `src/app.mjs`,
+  `arena_bridge/app.py` and `Sources/AppInfo.swift`), and the build takes it from there.
+
 ## 0.7.12
 
 ### Fixed

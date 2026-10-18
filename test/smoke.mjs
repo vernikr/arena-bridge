@@ -587,6 +587,25 @@ await test('the service command takes the tunnel flags', async () => {
   assert.equal(args.flags.domain, 'mymac.ngrok-free.app');
 });
 
+await test('the app name is the same in node, python and swift', async () => {
+  const { APP_NAME, APP_ID } = await import('../src/app.mjs');
+  const python = fs.readFileSync(new URL('../arena_bridge/app.py', import.meta.url), 'utf8');
+  const swift = fs.readFileSync(new URL('../macos/ArenaBridge/Sources/AppInfo.swift', import.meta.url), 'utf8');
+  const pick = (text, key) => (text.match(new RegExp(`${key} = "([^"]+)"`)) || [])[1];
+  const pickSwift = (text, key) => (text.match(new RegExp(`${key} = "([^"]+)"`)) || [])[1];
+  assert.equal(pick(python, 'APP_NAME'), APP_NAME);
+  assert.equal(pick(python, 'APP_ID'), APP_ID);
+  assert.equal(pickSwift(swift, 'name'), APP_NAME);
+  assert.equal(pickSwift(swift, 'bundleID'), APP_ID);
+});
+
+await test('the background service starts the app, not the node binary', async () => {
+  const { plistXml, runnerPath } = await import('../src/service.mjs');
+  const xml = plistXml({});
+  assert.ok(xml.includes(`<string>${runnerPath()}</string>`), xml);
+  assert.ok(!xml.includes(process.execPath), 'the node binary must not be the entry point');
+});
+
 await test('isPortOpen detects a listening port', async () => {
   const probe = http.createServer();
   await new Promise((r) => probe.listen(0, '127.0.0.1', r));

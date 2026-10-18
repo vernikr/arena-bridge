@@ -209,7 +209,7 @@ final class AppModel: ObservableObject {
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        var text = "Arena Bridge — work log\n"
+        var text = "\(AppInfo.name) — work log\n"
         text += "device: \(device)\nurl: \(url ?? "—")\ncreated: \(formatter.string(from: Date()))\n\n"
         var pictures: [Artifact] = []
         for entry in visibleEntries {

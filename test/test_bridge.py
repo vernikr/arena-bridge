@@ -417,6 +417,24 @@ def _():
     proc.terminate()
 
 
+@test("the app name is the same in node, python and swift")
+def _():
+    from arena_bridge.app import APP_ID, APP_NAME
+
+    root = Path(__file__).resolve().parent.parent
+    swift = (root / "macos/ArenaBridge/Sources/AppInfo.swift").read_text()
+    assert 'static let name = "%s"' % APP_NAME in swift, swift
+    assert 'static let bundleID = "%s"' % APP_ID in swift, swift
+
+
+@test("the background service starts the app, not the python binary")
+def _():
+    from arena_bridge.app import APP_NAME
+    from arena_bridge.service import runner_path
+
+    assert runner_path().name == APP_NAME, runner_path()
+
+
 server.shutdown()
 server2.shutdown()
 hub.shutdown()

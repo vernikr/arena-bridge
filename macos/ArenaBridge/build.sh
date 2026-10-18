@@ -4,7 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NAME="Arena Bridge"
+# the name and the bundle id live in Sources/AppInfo.swift
+NAME=$(sed -n 's/.*static let name = "\(.*\)".*/\1/p' Sources/AppInfo.swift)
+BUNDLE_ID=$(sed -n 's/.*static let bundleID = "\(.*\)".*/\1/p' Sources/AppInfo.swift)
+EXECUTABLE=$(echo "$NAME" | tr -d ' ')
 BUNDLE="dist/$NAME.app"
 ARCH="${ARCH:-$(uname -m)}"
 
@@ -14,7 +17,7 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 echo "building for ${ARCH}..."
 swiftc -O -swift-version 5 -parse-as-library \
   -target "$ARCH-apple-macosx13.0" \
-  -o "$BUNDLE/Contents/MacOS/ArenaBridge" \
+  -o "$BUNDLE/Contents/MacOS/$EXECUTABLE" \
   Sources/*.swift
 
 # the icon: one 1024px png becomes a macOS .icns
@@ -32,6 +35,10 @@ if [ -f Resources/AppIcon.png ]; then
 fi
 
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName $NAME" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $NAME" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$BUNDLE/Contents/Info.plist"
 codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || true
 
 echo "built: $BUNDLE"

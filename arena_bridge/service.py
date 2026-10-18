@@ -8,13 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .app import APP_NAME, SERVICE_LABEL as LABEL
 from .config import config_dir, ensure_dirs
-
-LABEL = "ai.arena.bridge"
 
 
 def plist_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+
+
+def runner_path() -> Path:
+    """The launchd agent starts this script, so the system settings show the app name."""
+    return config_dir() / APP_NAME
 
 
 def log_dir() -> Path:
@@ -23,6 +27,11 @@ def log_dir() -> Path:
 
 def cli_entry() -> list[str]:
     return [sys.executable, "-m", "arena_bridge"]
+
+
+def runner_script() -> str:
+    command = " ".join(f'"{part}"' for part in cli_entry())
+    return f"#!/bin/sh\n# {APP_NAME}: the background service of the bridge.\nexec {command} \"$@\"\n"
 
 
 def _launchctl(args: list[str]) -> str:
@@ -50,10 +59,13 @@ def service_install(bin=None, domain=None, authtoken=None, port=None) -> dict:
     logs.mkdir(parents=True, exist_ok=True)
     plist = plist_path()
     plist.parent.mkdir(parents=True, exist_ok=True)
-    arguments = [*cli_entry(), "tunnel"]
+    arguments = ["tunnel"]
     for flag, value in (("--bin", bin), ("--domain", domain), ("--authtoken", authtoken), ("--port", port)):
         if value:
             arguments += [flag, str(value)]
+    runner = runner_path()
+    runner.write_text(runner_script(), encoding="utf-8")
+    runner.chmod(0o755)
     payload = {
         "Label": LABEL,
         "ProgramArguments": arguments,

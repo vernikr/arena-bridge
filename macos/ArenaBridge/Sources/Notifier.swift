@@ -23,7 +23,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func post(title: String, body: String) {
-        Logger(subsystem: "com.arenabridge.app", category: "notifier").notice("posted: \(title)")
+        Logger(subsystem: AppInfo.bundleID, category: "notifier").notice("posted: \(title)")
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -36,7 +36,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                            willPresent notification: UNNotification,
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        Logger(subsystem: "com.arenabridge.app", category: "notifier").notice("willPresent: showing the banner")
+        Logger(subsystem: AppInfo.bundleID, category: "notifier").notice("willPresent: showing the banner")
         completionHandler([.banner, .sound, .list])
     }
 }

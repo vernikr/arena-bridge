@@ -25,7 +25,9 @@
   - Обычное окно, без иконки в менюбаре
   - Состояние обновляется само: статус, подтверждения и доверенное окно — каждые несколько секунд
   - Сборка: `macos/ArenaBridge/build.sh` → `dist/Arena Bridge.app`; `ARCH=x86_64|arm64`
-  - Подпись ad-hoc; иконка `Resources/AppIcon.png` → `.icns` при сборке
+  - Подпись ad-hoc; иконка `Resources/AppIcon.png` → `.icns` при сборке, вокруг знака прозрачно
+  - Имя приложения — константа: `src/app.mjs`, `arena_bridge/app.py`, `Sources/AppInfo.swift`
+  - Служба в «Системных настройках → Вход» называется как приложение, а не «node»
   - Gatekeeper при первом запуске: правый клик → «Открыть» либо `xattr -dr com.apple.quarantine`
 - Артефакты выпуска (GitHub Release по тегу `vX.Y.Z`)
   - npm-архив, python sdist + wheel, `.app` для arm64 и x86_64

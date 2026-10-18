@@ -4,11 +4,18 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_DIR, ensureDirs } from './config.mjs';
-
-const LABEL = 'ai.arena.bridge';
+import { APP_NAME, SERVICE_LABEL as LABEL } from './app.mjs';
 
 export function plistPath() {
   return path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+}
+
+/**
+ * The launchd agent starts this script instead of the node binary, so the system settings
+ * show the name of the app and not "node".
+ */
+export function runnerPath() {
+  return path.join(CONFIG_DIR, APP_NAME);
 }
 
 export function logDir() {
@@ -21,8 +28,14 @@ function cliEntry() {
   return path.join(here, '..', 'bin', 'arena-bridge.mjs');
 }
 
-function plistXml({ bin, domain, authtoken, port } = {}) {
-  const cli = cliEntry();
+function runnerScript() {
+  return `#!/bin/sh
+# ${APP_NAME}: the background service of the bridge.
+exec "${process.execPath}" "${cliEntry()}" "$@"
+`;
+}
+
+export function plistXml({ bin, domain, authtoken, port } = {}) {
   const logs = logDir();
   const extra = [];
   if (bin) extra.push('--bin', String(bin));
@@ -36,8 +49,7 @@ function plistXml({ bin, domain, authtoken, port } = {}) {
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${process.execPath}</string>
-    <string>${cli}</string>
+    <string>${runnerPath()}</string>
     <string>tunnel</string>
 ${extra.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
@@ -74,6 +86,8 @@ export function serviceInstall(options = {}) {
   fs.mkdirSync(logDir(), { recursive: true });
   const dir = path.dirname(plistPath());
   fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(runnerPath(), runnerScript(), { mode: 0o755 });
+  fs.chmodSync(runnerPath(), 0o755);
   fs.writeFileSync(plistPath(), plistXml(options));
   launchctl(['bootout', `gui/${process.getuid()}/${LABEL}`], { quiet: true });
   const out = launchctl(['bootstrap', `gui/${process.getuid()}`, plistPath()], { quiet: true });

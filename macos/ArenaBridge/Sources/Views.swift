@@ -49,7 +49,7 @@ struct Header: View {
                 .fill(model.running ? Color.green : (model.serviceInstalled ? Color.orange : Color.secondary))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Arena Bridge")
+                Text(AppInfo.name)
                     .font(.headline)
                 Text(model.running ? "running on \(model.device)" : "stopped")
                     .font(.caption)
