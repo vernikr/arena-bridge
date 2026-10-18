@@ -429,6 +429,14 @@ def _():
     assert 'static let bundleID = "%s"' % APP_ID in swift, swift
 
 
+@test("only the ngrok of our own domain is stopped")
+def _():
+    from arena_bridge.tunnel import kill_stale_ngrok
+
+    assert kill_stale_ngrok("no-such-domain-xyz.ngrok-free.dev") == []
+    assert kill_stale_ngrok(None) == []
+
+
 @test("the background service starts the app, not the python binary")
 def _():
     from arena_bridge.app import APP_NAME

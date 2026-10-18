@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.16
+
+### Fixed
+- The tunnel takes the reserved domain back when an old ngrok process still holds it: only the
+  ngrok that serves our domain is stopped, the other tunnels of the user are untouched.
+
 ## 0.7.15
 
 ### Fixed

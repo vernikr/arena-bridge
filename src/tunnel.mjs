@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import net from 'node:net';
 
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
@@ -9,6 +9,40 @@ const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
  * cloudflared: QUIC (UDP/7844) is blocked on many networks, so we default to http2 over TCP/443.
  * ngrok: an authtoken and an optional reserved domain give the same URL on every restart.
  */
+/**
+ * An old ngrok process keeps the reserved domain, and the new one cannot take it. Only the
+ * processes that serve our domain are stopped, never the other tunnels of the user.
+ */
+export function killStaleNgrok(domain) {
+  if (!domain) return [];
+  const killed = [];
+  let pids = [];
+  try {
+    pids = execFileSync('pgrep', ['-x', 'ngrok'], { encoding: 'utf8' })
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return killed;
+  }
+  for (const pid of pids) {
+    let args = '';
+    try {
+      args = execFileSync('ps', ['-o', 'args=', '-p', pid], { encoding: 'utf8' });
+    } catch {
+      continue;
+    }
+    if (!args.includes(domain)) continue;
+    try {
+      process.kill(Number(pid), 'SIGTERM');
+      killed.push(Number(pid));
+    } catch {
+      /* already gone */
+    }
+  }
+  return killed;
+}
+
 export function startTunnel(
   cfg,
   { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000 } = {},
@@ -64,6 +98,11 @@ export function startTunnel(
     });
     child.on('exit', (code) => {
       if (!settled) {
+        if (isNgrok && attempt++ < restarts) {
+          killStaleNgrok(domain);
+          setTimeout(spawnChild, delay);
+          return;
+        }
         settled = true;
         rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared`));
         return;

@@ -600,6 +600,12 @@ await test('the app name is the same in node, python and swift', async () => {
   assert.equal(pickSwift(swift, 'bundleID'), APP_ID);
 });
 
+await test('only the ngrok of our own domain is stopped', async () => {
+  const { killStaleNgrok } = await import('../src/tunnel.mjs');
+  assert.deepEqual(killStaleNgrok('no-such-domain-xyz.ngrok-free.dev'), []);
+  assert.deepEqual(killStaleNgrok(null), []);
+});
+
 await test('the background service uses permanent paths only', async () => {
   const { servicePath, stableNode } = await import('../src/service.mjs');
   assert.ok(!servicePath().includes('fnm_multishells'), servicePath());

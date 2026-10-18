@@ -1,6 +1,8 @@
 """cloudflared quick-tunnel helper (QUIC is blocked on many networks -> http2 by default)."""
 
+import os
 import re
+import signal
 import socket
 import subprocess
 import threading
@@ -18,6 +20,33 @@ def is_port_open(port, host="127.0.0.1", timeout=0.7) -> bool:
             return True
         except OSError:
             return False
+
+
+def kill_stale_ngrok(domain) -> list:
+    """An old ngrok process keeps the reserved domain, and the new one cannot take it.
+
+    Only the processes that serve our domain are stopped, never the other tunnels of the user.
+    """
+    if not domain:
+        return []
+    killed = []
+    try:
+        pids = subprocess.run(["pgrep", "-x", "ngrok"], capture_output=True, text=True, timeout=10).stdout.split()
+    except Exception:
+        return killed
+    for pid in pids:
+        try:
+            args = subprocess.run(["ps", "-o", "args=", "-p", pid], capture_output=True, text=True, timeout=10).stdout
+        except Exception:
+            continue
+        if domain not in args:
+            continue
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+            killed.append(int(pid))
+        except OSError:
+            pass
+    return killed
 
 
 def start_tunnel(port, protocol="http2", binary="cloudflared", authtoken=None, domain=None, restarts=20, delay=2.0):
@@ -68,6 +97,8 @@ def start_tunnel(port, protocol="http2", binary="cloudflared", authtoken=None, d
             proc.wait()
             if state["attempt"] < restarts:
                 state["attempt"] += 1
+                if is_ngrok:
+                    kill_stale_ngrok(domain)
                 time.sleep(delay)
                 spawn()
 
