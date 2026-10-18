@@ -16,7 +16,7 @@ from .telegram import answer_callback, edit_message_text, parse_command, send_te
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.19"
+        server_version = "arena-bridge/0.7.20"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -35,6 +35,11 @@ def make_handler(cfg, engine):
             # the local token is for the machine owner: approvals and trust
             return bool(cfg_now.get("localToken")) and token == cfg_now.get("localToken")
 
+        def _cfg_now(self):
+            current = load_config()
+            engine.cfg = current
+            return current
+
         def _send(self, status, payload, content_type="application/json; charset=utf-8", raw=False):
             body = payload if raw else json.dumps(payload, indent=2, default=str).encode()
             if isinstance(body, str):
@@ -49,7 +54,7 @@ def make_handler(cfg, engine):
 
         def _read_body(self) -> bytes:
             length = int(self.headers.get("Content-Length") or 0)
-            limit = int(cfg.get("maxUploadBytes", 16 * 1024 * 1024))
+            limit = int(self._cfg_now().get("maxUploadBytes", 16 * 1024 * 1024))
             if length > limit:
                 raise ValueError("request body too large")
             return self.rfile.read(length) if length else b""
@@ -75,29 +80,31 @@ def make_handler(cfg, engine):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "direct", "device": cfg.get("device"), "version": "0.7.19"})
+                current = load_config()
+                return self._send(200, {"ok": True, "mode": "direct", "device": current.get("device"), "version": "0.7.20"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
+            cfg_now = self._cfg_now()
             if path == "/tools":
                 return self._send(200, {"ok": True, "tools": engine.mcp_tools()})
             if path == "/prompt":
                 base = self._query_one(query, "base")
-                return self._send(200, build_prompt(cfg, base_url=base, tools=engine.catalog()), content_type="text/plain; charset=utf-8")
+                return self._send(200, build_prompt(cfg_now, base_url=base, tools=engine.catalog()), content_type="text/plain; charset=utf-8")
             if path == "/config":
                 return self._send(
                     200,
                     {
                         "ok": True,
-                        "device": cfg.get("device"),
-                        "roots": cfg.get("roots"),
-                        "protected_count": len(cfg.get("protected") or []),
-                        "requireApproval": cfg.get("requireApproval"),
-                        "allowShell": cfg.get("allowShell"),
-                        "approvalWaitSec": cfg.get("approvalWaitSec"),
-                        "maxOutputBytes": cfg.get("maxOutputBytes"),
+                        "device": cfg_now.get("device"),
+                        "roots": cfg_now.get("roots"),
+                        "protected_count": len(cfg_now.get("protected") or []),
+                        "requireApproval": cfg_now.get("requireApproval"),
+                        "allowShell": cfg_now.get("allowShell"),
+                        "approvalWaitSec": cfg_now.get("approvalWaitSec"),
+                        "maxOutputBytes": cfg_now.get("maxOutputBytes"),
                         "telegram": {
-                            "enabled": bool((cfg.get("telegram") or {}).get("enabled")),
-                            "chat_ids": (cfg.get("telegram") or {}).get("chatIds") or [],
+                            "enabled": bool((cfg_now.get("telegram") or {}).get("enabled")),
+                            "chat_ids": (cfg_now.get("telegram") or {}).get("chatIds") or [],
                         },
                     },
                 )
@@ -135,6 +142,7 @@ def make_handler(cfg, engine):
                 return self._send(200, {"ok": True, "mode": "direct"})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
+            self._cfg_now()
             try:
                 if path == "/exec":
                     body = self._json_body()
@@ -215,7 +223,8 @@ def make_handler(cfg, engine):
             target = self._query_one(query, "path")
             if not target:
                 return self._send(400, {"ok": False, "error": "path query parameter is required"})
-            ok, abs_path, err, reason = check_path(target, cfg, engine.base, write=(method != "GET"))
+            current = self._cfg_now()
+            ok, abs_path, err, reason = check_path(target, current, engine.base, write=(method != "GET"))
             if not ok:
                 return self._send(403, {"ok": False, "error": err, "reason": reason})
             try:

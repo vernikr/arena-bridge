@@ -125,9 +125,14 @@ await test('a policy change (roots) applies without restarting the server', asyn
     body: JSON.stringify({ tool: 'read_file', args: { path: path.join(other, 'x.txt') } }),
   });
   const j2 = await after.json();
-  saveConfig(loaded); // restore
   assert.equal(j2.ok, true, 'the new root should be reachable without a restart');
   assert.equal(j2.content, 'x');
+  const fileApi = await fetch(`${base}/files?path=${encodeURIComponent(path.join(other, 'x.txt'))}`, { headers: auth });
+  assert.equal(await fileApi.text(), 'x', 'the file API should use the refreshed roots');
+  const configApi = await fetch(`${base}/config`, { headers: auth });
+  const configJson = await configApi.json();
+  assert.ok(configJson.roots.includes(other), 'the config endpoint should show the refreshed roots');
+  saveConfig(loaded); // restore
 });
 
 await test('GET /prompt contains the base url and the token', async () => {

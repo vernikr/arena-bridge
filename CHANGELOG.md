@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.20
+
+### Fixed
+- Direct HTTP routes and both execution engines now use one fresh configuration snapshot per request.
+- Changes to roots, protected paths, approval policy and response limits apply consistently without restarting the bridge.
+
 ## 0.7.19
 
 ### Fixed

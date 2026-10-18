@@ -635,6 +635,11 @@ export class Engine {
   }
 
   async call(name, args = {}, { requireApproval } = {}) {
+    try {
+      if (fs.existsSync(CONFIG_PATH)) this.cfg = loadConfig();
+    } catch {
+      /* keep the last valid snapshot */
+    }
     const tool = this.catalog().find((t) => t.name === name);
     if (!tool) return { ok: false, error: `unknown tool: ${name}` };
     const started = Date.now();
@@ -650,13 +655,6 @@ export class Engine {
       if (saved) ctx.artifacts.push(saved);
       return saved;
     };
-
-    // pick up policy changes (roots, protected, requireApproval) without a restart
-    try {
-      if (fs.existsSync(CONFIG_PATH)) this.cfg = loadConfig();
-    } catch {
-      /* keep the snapshot */
-    }
 
     let needApproval = tool.approvalFor ? !!tool.approvalFor(args, this) : !!tool.approval;
     if (this.cfg.requireApproval === false) needApproval = false;

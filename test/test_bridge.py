@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -103,6 +104,25 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 time.sleep(0.2)
 base = f"http://127.0.0.1:{port}"
 auth = "test-agent-token"
+
+
+@test("policy, files API and config endpoint reload without restarting")
+def _():
+    other = TMP / "other"
+    other.mkdir(exist_ok=True)
+    (other / "x.txt").write_text("x")
+    live = dict(cfg)
+    live["roots"] = [str(WORK), str(other)]
+    save_config(live)
+    try:
+        status, j = json_request(f"{base}/call", "POST", auth, {"tool": "read_file", "args": {"path": str(other / "x.txt")}})
+        assert status == 200 and j["ok"] is True, (status, j)
+        status, payload = request(f"{base}/files?path={urllib.parse.quote(str(other / 'x.txt'))}", token=auth)
+        assert status == 200 and payload == b"x", (status, payload)
+        status, current = json_request(f"{base}/config", token=auth)
+        assert status == 200 and str(other.resolve()) in current["roots"], (status, current)
+    finally:
+        save_config(cfg)
 
 print("\n▸ direct mode")
 
@@ -220,6 +240,7 @@ print("\n▸ approval gate")
 cfg_ap = dict(cfg)
 cfg_ap["requireApproval"] = True
 cfg_ap["approvalWaitSec"] = 10
+save_config(cfg_ap)
 engine2 = Engine(cfg_ap, str(WORK))
 server2 = serve_direct(cfg_ap, engine2)  # port 0
 port2 = server2.server_address[1]

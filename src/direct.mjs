@@ -73,13 +73,15 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.7.19',
+          version: '0.7.20',
           uptime_sec: Math.round(process.uptime()),
         });
       }
 
-      // re-read the config per request so a rotated token takes effect without a restart
-      if (!isAuthorized(req, loadConfig())) {
+      // Re-read once per request so auth, policy, limits and the response agree.
+      const cfgNow = loadConfig();
+      mcpCtx.cfg = cfgNow;
+      if (!isAuthorized(req, cfgNow)) {
         res.setHeader('www-authenticate', 'Bearer');
         return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       }
@@ -89,23 +91,23 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'GET' && p === '/prompt') {
-        const text = buildPrompt(cfg, { tool: engine, baseUrl: url.searchParams.get('base') || undefined });
+        const text = buildPrompt(cfgNow, { tool: engine, baseUrl: url.searchParams.get('base') || undefined });
         return sendText(res, 200, text);
       }
 
       if (req.method === 'GET' && p === '/config') {
         return sendJson(res, 200, {
           ok: true,
-          device: cfg.device,
-          roots: cfg.roots,
-          protected_count: cfg.protected.length,
-          requireApproval: cfg.requireApproval,
-          allowShell: cfg.allowShell,
-          approvalWaitSec: cfg.approvalWaitSec,
-          maxOutputBytes: cfg.maxOutputBytes,
+          device: cfgNow.device,
+          roots: cfgNow.roots,
+          protected_count: cfgNow.protected.length,
+          requireApproval: cfgNow.requireApproval,
+          allowShell: cfgNow.allowShell,
+          approvalWaitSec: cfgNow.approvalWaitSec,
+          maxOutputBytes: cfgNow.maxOutputBytes,
           telegram: {
-            enabled: !!cfg.telegram?.enabled,
-            chat_ids: cfg.telegram?.chatIds || [],
+            enabled: !!cfgNow.telegram?.enabled,
+            chat_ids: cfgNow.telegram?.chatIds || [],
           },
         });
       }
@@ -156,7 +158,7 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'POST' && p === '/exec') {
-        const body = await readJson(req, cfg.maxUploadBytes);
+        const body = await readJson(req, cfgNow.maxUploadBytes);
         const result = await engine.call('bash', {
           command: body.command,
           cwd: body.cwd,
@@ -167,7 +169,7 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'POST' && p === '/call') {
-        const body = await readJson(req, cfg.maxUploadBytes);
+        const body = await readJson(req, cfgNow.maxUploadBytes);
         if (!body.tool) return sendJson(res, 400, { ok: false, error: 'tool is required' });
         const result = await engine.call(String(body.tool), body.args || {});
         return sendJson(res, result.ok ? 200 : 400, result);
@@ -176,7 +178,7 @@ export function createDirectServer(cfg, engine) {
       if (p === '/files') {
         const target = url.searchParams.get('path');
         if (!target) return sendJson(res, 400, { ok: false, error: 'path query parameter is required' });
-        const chk = checkPath(target, cfg, engine.base, { write: req.method !== 'GET' });
+        const chk = checkPath(target, cfgNow, engine.base, { write: req.method !== 'GET' });
         if (!chk.ok) return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
         try {
           if (req.method === 'GET') {
@@ -184,7 +186,7 @@ export function createDirectServer(cfg, engine) {
             return sendRaw(res, 200, buf);
           }
           if (req.method === 'PUT' || req.method === 'POST') {
-            const buf = await readBody(req, cfg.maxUploadBytes);
+            const buf = await readBody(req, cfgNow.maxUploadBytes);
             await fsp.mkdir(chk.abs.replace(/\/[^/]*$/, ''), { recursive: true });
             await fsp.writeFile(chk.abs, buf);
             return sendJson(res, 200, { ok: true, path: chk.abs, bytes: buf.length });

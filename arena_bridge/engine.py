@@ -735,6 +735,10 @@ class Engine:
 
     def call(self, name: str, args=None, require_approval=None):
         args = args or {}
+        try:
+            self.cfg = load_config()
+        except Exception:
+            pass
         tool = next((t for t in self.catalog() if t["name"] == name), None)
         if not tool:
             return {"ok": False, "error": f"unknown tool: {name}"}
