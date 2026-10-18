@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from datetime import datetime, timezone
 
@@ -7,10 +8,33 @@ from pathlib import Path
 from .config import audit_path, config_dir
 
 
+SECRETS = [
+    re.compile(r"(?<!\d)\d{6,12}:[A-Za-z0-9_-]{25,}"),  # telegram bot tokens
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),  # github tokens
+    re.compile(r"\bnpm_[A-Za-z0-9]{20,}\b"),  # npm tokens
+    re.compile(r"\bpypi-[A-Za-z0-9_-]{20,}\b"),  # pypi tokens
+    re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"),  # api keys
+]
+
+
+def scrub(value):
+    """Mask anything that looks like a credential, so the log never becomes a secret store."""
+    if isinstance(value, str):
+        out = value
+        for pattern in SECRETS:
+            out = pattern.sub("***", out)
+        return out
+    if isinstance(value, list):
+        return [scrub(v) for v in value]
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items()}
+    return value
+
+
 def audit(entry: dict) -> None:
     try:
         config_dir().mkdir(parents=True, exist_ok=True)
-        rec = {"ts": datetime.now(timezone.utc).isoformat(), **entry}
+        rec = {"ts": datetime.now(timezone.utc).isoformat(), **scrub(entry)}
         with open(audit_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
     except Exception:

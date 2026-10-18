@@ -11,11 +11,35 @@ export function auditPath() {
   return path.join(configDir(), 'audit.log');
 }
 
+const SECRETS = [
+  /(?<!\d)\d{6,12}:[A-Za-z0-9_-]{25,}/g, // telegram bot tokens
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, // github tokens
+  /\bnpm_[A-Za-z0-9]{20,}\b/g, // npm tokens
+  /\bpypi-[A-Za-z0-9_-]{20,}\b/g, // pypi tokens
+  /\bsk-[A-Za-z0-9]{20,}\b/g, // api keys
+];
+
+/** Mask anything that looks like a credential, so the log never becomes a secret store. */
+export function scrub(value) {
+  if (typeof value === 'string') {
+    let out = value;
+    for (const re of SECRETS) out = out.replace(re, '***');
+    return out;
+  }
+  if (Array.isArray(value)) return value.map(scrub);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = scrub(v);
+    return out;
+  }
+  return value;
+}
+
 export function audit(entry) {
   try {
     const dir = configDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const rec = { ts: new Date().toISOString(), ...entry };
+    const rec = { ts: new Date().toISOString(), ...scrub(entry) };
     fs.appendFileSync(auditPath(), JSON.stringify(rec) + '\n', { mode: 0o600 });
   } catch {
     /* auditing must never break the request */

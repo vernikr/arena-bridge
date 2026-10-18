@@ -185,6 +185,23 @@ def _():
     assert "/approve" in SENT[-1]["text"]
 
 
+@test("the audit log masks credentials")
+def _():
+    from arena_bridge.audit import audit, tail_audit
+
+    audit(
+        {
+            "tool": "bash",
+            "args": {
+                "command": "curl https://api.telegram.org/bot8605407779:AAHsu4ZpVVrkpzjKD7Em1I-U55Zcd9ndVPY/getMe"
+            },
+        }
+    )
+    last = tail_audit(1)[0]
+    assert "bot***" in last["args"]["command"], last["args"]["command"]
+    assert "AAHsu" not in last["args"]["command"]
+
+
 @test("the rate limit protects the chat from a flood")
 def _():
     limited = None

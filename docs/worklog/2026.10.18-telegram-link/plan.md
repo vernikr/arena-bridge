@@ -24,6 +24,21 @@ back — and approvals, so a pending request is never a dead end.
 - The user, not the agent, decides who may write: the allow list is configuration, not a tool
   argument the agent can widen.
 
+## Live check on the user's Mac
+
+- The bot `@vernikr_bot` is linked to the chat `190771108`; the listener runs inside the
+  launchd service.
+- Agent → user: `notify_user` delivered the message (`message_id 3`).
+- User → agent: the reply "вижу сообщение" came back inside the tool result
+  (`wait_for_reply: true`).
+- Approval from Telegram: the bridge asked in the chat, the user answered `/approve <id>`,
+  the pending `bash` call went through (`decidedBy: telegram`).
+
+## Follow-ups released with it
+
+- 0.7.1 — the long poll got a generous ceiling, so a slow network does not stop the listener.
+- 0.7.2 — the audit log masks credentials (Telegram, GitHub, npm, PyPI, API keys).
+
 ## Tests
 
-147 green: Node 30 + 13 + 24 + 12, Python 22 + 13 + 22 + 11.
+149 green: Node 30 + 13 + 24 + 13, Python 22 + 13 + 22 + 12.

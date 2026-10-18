@@ -96,7 +96,7 @@ def make_handler(cfg, state: HubState):
         ]
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.7.1"
+        server_version = "arena-bridge/0.7.2"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):
@@ -150,7 +150,7 @@ def make_handler(cfg, state: HubState):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "hub", "version": "0.7.1", "devices": list(state.devices)})
+                return self._send(200, {"ok": True, "mode": "hub", "version": "0.7.2", "devices": list(state.devices)})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/devices":

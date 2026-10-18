@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.2
+
+### Fixed
+- The audit log masks credentials: a Telegram bot token, a GitHub, npm or PyPI token in a
+  command or an argument is written as `***`, so the log cannot become a secret store the
+  agent may read.
+
 ## 0.7.1
 
 ### Fixed

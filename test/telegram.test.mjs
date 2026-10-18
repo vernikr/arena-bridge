@@ -192,6 +192,17 @@ await test('the user can approve a request from the chat', async () => {
   assert.equal(status, 'approved', 'the approval is settled from Telegram');
 });
 
+await test('the audit log masks credentials', async () => {
+  const { audit, tailAudit } = await import('../src/audit.mjs');
+  audit({
+    tool: 'bash',
+    args: { command: 'curl https://api.telegram.org/bot8605407779:AAHsu4ZpVVrkpzjKD7Em1I-U55Zcd9ndVPY/getMe' },
+  });
+  const last = tailAudit(1)[0];
+  assert.match(last.args.command, /bot\*\*\*/);
+  assert.doesNotMatch(last.args.command, /AAHsu/);
+});
+
 await test('the rate limit protects the chat from a flood', async () => {
   let limited = null;
   for (let i = 0; i < 30; i++) {
