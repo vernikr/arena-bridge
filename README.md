@@ -56,6 +56,11 @@ npm i -g arena-bridge          # только командная строка
 pip install arena-bridge       # то же самое на Python
 ```
 
+Приложение macOS можно скачать и без терминала — в каждом выпуске лежат готовые сборки:
+[Apple silicon](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-arm64.zip) ·
+[Intel](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-x86_64.zip).
+Распаковать и перетащить в «Программы».
+
 ```bash
 # 1. один раз: создать конфиг, проверить машину, поднять API + туннель
 arena-bridge setup --root ~/projects --root ~/Documents
@@ -288,7 +293,8 @@ cp -R "dist/Arena Bridge.app" /Applications/
 
 Нужен только Swift из Xcode Command Line Tools (`xcode-select --install`), Xcode целиком не
 требуется. Собирается под текущую архитектуру: `ARCH=x86_64` для Intel, `ARCH=arm64` для
-Apple Silicon.
+Apple Silicon. Готовые сборки для обеих архитектур появляются в каждом выпуске на GitHub
+(см. «Быстрый старт»), собирать самому не нужно.
 
 | Блок в окне | Что делает |
 | --- | --- |
