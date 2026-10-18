@@ -22,12 +22,14 @@ jobs:
 
   pypi:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install build
+      - run: pip install build twine
       - run: python -m build
       - run: twine upload dist/*
         env:
@@ -70,22 +72,20 @@ jobs:
   macos:
     runs-on: macos-latest
     needs: [release]
+    if: always()
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
       - name: build the app for both architectures
         run: |
-          cd macos/ArenaBridge
           for arch in arm64 x86_64; do
-            ARCH=$arch ./build.sh
-            cd ..
-            cd ..
-            zip -qry "$RUNNER_TEMP/Arena-Bridge-$arch.zip" "dist/Arena Bridge.app"
-            cd macos/ArenaBridge
-            rm -rf dist
+            (cd macos/ArenaBridge && ARCH=$arch ./build.sh)
+            cp -R "macos/ArenaBridge/dist/Arena Bridge.app" "/tmp/Arena Bridge.app"
+            (cd /tmp && zip -qry "$RUNNER_TEMP/Arena-Bridge-$arch.zip" "Arena Bridge.app")
+            rm -rf "/tmp/Arena Bridge.app" "macos/ArenaBridge/dist"
           done
-          mv "$RUNNER_TEMP"/Arena-Bridge-*.zip .
+          mv "$RUNNER_TEMP"/Arena-Bridge-*.zip "$GITHUB_WORKSPACE"
       - name: attach the apps to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

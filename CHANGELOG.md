@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.8
+
+### Fixed
+- The release workflow installs twine, always attaches the macOS app, and keeps the release even
+  if a package registry refuses the upload.
+
 ## 0.7.7
 
 ### Fixed
