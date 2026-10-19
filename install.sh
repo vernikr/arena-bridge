@@ -15,6 +15,20 @@ APP_ONLY=0
 VERSION=""
 PREFIX=""
 
+# Plan: what will be done
+say "arena-bridge installer — plan:"
+if [ "$APP_ONLY" -eq 0 ]; then
+  say "  • CLI: npm/pipx/pip3 → arena-bridge (version: ${VERSION:-latest})${PREFIX:+ prefix $PREFIX}"
+else
+  say "  • CLI: skipped (--app-only)"
+fi
+if [ "$CLI_ONLY" -eq 0 ] && [ "$OS" = "Darwin" ]; then
+  say "  • App: $REPO/releases → /Applications/Arena Bridge.app ($ASSET_ARCH)"
+else
+  say "  • App: skipped"
+fi
+say ""
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --cli-only) CLI_ONLY=1 ;;
@@ -123,6 +137,13 @@ install_app() {
 if [ "$APP_ONLY" -eq 0 ]; then install_cli; fi
 if [ "$CLI_ONLY" -eq 0 ]; then install_app; fi
 
+say ""
+if command -v arena-bridge >/dev/null 2>&1; then
+  say "→ checking installation:"
+  arena-bridge doctor || true
+else
+  say "→ arena-bridge not in PATH yet — add ~/.local/bin to PATH or restart terminal"
+fi
 say ""
 say "done. next steps:"
 say "  arena-bridge init --root ~/Documents     # set up"
