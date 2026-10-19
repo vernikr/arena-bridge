@@ -31,6 +31,10 @@ struct ContentView: View {
             SetupView()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showSigningGuide) {
+            SigningGuideView()
+                .environmentObject(model)
+        }
         .sheet(item: $model.guide) { kind in
             PermissionGuideView(kind: kind)
                 .environmentObject(model)
@@ -234,6 +238,17 @@ struct ActionsCard: View {
                     Button("Fix \(kind.title)…") { model.guide = kind }
                         .buttonStyle(.borderedProminent)
                 }
+            }
+            HStack(spacing: 10) {
+                Image(systemName: AppModel.hasCertificate ? "checkmark.seal.fill" : "seal")
+                    .foregroundStyle(AppModel.hasCertificate ? Color.green : Color.secondary)
+                Text(AppModel.hasCertificate
+                     ? "Signed with a certificate: permissions survive updates."
+                     : "Ad-hoc signed: permissions reset after each new build.")
+                    .font(.callout)
+                    .lineLimit(2)
+                Spacer()
+                Button("Keep permissions after updates…") { model.showSigningGuide = true }
             }
             Divider()
             HStack(spacing: 10) {

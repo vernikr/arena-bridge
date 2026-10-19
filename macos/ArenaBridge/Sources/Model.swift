@@ -38,6 +38,7 @@ final class AppModel: ObservableObject {
     @Published var screenAccess: Bool? = nil
     @Published var accessibilityAccess: Bool? = nil
     @Published var guide: PermissionKind? = nil
+    @Published var showSigningGuide = false
     @Published var permissionsChecking = false
     @Published var permissionsCheckedAt: Date? = nil
     private var focusObserver: AnyCancellable?
