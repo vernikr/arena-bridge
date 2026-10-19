@@ -243,7 +243,7 @@ Deviations:
 - Tests: trust open/close/expire produce one event each; cursor paging over 50 000 synthetic records returns no duplicates or gaps; rotation keeps the newest segment intact.
 - Acceptance: every access window change in the log, from any channel; API returns 500 records under 100 ms on a 100 000-record file.
 
-### Wave 3 — log panel (Swift, L)
+### Wave 3 — log panel (Swift, L) — status: done on branch `wave-3/log-panel`, not released
 - Parse v2 with fractional seconds; local time zone display; UTC toggle; export with offsets.
 - Chronological order, pinned auto-follow, "New entries" pill.
 - Level filter, source short id, detail sheet, note style.
