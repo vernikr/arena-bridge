@@ -91,7 +91,7 @@ Commands:
                        --tools a,b     only these tools (default: all)
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status | --extend --for 1h
-  audit [-n N] [--tool NAME] [--since DUR] Show the audit log (e.g. --since 2h, --tool bash)
+  audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] Show the audit log
   cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
   logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
@@ -491,6 +491,24 @@ function cmdAudit(args) {
       entries = entries.filter(e => {
         const ts = e.ts ? new Date(e.ts).getTime() : (e.createdAt||0);
         return ts >= cutoff;
+      });
+    } catch {}
+  }
+  if (args.flags.from) {
+    try {
+      const from = new Date(String(args.flags.from)).getTime();
+      if (Number.isFinite(from)) entries = entries.filter(e => {
+        const ts = e.ts ? new Date(e.ts).getTime() : (e.createdAt||0);
+        return ts >= from;
+      });
+    } catch {}
+  }
+  if (args.flags.to) {
+    try {
+      const to = new Date(String(args.flags.to)).getTime();
+      if (Number.isFinite(to)) entries = entries.filter(e => {
+        const ts = e.ts ? new Date(e.ts).getTime() : (e.createdAt||0);
+        return ts <= to;
       });
     } catch {}
   }

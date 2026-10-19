@@ -625,6 +625,30 @@ def cmd_audit(args):
                 return e.get('createdAt',0) or 0
             entries = [e for e in entries if _ts(e) >= cutoff]
         except Exception: pass
+    if getattr(args, 'from', None):
+        try:
+            from_dt = __import__('datetime').datetime.fromisoformat(str(getattr(args, 'from')).replace('Z','+00:00'))
+            from_ts = from_dt.timestamp()*1000
+            def _ts2(e):
+                ts = e.get('ts')
+                if ts:
+                    try: return __import__('datetime').datetime.fromisoformat(ts.replace('Z','+00:00')).timestamp()*1000
+                    except: pass
+                return e.get('createdAt',0) or 0
+            entries = [e for e in entries if _ts2(e) >= from_ts]
+        except Exception: pass
+    if getattr(args, 'to', None):
+        try:
+            to_dt = __import__('datetime').datetime.fromisoformat(str(getattr(args, 'to')).replace('Z','+00:00'))
+            to_ts = to_dt.timestamp()*1000
+            def _ts3(e):
+                ts = e.get('ts')
+                if ts:
+                    try: return __import__('datetime').datetime.fromisoformat(ts.replace('Z','+00:00')).timestamp()*1000
+                    except: pass
+                return e.get('createdAt',0) or 0
+            entries = [e for e in entries if _ts3(e) <= to_ts]
+        except Exception: pass
     if getattr(args, 'tool', None):
         want = str(args.tool).lower()
         entries = [e for e in entries if str(e.get('tool','')).lower()==want]
@@ -962,6 +986,8 @@ def build_parser():
     audit.add_argument("-n", type=int, default=30)
     audit.add_argument("--tool", help="filter by tool name")
     audit.add_argument("--since", help="only entries since duration (e.g. 2h, 1d, 30m)")
+    audit.add_argument("--from", dest="from", help="only entries from date (ISO, e.g. 2024-10-19)")
+    audit.add_argument("--to", help="only entries to date (ISO)")
     audit.add_argument("--days", type=int, default=14)
     audit.set_defaults(func=cmd_audit)
 
