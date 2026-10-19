@@ -37,8 +37,9 @@ final class AppModel: ObservableObject {
     @Published var notificationsAllowed = false
     @Published var screenAccess: Bool? = nil
     @Published var accessibilityAccess: Bool? = nil
-    @Published var showPermissionsGuide = false
-    private var lastPermissionCheck = Date.distantPast
+    @Published var guide: PermissionKind? = nil
+    @Published var permissionsChecking = false
+    @Published var permissionsCheckedAt: Date? = nil
 
     /// True when the app is signed with a certificate, so macOS keeps its permissions across updates.
     static let hasCertificate: Bool = {
@@ -50,26 +51,25 @@ final class AppModel: ObservableObject {
         return dict[kSecCodeInfoCertificates as String] != nil
     }()
 
-    /// The missing permission in plain words, or nil when both are granted.
-    var permissionsProblem: String? {
-        switch (screenAccess, accessibilityAccess) {
-        case (false, false): return "Screen Recording and Accessibility are missing: screenshots and clicks will fail."
-        case (false, _): return "Screen Recording is missing: screenshots will fail."
-        case (_, false): return "Accessibility is missing: element trees will be empty."
-        default: return nil
-        }
+    /// Permissions that are known to be missing, in guide order.
+    var missingPermissions: [PermissionKind] {
+        [(PermissionKind.screen, screenAccess), (.accessibility, accessibilityAccess)]
+            .compactMap { $0.1 == false ? $0.0 : nil }
     }
 
-    /// Asks the bridge CLI which macOS permissions it has. Read-only; at most once a minute unless forced.
+    /// Asks the running service which permissions its screen runtime has. Read-only; at most once a minute unless forced.
     func checkPermissions(force: Bool = false) {
-        guard force || Date().timeIntervalSince(lastPermissionCheck) > 60 else { return }
-        lastPermissionCheck = Date()
+        guard !permissionsChecking else { return }
+        if !force, let at = permissionsCheckedAt, Date().timeIntervalSince(at) < 60 { return }
+        permissionsChecking = true
         Task {
-            let out = await Task.detached { Bridge.run(["permissions", "--json"]).output }.value
-            guard let start = out.firstIndex(of: "{"), let end = out.lastIndex(of: "}"),
-                  let json = try? JSONSerialization.jsonObject(with: Data(out[start...end].utf8)) as? [String: Any] else { return }
-            screenAccess = json["screen"] as? Bool
-            accessibilityAccess = json["accessibility"] as? Bool
+            let (code, json) = await bridge.call("call", method: "POST",
+                                                 body: ["tool": "mac_permissions", "args": [String: Any]()], timeout: 40)
+            let text = json["permissions"] as? String ?? ""
+            screenAccess = code == 200 ? PermissionKind.granted("Screen Recording", in: text) : nil
+            accessibilityAccess = code == 200 ? PermissionKind.granted("Accessibility", in: text) : nil
+            permissionsCheckedAt = Date()
+            permissionsChecking = false
         }
     }
 
@@ -494,4 +494,32 @@ final class AppModel: ObservableObject {
     }
 
     deinit { eventTask?.cancel() }
+}
+
+/// One macOS permission the bridge needs, with the guide text for it.
+enum PermissionKind: String, Identifiable {
+    case screen, accessibility
+
+    var id: String { rawValue }
+    var title: String { self == .screen ? "Screen Recording" : "Accessibility" }
+    var pane: String { self == .screen ? "Privacy_ScreenCapture" : "Privacy_Accessibility" }
+    var paneName: String { self == .screen ? "Screen & System Audio Recording" : "Accessibility" }
+    var consequence: String { self == .screen ? "screenshots and clicks will fail" : "element trees will be empty" }
+
+    var steps: [String] {
+        [
+            "Click \"Open \(title) settings\" below. System Settings opens at Privacy & Security → \(paneName).",
+            "Click + under the list. If + is grey, click the lock at the bottom left and enter your Mac password.",
+            "Press ⌘⇧G, paste the path (click it or the copy icon above to copy it), press Return, then click Open.",
+            "Switch on arena-bridge-agent. The Arena Bridge entry can stay in the list; it does no harm.",
+            "If macOS asks you to quit Arena Bridge, click Later. Do not click Quit & Reopen yet.",
+            "When this permission is done, quit Arena Bridge with ⌘Q, open it again, then click Check again.",
+        ]
+    }
+
+    /// Reads one line such as "Screen Recording (Required): Not Granted" from the permission text.
+    static func granted(_ label: String, in text: String) -> Bool? {
+        guard let line = text.components(separatedBy: "\n").first(where: { $0.hasPrefix(label) }) else { return nil }
+        return !line.contains("Not Granted")
+    }
 }

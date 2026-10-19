@@ -258,7 +258,7 @@ struct Bridge {
 
     /// One API call. Returns the status code and the decoded JSON body.
     func call(_ path: String, query: [String: String] = [:], method: String = "GET",
-              body: [String: Any]? = nil, local: Bool = false) async -> (Int, [String: Any]) {
+              body: [String: Any]? = nil, timeout: TimeInterval = 12, local: Bool = false) async -> (Int, [String: Any]) {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -266,7 +266,7 @@ struct Bridge {
         guard let url = components.url else { return (0, [:]) }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 12
+        request.timeoutInterval = timeout
         let token = local ? config.localToken : config.token
         if let token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

@@ -881,7 +881,7 @@ export function macTools(cfg = {}) {
               'Screen Recording and Accessibility are required for screen capture and synthetic input.',
           };
         }
-        const res = await runVariants(p.bin, [['permissions'], ['permissions', '--json']], { timeout: 30 });
+        const res = await runVariants(p.bin, [['permissions', '--no-remote'], ['permissions', '--json', '--no-remote']], { timeout: 30 });
         return {
           ok: res.exit_code === 0,
           permissions: res.stdout.slice(0, 4000) || undefined,
@@ -900,7 +900,7 @@ export function macTools(cfg = {}) {
 export async function permissionStatus(cfg = {}) {
   const p = checkPeek(findPeekaboo(cfg));
   if (!p.ok) return { ok: false, error: 'peekaboo_not_found' };
-  const res = await runVariants(p.bin, [['permissions']], { timeout: 30 });
+  const res = await runVariants(p.bin, [['permissions', '--no-remote']], { timeout: 30 });
   const text = res.stdout || '';
   const grant = (label) => {
     const m = text.match(new RegExp(label + '[^:\\n]*:\\s*(Not Granted|Granted)'));

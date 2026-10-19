@@ -317,7 +317,7 @@ Apple Silicon. Готовые сборки для обеих архитекту�
 
 ### macOS permissions
 
-The bridge takes screenshots and clicks through **Arena Bridge.app**, so macOS needs two permissions for that app:
+The bridge takes screenshots and clicks through the helper **arena-bridge-agent** inside **Arena Bridge.app**, so macOS needs two permissions for it:
 
 - **Screen Recording** (System Settings → Privacy & Security → Screen & System Audio Recording)
 - **Accessibility** (System Settings → Privacy & Security → Accessibility)
@@ -326,16 +326,18 @@ Check them at any time with `arena-bridge permissions` (exit code 3 when somethi
 
 #### Grant the permissions (about 3 minutes)
 
-1. Click **Fix…** on the Control card, or open the two panes above by hand.
-2. In **Screen & System Audio Recording**, find **Arena Bridge** and switch it on.
-   - If it is not in the list, click **+** under the list. If **+** is grey, click the lock at the bottom left and enter your Mac password first. In the file window press ⌘⇧G, paste `/Applications/Arena Bridge.app`, press Return, click **Open**, and switch it on.
-3. Do the same in **Accessibility**.
-4. Quit Arena Bridge (⌘Q), open it again, and click **Check again**. The warning disappears when both permissions are granted.
+The screen runtime is the helper **arena-bridge-agent** inside the app (`/Applications/Arena Bridge.app/Contents/Helpers/arena-bridge-agent`). macOS checks that helper, so it is the entry to switch on. Each missing permission has its own **Fix …** button on the Control card, which opens a guide with that permission's steps.
+
+1. Click **Fix Screen Recording…** on the Control card. Click the path in the guide to copy it.
+2. Click **Open Screen Recording settings** in the guide. In the list, click **+**. If **+** is grey, click the lock at the bottom left and enter your Mac password.
+3. Press ⌘⇧G, paste the path, press Return, then click **Open**. Switch on **arena-bridge-agent**.
+4. If macOS asks you to quit Arena Bridge, click **Later**. Do not choose Quit & Reopen yet.
+5. Repeat steps 1–4 for **Accessibility** with its own **Fix Accessibility…** button.
+6. Quit Arena Bridge with ⌘Q, open it again, and click **Check again** in each guide. The warning disappears when both permissions are granted.
 
 Harder cases:
 
-- **The switch is on, but the app still says "missing".** The entry is stale, which usually happens after an update. Select Arena Bridge, click **−**, then **+**, and add it again.
-- **macOS asks "Arena Bridge would like to record this computer's screen".** Click **Open System Settings** and switch it on.
+- **The switch is on, but the app still says "missing".** The entry is stale, which usually happens after an update. Select arena-bridge-agent, click **−**, then **+**, and add it again.
 - **The app is not in `/Applications`.** Move it there first. macOS ties permissions to the exact file location.
 - **Still missing after all of the above.** Restart the Mac, open Arena Bridge, and click **Check again**.
 

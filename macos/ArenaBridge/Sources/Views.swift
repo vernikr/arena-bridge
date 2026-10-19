@@ -31,8 +31,8 @@ struct ContentView: View {
             SetupView()
                 .environmentObject(model)
         }
-        .sheet(isPresented: $model.showPermissionsGuide) {
-            PermissionsGuideView()
+        .sheet(item: $model.guide) { kind in
+            PermissionGuideView(kind: kind)
                 .environmentObject(model)
         }
         .sheet(item: $model.shownArtifact) { artifact in
@@ -226,12 +226,12 @@ struct ActionsCard: View {
                     Label("Copy the agent prompt", systemImage: "doc.on.doc")
                 }
             }
-            if let problem = model.permissionsProblem {
+            ForEach(model.missingPermissions) { kind in
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text(problem).font(.callout).lineLimit(2)
+                    Text("\(kind.title) is missing: \(kind.consequence).").font(.callout).lineLimit(2)
                     Spacer()
-                    Button("Fix…") { model.showPermissionsGuide = true }
+                    Button("Fix \(kind.title)…") { model.guide = kind }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -716,72 +716,102 @@ struct SetupView: View {
 
 // MARK: - permissions guide
 
-/// Step-by-step guide for Screen Recording and Accessibility. The labels match System Settings in English.
-struct PermissionsGuideView: View {
+/// Guide for one macOS permission. The path is the helper that runs the screen runtime.
+struct PermissionGuideView: View {
+    let kind: PermissionKind
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
 
-    private static let steps: [String] = [
-        "Click \"Open Screen Recording settings\" below. System Settings opens at Privacy & Security → Screen & System Audio Recording.",
-        "Look for Arena Bridge in the list. If it is there and switched on, go to step 4.",
-        "Not in the list? Click the + button under the list. If + is grey, click the lock at the bottom left and enter your Mac password first. In the file window press ⌘⇧G, paste /Applications/Arena Bridge.app, press Return, then click Open. Switch it on.",
-        "Still shows as missing here? Select Arena Bridge, click −, then + and add it again as in step 3. Switching off and on does not fix an old entry after an update.",
-        "Do the same for Accessibility: click \"Open Accessibility settings\" below, then Arena Bridge with + and switch it on.",
-        "Quit Arena Bridge (⌘Q), open it again and click \"Check again\". If it is still missing, restart the Mac and check once more.",
-    ]
+    static let helperPath = "/Applications/Arena Bridge.app/Contents/Helpers/arena-bridge-agent"
+
+    private var granted: Bool? { kind == .screen ? model.screenAccess : model.accessibilityAccess }
+
+    private var stateText: String {
+        if granted == true { return "granted" }
+        if granted == false { return "missing" }
+        return model.permissionsCheckedAt == nil ? "not checked yet" : "no answer from the bridge; start the service"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Give Arena Bridge access to the screen")
+            Text("\(kind.title) for Arena Bridge")
                 .font(.title3.weight(.semibold))
-            HStack(spacing: 18) {
-                statusRow("Screen Recording", model.screenAccess)
-                statusRow("Accessibility", model.accessibilityAccess)
+            HStack(spacing: 8) {
+                Image(systemName: granted == true ? "checkmark.circle.fill" : granted == false ? "xmark.circle.fill" : "questionmark.circle")
+                    .foregroundStyle(granted == true ? Color.green : granted == false ? Color.red : Color.secondary)
+                Text("\(kind.title): \(stateText)")
+                Spacer()
+                if model.permissionsChecking {
+                    ProgressView().controlSize(.small)
+                    Text("Checking…").foregroundStyle(.secondary)
+                } else if let at = model.permissionsCheckedAt {
+                    Text("Checked at \(at.formatted(date: .omitted, time: .standard))").foregroundStyle(.secondary)
+                }
             }
-            Text(AppModel.hasCertificate
-                 ? "This build has a signing certificate. Permissions normally survive updates."
-                 : "This build is ad-hoc signed. macOS may reset these permissions after every update. Use a certificate (see README, section macOS permissions).")
+            .font(.callout)
+            Text("Path to add in System Settings (click to copy):")
                 .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button(action: copyPath) {
+                    Text(Self.helperPath)
+                        .font(.system(size: 12, design: .monospaced))
+                        .underline()
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .buttonStyle(.plain)
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .foregroundStyle(copied ? Color.green : Color.secondary)
+                    .help("Copy the path")
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(Self.steps.enumerated()), id: \.offset) { index, step in
+                    ForEach(Array(kind.steps.enumerated()), id: \.offset) { index, step in
                         Text("\(index + 1). \(step)")
                             .font(.callout)
+                            .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: .infinity)
+            Text(AppModel.hasCertificate
+                 ? "This build is signed with a certificate. Permissions normally survive updates."
+                 : "This build is ad-hoc signed. macOS may reset the permissions after an update. See README, macOS permissions.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button("Open Screen Recording settings") { openSettings("Privacy_ScreenCapture") }
-                Button("Open Accessibility settings") { openSettings("Privacy_Accessibility") }
+                Button("Open \(kind.title) settings") { openPane() }
                 Button("Show app in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: "/Applications/Arena Bridge.app")])
                 }
                 Spacer()
                 Button("Check again") { model.checkPermissions(force: true) }
+                    .disabled(model.permissionsChecking)
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 600, height: 540)
+        .frame(width: 620, height: 560)
         .onAppear { model.checkPermissions(force: true) }
     }
 
-    private func statusRow(_ name: String, _ granted: Bool?) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: granted == true ? "checkmark.circle.fill" : granted == false ? "xmark.circle.fill" : "questionmark.circle")
-                .foregroundStyle(granted == true ? .green : granted == false ? .red : .secondary)
-            Text("\(name): \(granted == true ? "granted" : granted == false ? "missing" : "not checked yet")")
+    private func copyPath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Self.helperPath, forType: .string)
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
         }
     }
 
-    private func openSettings(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+    private func openPane() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(kind.pane)") {
             NSWorkspace.shared.open(url)
         }
     }
