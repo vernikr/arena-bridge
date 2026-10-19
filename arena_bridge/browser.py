@@ -193,6 +193,7 @@ class BrowserManager:
                 "headless": s["headless"],
                 "port": s["port"],
                 "profile": s["profile"],
+                "disconnected": bool(s.get("disconnected")),
                 "tabs": [
                     {"tab_id": t["targetId"], "title": t["title"], "url": t["url"]} for t in s["tabs"].values()
                 ],
@@ -204,10 +205,38 @@ class BrowserManager:
     def session(self, session_id=None):
         with self._lock:
             if not session_id:
-                for s in self.sessions.values():
-                    return s
-                return None
-            return self.sessions.get(session_id)
+                s = next(iter(self.sessions.values()), None)
+            else:
+                s = self.sessions.get(session_id)
+        if s is not None and s["cdp"]._closed and not s.get("terminated") and s.get("port"):
+            # Chrome may drop an idle DevTools socket while the browser itself
+            # is fine. Revive the session (same id, same tabs) instead of
+            # failing every later call with "no browser session".
+            self._reconnect(s)
+        return s
+
+    def _reconnect(self, session) -> bool:
+        try:
+            ws_url = browser_ws_url(session["port"])
+            session["cdp"] = CDPClient(ws_url).connect()
+            res = session["cdp"].send("Target.getTargets")
+            alive = set()
+            for t in res.get("targetInfos", []):
+                if t.get("type") != "page":
+                    continue
+                alive.add(t["targetId"])
+                tab = self._attach_target(session, t["targetId"])
+                tab["title"] = t.get("title", "")
+                tab["url"] = t.get("url", "")
+            for target_id in list(session["tabs"].keys()):
+                if target_id not in alive:
+                    session["tabs"].pop(target_id, None)
+            session["disconnected"] = False
+            session["reconnects"] = session.get("reconnects", 0) + 1
+            return True
+        except Exception:
+            session["disconnected"] = True
+            return False
 
     def _new_session(self, cdp, port, managed, headless, profile=None, proc=None):
         with self._lock:
@@ -224,6 +253,9 @@ class BrowserManager:
                 "tabs": {},
                 "observe": {},
                 "createdAt": int(time.time() * 1000),
+                "disconnected": False,
+                "terminated": False,
+                "reconnects": 0,
             }
             self.sessions[sid] = session
         return session
@@ -402,6 +434,7 @@ class BrowserManager:
                     "error": "refusing to stop an attached (user) browser",
                     "session_id": s["id"],
                 }
+            s["terminated"] = True
             try:
                 s["cdp"].close()
             except Exception:
@@ -544,6 +577,19 @@ class BrowserManager:
                         ],
                     }
                 ),
+            },
+            {
+                "name": "chrome_activate",
+                "description": (
+                    "Make a tab the active one inside its Chrome window (Target.activateTarget). This does NOT move "
+                    "the user's mouse cursor and does not steal OS focus — the window is not raised; only the selected "
+                    "tab changes. Some pages pause timers/rendering in background tabs, so activating the tab you are "
+                    "about to work with makes interactions more reliable."
+                ),
+                "approval": True,
+                "approval_for": requires_approval,
+                "schema": _schema({"session_id": {"type": "string"}, "tab_id": {"type": "string"}}),
+                "handler": self._activate,
             },
             {
                 "name": "chrome_open",
@@ -722,6 +768,14 @@ class BrowserManager:
         ]
 
     # ---------------- tool handlers ----------------
+
+    def _activate(self, args, ctx):
+        session = self.session(args.get("session_id"))
+        if not session:
+            raise ValueError("no browser session — call chrome_launch or chrome_attach first")
+        tab = self._tab(session, args.get("tab_id"))
+        session["cdp"].send("Target.activateTarget", {"targetId": tab["targetId"]})
+        return {"ok": True, "session_id": session["id"], "tab_id": tab["targetId"]}
 
     def _open(self, args, ctx):
         session = self.session(args.get("session_id"))

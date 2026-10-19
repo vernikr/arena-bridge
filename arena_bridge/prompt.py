@@ -87,7 +87,7 @@ The token is: {token}
    verifying the result (`expect` / `chrome_wait_for`) over screenshots and coordinates.
 1. `chrome_launch` starts a browser that belongs to you — own profile, no personal data.
    `{{"headless": true, "url": "https://example.com"}}` (headless=false opens a visible window).
-2. Then `chrome_open` → `chrome_observe` → `chrome_click` by ref / `chrome_fill_editor` → verify with `expect`.
+2. Then `chrome_open` → `chrome_activate` (makes the tab active without touching the user's cursor or OS focus — background tabs may pause rendering) → `chrome_observe` → `chrome_click` by ref / `chrome_fill_editor` → verify with `expect`.
    `chrome_snapshot` with `{{"mode": "ax"}}` returns roles, names and element states; `chrome_screenshot` is for when the DOM is ambiguous.
 3. `chrome_attach` connects to the user's own Chrome (default port 9222, with their logged-in sessions).
    Actions on an attached browser require a local approval — ask for it instead of retrying.

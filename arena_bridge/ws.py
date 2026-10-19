@@ -49,6 +49,14 @@ class WebSocketClient:
         if expected.lower().encode() not in head.lower():
             raise ConnectionError("invalid websocket handshake")
         self._buffer = rest
+        # The handshake timeout must not outlive the handshake — recv() sets
+        # its own per-call timeout, and an idle DevTools socket must stay open
+        # between agent actions.
+        try:
+            self.sock.settimeout(None)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        except Exception:
+            pass
         return self
 
     def _read_exact(self, n: int) -> bytes:

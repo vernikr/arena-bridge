@@ -118,6 +118,7 @@ def _():
         "chrome_profiles",
         "chrome_attach",
         "chrome_tabs",
+        "chrome_activate",
         "chrome_open",
         "chrome_navigate",
         "chrome_snapshot",
@@ -201,6 +202,25 @@ def _():
     assert next(n for n in snap["nodes"] if n["name"] == "Submit")["state"]["pressed"] is False
     profiles = engine.call("chrome_profiles", {})
     assert next(x for x in profiles["profiles"] if x["name"] == "observe")["running"] is True
+    engine.browser.sessions[sid]["proc"].terminate()
+
+
+@test("a dropped DevTools socket reconnects and keeps the session")
+def _():
+    os.environ["CHROME_PATH"] = str(FAKE_CHROME)
+    launch = engine.call("chrome_launch", {"headless": True, "port": PORT + 10, "profile": "reconnect"})
+    assert launch["ok"] is True, launch
+    sid = launch["session_id"]
+    s = engine.browser.sessions[sid]
+    s["cdp"].close()  # simulate Chrome dropping an idle DevTools socket
+    import time as _t
+    _t.sleep(0.3)
+    tabs = engine.call("chrome_tabs", {"session_id": sid})
+    assert tabs["ok"] is True, tabs
+    assert len(tabs["tabs"]) >= 2
+    assert engine.browser.sessions[sid]["reconnects"] >= 1
+    act = engine.call("chrome_activate", {"session_id": sid, "tab_id": tabs["tabs"][0]["tab_id"]})
+    assert act["ok"] is True, act
     engine.browser.sessions[sid]["proc"].terminate()
 
 

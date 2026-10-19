@@ -86,7 +86,7 @@
 - Шелл: `bash`, `sysinfo`
 - Процессы: `start_process`, `read_process_output`, `write_process`, `kill_process`
 - Журнал: `audit_log`, `audit_artifact`
-- Chrome (16): `chrome_launch`, `chrome_profiles`, `chrome_attach`, `chrome_tabs`, `chrome_open`,
+- Chrome (17): `chrome_launch`, `chrome_profiles`, `chrome_attach`, `chrome_tabs`, `chrome_activate`, `chrome_open`,
   `chrome_navigate`, `chrome_snapshot`, `chrome_observe`, `chrome_fill_editor`, `chrome_wait_for`,
   `chrome_click`, `chrome_type`, `chrome_press`, `chrome_screenshot`, `chrome_evaluate`, `chrome_stop`
 - macOS-десктоп (20): `mac_see`, `mac_element`, `mac_click`, `mac_set`, `mac_type`, `mac_key`,

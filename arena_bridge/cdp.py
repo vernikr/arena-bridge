@@ -30,17 +30,23 @@ class CDPClient:
         return self
 
     def _read_loop(self):
-        try:
-            while not self._closed:
+        while not self._closed:
+            try:
                 text = self.ws.recv(timeout=120)
+            except TimeoutError:
+                continue  # idle socket — not an error, keep waiting
+            except Exception:
+                self._closed = True
+                return
+            try:
                 msg = json.loads(text)
-                if "id" in msg:
-                    with self._lock:
-                        self._responses[msg["id"]] = msg
-                else:
-                    self._events.put(msg)
-        except Exception:
-            self._closed = True
+            except Exception:
+                continue
+            if "id" in msg:
+                with self._lock:
+                    self._responses[msg["id"]] = msg
+            else:
+                self._events.put(msg)
 
     def send(self, method: str, params=None, session_id=None, timeout: float = 30.0):
         if not self.ws or self._closed:

@@ -98,6 +98,15 @@ await test('send() resolves with the command result', async () => {
   cdp.close();
 });
 
+await test('an idle connection survives past the handshake timeout', async () => {
+  const cdp = new CDPClient(`ws://127.0.0.1:${PORT}/devtools/browser/fake`);
+  await cdp.connect(250);
+  await sleep(700); // > handshake timeout, no traffic at all
+  const res = await cdp.send('Target.getTargets');
+  assert.equal(res.targetInfos.length, 2);
+  cdp.close();
+});
+
 console.log('\n▸ browser tools');
 
 await test('the catalog exposes the chrome_* tools', async () => {
@@ -107,6 +116,7 @@ await test('the catalog exposes the chrome_* tools', async () => {
     'chrome_profiles',
     'chrome_attach',
     'chrome_tabs',
+    'chrome_activate',
     'chrome_open',
     'chrome_navigate',
     'chrome_snapshot',
@@ -193,6 +203,28 @@ await test('chrome_observe + click by ref + fill_editor + wait_for', async () =>
   assert.equal(snap.nodes.find((n) => n.name === 'Submit').state.pressed, false);
   const profiles = await engine.call('chrome_profiles', {});
   assert.equal(profiles.profiles.find((x) => x.name === 'observe').running, true);
+  engine.browser.sessions.get(sid)?.proc?.kill();
+});
+
+await test('a dropped DevTools socket reconnects and keeps the session', async () => {
+  process.env.CHROME_PATH = FAKE_CHROME;
+  const launch = await engine.call('chrome_launch', { headless: true, port: PORT + 10, profile: 'reconnect' });
+  assert.equal(launch.ok, true, JSON.stringify(launch));
+  const sid = launch.session_id;
+  const s = engine.browser.sessions.get(sid);
+  s.cdp.ws.socket.destroy(); // simulate Chrome dropping an idle DevTools socket
+  for (let i = 0; i < 50 && !(engine.browser.sessions.get(sid)?.reconnects >= 1); i++) {
+    await sleep(100);
+  }
+  const after = engine.browser.sessions.get(sid);
+  assert.ok(after, 'session must survive a dropped socket');
+  assert.equal(after.disconnected, false);
+  assert.ok(after.reconnects >= 1, 'session must have reconnected');
+  const tabs = await engine.call('chrome_tabs', { session_id: sid });
+  assert.equal(tabs.ok, true, JSON.stringify(tabs));
+  assert.ok(tabs.tabs.length >= 2);
+  const act = await engine.call('chrome_activate', { session_id: sid, tab_id: tabs.tabs[0].tab_id });
+  assert.equal(act.ok, true, JSON.stringify(act));
   engine.browser.sessions.get(sid)?.proc?.kill();
 });
 

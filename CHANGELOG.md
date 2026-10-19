@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.1
+
+### Fixed
+- Browser sessions no longer die after a short idle period: the WebSocket handshake timeout
+  is cleared once the DevTools connection is up (it used to destroy the socket after 10 s
+  without traffic), TCP keepalive and WebSocket pings keep the connection alive, and the
+  Python read loop treats an idle-socket timeout as "keep waiting" instead of closing.
+- If Chrome still drops a DevTools socket, the browser session now survives: the manager
+  reconnects in the background (Node) or lazily on the next call (Python), re-attaches all
+  tabs and keeps the same `session_id`, tab ids and observations.
+
+### Added
+- `chrome_activate`: make a tab active inside its Chrome window without moving the user's
+  cursor or stealing OS focus (background tabs may pause rendering, so activating the tab
+  you are about to work with makes interactions more reliable).
+
 ## 0.8.0
 
 ### Added

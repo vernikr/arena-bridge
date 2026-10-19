@@ -175,6 +175,7 @@ export class BrowserManager {
       headless: s.headless,
       port: s.port,
       profile: s.profile,
+      disconnected: !!s.disconnected,
       tabs: [...s.tabs.values()].map((t) => ({ tab_id: t.targetId, title: t.title, url: t.url })),
       created_at: s.createdAt,
     }));
@@ -215,12 +216,69 @@ export class BrowserManager {
       tabs: new Map(),
       observe: new Map(),
       createdAt: Date.now(),
+      disconnected: false,
+      terminated: false,
+      reconnecting: false,
+      reconnects: 0,
     };
     this.sessions.set(id, session);
-    cdp.on('close', () => {
-      this.sessions.delete(id);
-    });
+    this._wireCdp(session);
     return session;
+  }
+
+  _wireCdp(session) {
+    session.cdp.on('close', () => {
+      if (session.terminated) {
+        this.sessions.delete(session.id);
+        return;
+      }
+      // Chrome may drop an idle DevTools socket while the browser itself is
+      // fine. Keep the session (tabs, observations) and reconnect in the
+      // background instead of failing every later call with a dead session.
+      session.disconnected = true;
+      void this._reconnect(session);
+    });
+  }
+
+  async _reconnect(session) {
+    if (session.reconnecting || session.terminated || !session.port) return;
+    session.reconnecting = true;
+    try {
+      for (let attempt = 0; attempt < 60 && !session.terminated; attempt++) {
+        await sleep(1000);
+        try {
+          const wsUrl = await browserWsUrl(session.port);
+          const cdp = new CDPClient(wsUrl);
+          await cdp.connect();
+          if (session.terminated) {
+            cdp.close();
+            return;
+          }
+          session.cdp = cdp;
+          this._wireCdp(session);
+          const { targetInfos } = await cdp.send('Target.getTargets');
+          const alive = new Set();
+          for (const t of targetInfos) {
+            if (t.type !== 'page') continue;
+            alive.add(t.targetId);
+            const tab = await this._attachTarget(session, t.targetId);
+            tab.title = t.title;
+            tab.url = t.url;
+          }
+          for (const targetId of [...session.tabs.keys()]) {
+            if (!alive.has(targetId)) session.tabs.delete(targetId);
+          }
+          session.disconnected = false;
+          session.reconnects++;
+          return;
+        } catch {
+          /* Chrome not reachable yet — keep retrying */
+        }
+      }
+      this.sessions.delete(session.id);
+    } finally {
+      session.reconnecting = false;
+    }
   }
 
   async _collectTabs(session) {
@@ -376,6 +434,7 @@ export class BrowserManager {
       if (!s.managed) {
         return { ok: false, error: 'refusing to stop an attached (user) browser', session_id: s.id };
       }
+      s.terminated = true;
       try {
         s.cdp.close();
       } catch {
@@ -642,6 +701,24 @@ export class BrowserManager {
             session_id: session.id,
             tabs: [...session.tabs.values()].map((t) => ({ tab_id: t.targetId, title: t.title, url: t.url })),
           };
+        },
+      },
+      {
+        name: 'chrome_activate',
+        description:
+          'Make a tab the active one inside its Chrome window (Target.activateTarget). This does NOT move the ' +
+          "user's mouse cursor and does not steal OS focus — the window is not raised; only the selected tab " +
+          'changes. Some pages pause timers/rendering in background tabs, so activating the tab you are about ' +
+          'to work with makes interactions more reliable.',
+        approval: true,
+        approvalFor: requiresApproval,
+        schema: S({ session_id: { type: 'string' }, tab_id: { type: 'string' } }, []),
+        required: [],
+        handler: async (args, ctx) => {
+          const session = needSession(args, ctx);
+          const tab = await this._tab(session, args.tab_id);
+          await session.cdp.send('Target.activateTarget', { targetId: tab.targetId });
+          return { ok: true, session_id: session.id, tab_id: tab.targetId };
         },
       },
       {

@@ -21,6 +21,7 @@ export class WebSocketClient extends EventEmitter {
     this._key = crypto.randomBytes(16).toString('base64');
     this._openResolve = null;
     this._openReject = null;
+    this._pingTimer = null;
   }
 
   connect(timeoutMs = 10000) {
@@ -49,6 +50,7 @@ export class WebSocketClient extends EventEmitter {
       socket.on('error', (err) => this._fail(err));
       socket.on('close', () => {
         this.closed = true;
+        this._stopPing();
         this.emit('close');
       });
     });
@@ -80,6 +82,17 @@ export class WebSocketClient extends EventEmitter {
         return;
       }
       this.upgraded = true;
+      // The handshake timeout must not outlive the handshake: net sockets
+      // destroy themselves after `timeout` ms of inactivity, which used to
+      // kill idle DevTools connections between agent actions. From here on
+      // the connection is kept alive with TCP keepalive + WS pings instead.
+      this.socket.setTimeout(0);
+      try {
+        this.socket.setKeepAlive(true);
+      } catch {
+        /* ignore */
+      }
+      this._startPing();
       if (this._openResolve) {
         const r = this._openResolve;
         this._openResolve = null;
@@ -151,6 +164,24 @@ export class WebSocketClient extends EventEmitter {
     this.fragmentOpcode = null;
   }
 
+  _startPing() {
+    this._stopPing();
+    this._pingTimer = setInterval(() => {
+      if (this.closed) return;
+      try {
+        this._sendFrame(0x9, Buffer.alloc(0));
+      } catch {
+        /* the close handler reports the failure */
+      }
+    }, 30000);
+    this._pingTimer.unref?.();
+  }
+
+  _stopPing() {
+    if (this._pingTimer) clearInterval(this._pingTimer);
+    this._pingTimer = null;
+  }
+
   send(text) {
     this._sendFrame(0x1, Buffer.from(String(text), 'utf8'));
   }
@@ -181,6 +212,7 @@ export class WebSocketClient extends EventEmitter {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this._stopPing();
     try {
       this._sendFrame(0x8, Buffer.alloc(0));
     } catch {
