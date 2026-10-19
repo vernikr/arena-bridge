@@ -745,6 +745,40 @@ def cmd_doctor(args):
         sys.exit(1)
 
 
+def cmd_status(args):
+    import json as _j
+    from .config import config_dir, config_path, load_config
+    from .trust import trust_state
+    from .approvals import list_approvals
+    cfg = load_config()
+    checks=[]
+    checks.append(("config", config_path().exists(), str(config_dir()) if config_path().exists() else "missing — run arena-bridge init"))
+    checks.append(("token", bool(cfg.get("token")), "present" if cfg.get("token") else "MISSING"))
+    checks.append(("publicUrl", bool(cfg.get("publicUrl")), cfg.get("publicUrl") or "not set — run arena-bridge tunnel"))
+    try:
+        st=trust_state()
+        checks.append(("trust window", bool(st.get("active")), f"active until {st.get('until')}" if st.get("active") else "none (approvals required)"))
+    except Exception: pass
+    try:
+        pending=len([a for a in list_approvals() if a.get("status")=="pending"])
+        checks.append(("pending approvals", True, f"{pending} pending"))
+    except Exception: pass
+    checks.append(("API port", True, f"{cfg.get('host','127.0.0.1')}:{cfg.get('port',8787)} (expected)"))
+    try:
+        from .service import service_status
+        svc=service_status()
+        checks.append(("service", bool(svc.get("installed")), "installed, running" if svc.get("running") else "installed, not running" if svc.get("installed") else "not installed"))
+    except Exception: pass
+    is_json=bool(getattr(args,'json',False))
+    if is_json:
+        print(_j.dumps({"ok": all(c[1] for c in checks if c[0] not in ("trust window","pending approvals","API port","service")), "checks": [{"name":n,"passed":bool(ok),"detail":d} for n,ok,d in checks], "publicUrl": cfg.get("publicUrl")}, indent=2))
+    else:
+        for n,ok,d in checks:
+            mark="✓" if ok else ("○" if n in ("trust window","publicUrl") else "✗")
+            print(f"{mark} {n:18} {d}")
+        print(f"\nPublic URL: {cfg.get('publicUrl') or '(not set)'}")
+        if not cfg.get("publicUrl"): print("Run: arena-bridge tunnel  or  arena-bridge service install")
+
 def build_parser():
     p = argparse.ArgumentParser(prog="arena-bridge", description="Controlled remote access to your own machine for cloud AI agents.")
     p.add_argument("--version", action="version", version=f"arena-bridge {VERSION}")
@@ -836,6 +870,10 @@ def build_parser():
 
     doctor = sub.add_parser("doctor", help="check the installation")
     doctor.set_defaults(func=cmd_doctor)
+
+    status = sub.add_parser("status", help="one-line runtime status")
+    status.add_argument("--json", action="store_true", help="json output")
+    status.set_defaults(func=cmd_status)
 
     logs = sub.add_parser("logs", help="show bridge.log (structured logs)")
     logs.add_argument("-n", type=int, default=30, help="number of entries")

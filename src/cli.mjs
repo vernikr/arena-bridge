@@ -103,6 +103,7 @@ Commands:
                        inbox [-n N]      show the messages the user sent
                        poll              listen for messages in the foreground
   doctor               Check the installation and configuration
+  status [--json]      One-line runtime status (config, url, trust, approvals, service)
   url                  Print the public URL the agent should use
   open                 Open the public URL in the browser
   version              Show the installed version and the latest one on npm
@@ -506,6 +507,36 @@ function cmdOpen() {
     execSync(cmd);
   } catch (e) {
     console.log(url);
+  }
+}
+
+function cmdStatus(args) {
+  const isJson = !!(args.flags.json || args.flags['output-json']);
+  const cfg = loadConfig();
+  const checks = [];
+  const hasConfig = fs.existsSync(path.join(CONFIG_DIR, 'config.json'));
+  checks.push({ name: 'config', ok: hasConfig, detail: hasConfig ? CONFIG_DIR : 'missing — run arena-bridge init' });
+  checks.push({ name: 'token', ok: !!cfg.token, detail: cfg.token ? 'present' : 'MISSING' });
+  checks.push({ name: 'publicUrl', ok: !!cfg.publicUrl, detail: cfg.publicUrl || 'not set — run arena-bridge tunnel' });
+  try {
+    const st = trustState();
+    checks.push({ name: 'trust window', ok: !!st.active, detail: st.active ? `active until ${new Date(st.until).toLocaleString()}` : 'none (approvals required)' });
+  } catch {}
+  try {
+    const pending = listApprovals().filter(a => a.status==='pending').length;
+    checks.push({ name: 'pending approvals', ok: true, detail: `${pending} pending` });
+  } catch {}
+  checks.push({ name: 'API port', ok: true, detail: `${cfg.host||'127.0.0.1'}:${Number(cfg.port||8787)} (expected)` });
+  try {
+    const svc = serviceStatus();
+    checks.push({ name: 'service', ok: svc.installed, detail: svc.installed ? (svc.running ? 'installed, running' : 'installed, not running') : 'not installed' });
+  } catch {}
+  if (isJson) {
+    console.log(JSON.stringify({ ok: checks.every(c=>c.ok && c.name!=='pending approvals' && c.name!=='API port'), checks, version: cfg._state?.version || undefined, publicUrl: cfg.publicUrl || null }, null, 2));
+  } else {
+    for (const c of checks) console.log(`${c.ok ? '✓' : (c.name==='trust window' || c.name==='publicUrl' ? '○' : '✗')} ${c.name.padEnd(18)} ${c.detail}`);
+    console.log(`\nPublic URL: ${cfg.publicUrl || '(not set)'}`);
+    if (!cfg.publicUrl) console.log('Run: arena-bridge tunnel  or  arena-bridge service install');
   }
 }
 
@@ -939,6 +970,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdTrust(args);
     case 'doctor':
       return cmdDoctor(args);
+    case 'status':
+      return cmdStatus(args);
     case 'url':
       return cmdUrl();
     case 'open':
