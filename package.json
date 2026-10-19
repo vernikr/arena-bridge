@@ -1,6 +1,6 @@
 {
   "name": "arena-bridge",
-  "version": "0.8.11",
+  "version": "0.8.12",
   "description": "Give a cloud AI agent (Arena.ai Agent Mode, Claude, Cursor, ...) controlled access to your own machine over HTTP/MCP: files, shell, Chrome and the macOS desktop, with an approval gate, trust windows and an audit log.",
   "type": "module",
   "bin": {
@@ -19,7 +19,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
+    "test": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node --test test/test_security.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
     "test:node": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
     "test:python": "python3 test/test_approvals.py && python3 test/test_bridge.py && python3 test/test_browser.py && python3 test/test_mac.py && python3 test/test_service.py && python3 test/test_telegram.py",
     "pack:check": "npm pack --dry-run"

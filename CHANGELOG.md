@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.12
+
+### Added
+- `docs/reference/{tools,api,security}.md` — single source of truth for tools (core/browser/desktop/telegram sets from `src/engine.mjs`), HTTP API and security boundaries.
+- `test/test_security.mjs` (7 Node attacks) + `test/test_security.py` (6 Python attacks) covering S1 traversal, S2 per-element protected + dangling symlink lstat, S4 allowedChat, S5 health device, S6 timingSafeEqual, S7 limit 400.
+- `npm test` now includes `test_security.mjs`.
+
+### Changed
+- `ci.yml` `paths-ignore` for `**.md`/`docs/**`/`feature-tree.md` on push/pull_request (no CI for docs-only changes).
+
 ## 0.8.11
 
 ### Fixed
