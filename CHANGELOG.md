@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.16.1
+
+### Fixed
+- The work log starts at the top of its area.
+- Permission checks are spaced (10 s for explicit checks, 60 s for the rest), so macOS prompts no longer repeat.
+- A start that does not answer reloads the service once before it fails.
+
 ## 0.16.0
 
 ### Added
