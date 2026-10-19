@@ -9,7 +9,7 @@ import { trustState } from './trust.mjs';
 export function buildPrompt(cfg, { baseUrl, tool, device } = {}) {
   const url = (baseUrl || cfg.publicUrl || `http://${cfg.host}:${cfg.port}`).replace(/\/+$/, '');
   const target = device || cfg.device;
-  // Prompt is now short: link to /tools instead of full catalog (52 tools) — agent can fetch when needed
+  // Prompt is now short: link to /tools instead of full catalog (57 tools) — agent can fetch when needed
   const all = tool?.catalog?.() || [];
   const toolsLine = `Full tool catalog (${all.length} tools) at GET ${url}/tools — fetch when you need a specific tool schema.`;
   const trust = trustState();

@@ -547,7 +547,7 @@ npm run test:python  # 44 теста Python: то же самое
 src/            Node-реализация (zero dependencies)
   ws.mjs        минимальный WebSocket-клиент
   cdp.mjs       клиент Chrome DevTools Protocol
-  browser.mjs   13 инструментов chrome_*
+  browser.mjs   17 инструментов chrome_*
   mac.mjs       20 инструментов mac_* (Peekaboo, Accessibility API)
   trust.mjs     окно доверия
   policy.mjs    проверка путей (roots / protected)
