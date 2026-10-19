@@ -487,8 +487,13 @@ arena-bridge audit -n 50       # что происходило
 | `trust` | окно доверия (`--for`, `--tools`, `--paths`, `--off`, `--status`) |
 | `approvals` / `approve <id>` | ожидающие подтверждения и ответ на них (`--deny`) |
 | `audit [-n N]` | журнал действий |
-| `doctor` | проверка установки, токенов, путей, Peekaboo, Chrome |
-| `url` | текущий публичный URL |
+| `logs [-n N] [--json]` | `bridge.log` (структурные логи, 5MB rotation) |
+| `config get/set/edit/list` | управление `config.json` (`get <key>`, `set <key> <val>`, `--json`) |
+| `cleanup [--days N]` | удалить старые артефакты + approvals (по умолчанию 14д) |
+| `doctor [--fix] [--json]` | проверка установки, токенов, путей, Peekaboo, Chrome (`--fix` чинит dirs/perms) |
+| `status [--json]` | рантайм-снапшот: config, url, trust, pending, port, service |
+| `url` / `open` | текущий публичный URL (open — открыть в браузере) |
+| `completion bash|zsh|fish` | shell completion для bash/zsh/fish |
 | `version` | установленная и последняя версии |
 | `update` | обновить пакет с npm (`--check` — только проверить) |
 | `service` | macOS-фоновый сервис: `install` / `uninstall` / `status` |
