@@ -32,9 +32,6 @@ struct ContentView: View {
         .sheet(item: $model.shownArtifact) { artifact in
             ArtifactView(artifact: artifact)
         }
-        .onReceive(Timer.publish(every: 6, on: .main, in: .common).autoconnect()) { _ in
-            Task { await model.refresh() }
-        }
     }
 }
 

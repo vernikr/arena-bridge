@@ -132,20 +132,28 @@ final class AppModel: ObservableObject {
 
     func start() {
         busy = true
-        defer { busy = false }
-        Bridge.start()
-        notice = "The bridge was started."
-        failure = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Task { await self.refresh() } }
+        Task.detached {
+            Bridge.start()
+            await MainActor.run {
+                self.notice = "The bridge was started."
+                self.failure = nil
+                self.busy = false
+                Task { await self.refresh() }
+            }
+        }
     }
 
     func stop() {
         busy = true
-        defer { busy = false }
-        Bridge.stop()
-        notice = "The bridge was stopped."
-        failure = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { Task { await self.refresh() } }
+        Task.detached {
+            Bridge.stop()
+            await MainActor.run {
+                self.notice = "The bridge was stopped."
+                self.failure = nil
+                self.busy = false
+                Task { await self.refresh() }
+            }
+        }
     }
 
     func decide(_ approval: Approval, approve: Bool, trustHours: Int = 0) {
