@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.11.0
+
+### Added
+- Work log records every call with its full parameters (large payloads move to an `args.json` artifact), the caller (tunnel address, country, reverse-DNS host, client), and an alert level.
+- Unauthorized requests are logged at alert level, limited to 5 per address per minute, with a suppressed count.
+- `log_note` tool: adds an info entry to the work log (1–500 characters, one per second). Node only; the Python package does not receive new tools.
+- Errors `INVALID_ARGS` and `RATE_LIMITED`; `INVALID_JSON` and `PAYLOAD_TOO_LARGE` responses for malformed or oversized HTTP bodies.
+
+### Changed
+- Duplicate `chrome_screenshot` audit entry removed; the call is recorded once.
+- Masking covers bearer tokens, AWS key ids, private key blocks, `env` values and secret-named keys.
+
+### Fixed
+- `/files` GET, PUT and DELETE are all audited and authorized through the same path.
+
 ## 0.10.0
 
 ### Added
