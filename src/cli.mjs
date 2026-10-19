@@ -652,16 +652,18 @@ async function cmdUpdate(args) {
 
 function cmdRestart(args) {
   const cfg = loadConfig();
-  // if service installed, use it; else just hint
   try {
     const st = serviceStatus();
     if (st.installed) {
       console.log('restarting service...');
-      // reinstall triggers reload
-      // serviceUninstall already imported
-      // simple: uninstall+install with same args (best effort)
-      console.log('service is installed — run: arena-bridge service uninstall && arena-bridge service install');
-      console.log('then: arena-bridge service status');
+      try {
+        const label = 'ai.arena.bridge';
+        let res = spawnSync('launchctl', ['kickstart', '-k', `gui/${process.uid}/${label}`], { encoding: 'utf8' });
+        if (res.status !== 0) res = spawnSync('launchctl', ['kickstart', '-k', label], { encoding: 'utf8' });
+        if (res.status === 0) { console.log('✓ service kickstarted'); return; }
+        console.log(`kickstart failed: ${res.stderr || res.stdout || res.error || 'unknown'}`);
+      } catch (e) { console.log(`kickstart error: ${e.message}`); }
+      console.log('fallback: arena-bridge service uninstall && arena-bridge service install');
       return;
     }
   } catch {}
@@ -1070,6 +1072,16 @@ function cmdDoctor(args) {
   checks.push({ name: 'approval gate', code: 'approval_gate', passed: cfg.requireApproval !== false, detail: cfg.requireApproval ? 'on' : 'OFF (dangerous)', hint: 'set requireApproval=true in config' });
   checks.push({ name: 'shell', code: 'shell', passed: cfg.allowShell !== false, detail: cfg.allowShell ? 'on' : 'off', hint: '' });
   checks.push({ name: 'protected paths', code: 'protected', passed: (cfg.protected || []).length > 0, detail: `${(cfg.protected || []).length} entries`, hint: '' });
+  // config validate as doctor checks
+  try {
+    if (!cfg.roots || !cfg.roots.length) checks.push({ name: 'config roots', code: 'config_roots', passed: false, detail: 'empty', hint: 'run arena-bridge init --root ~/projects' });
+    else for (const r of cfg.roots) if (!fs.existsSync(r)) checks.push({ name: `root ${r}`, code: 'config_root_missing', passed: false, detail: 'not found', hint: `mkdir -p ${r}` });
+    if (!cfg.token) checks.push({ name: 'config token', code: 'config_token', passed: false, detail: 'missing', hint: 'run arena-bridge init' });
+    if (!Number.isFinite(Number(cfg.port)) || Number(cfg.port) < 1 || Number(cfg.port) > 65535) checks.push({ name: 'config port', code: 'config_port', passed: false, detail: `invalid: ${cfg.port}`, hint: 'arena-bridge config set port 8787' });
+  } catch {}
+  // service health as doctor check (non-fatal)
+  try { const svc = serviceStatus(); checks.push({ name: 'service health', code: 'service_health', passed: svc.installed ? svc.running : true, detail: svc.installed ? (svc.running ? 'running' : 'not running') : 'not installed', hint: svc.installed && !svc.running ? 'arena-bridge service install' : '' }); } catch {}
+
   const peek = findPeekaboo(cfg);
   checks.push({ name: 'peekaboo (desktop control)', code: 'peekaboo', passed: !!peek, detail: peek || 'not installed - screen and mouse control are off', hint: 'brew install peekaboo or set peekabooPath' });
   const chrome = [

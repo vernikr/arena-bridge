@@ -112,6 +112,16 @@ def make_handler(cfg, engine):
                     payload["trust_active"] = bool(trust_state().get("active"))
                 except Exception:
                     pass
+                try:
+                    from .audit import tail_audit
+                    payload["audit_count"] = len(tail_audit(500))
+                except Exception: pass
+                try:
+                    from pathlib import Path as _P
+                    from .config import config_dir
+                    lp = config_dir()/"logs"/"bridge.log"
+                    payload["log_size"] = lp.stat().st_size if lp.exists() else 0
+                except Exception: pass
                 payload["has_public_url"] = bool(current.get("publicUrl"))
                 return self._send(200, payload)
             if not self._auth_ok():

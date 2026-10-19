@@ -72,9 +72,11 @@ export function createDirectServer(cfg, engine) {
     try {
       if (p === '/health') {
         const expose = cfg.exposeDeviceInHealth !== false;
-        let pending = 0, trustActive = false;
+        let pending = 0, trustActive = false, auditCount = 0, logSize = 0;
         try { pending = listApprovals().filter(a => a.status === 'pending').length; } catch {}
         try { const { trustState } = await import('./trust.mjs'); trustActive = !!trustState().active; } catch {}
+        try { const { tailAudit } = await import('./audit.mjs'); auditCount = tailAudit(500).length; } catch {}
+        try { const fs2 = await import('node:fs'); const p2 = path.join(CONFIG_DIR, 'logs', 'bridge.log'); if (fs2.existsSync(p2)) logSize = fs2.statSync(p2).size; } catch {}
         return sendJson(res, 200, {
           ok: true,
           mode: 'direct',
@@ -83,6 +85,8 @@ export function createDirectServer(cfg, engine) {
           uptime_sec: Math.round(process.uptime()),
           pending_approvals: pending,
           trust_active: trustActive,
+          audit_count: auditCount,
+          log_size: logSize,
           has_public_url: !!cfg.publicUrl,
         });
       }

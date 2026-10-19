@@ -125,7 +125,7 @@
   - Запрос в Telegram с кнопками: Approve once, Approve for 3h, Deny; после нажатия сообщение
     переписывается на итог
 - Окно доверия
-  - `arena-bridge trust --for 2h [--tools a,b] [--paths p1,p2]`, `--status [--json]`, `--off`, `--history [--json]`, `--extend [--for DUR]`
+  - `arena-bridge trust --for 2h [--tools a,b] [--paths p1,p2]`, `--status [--json]`, `--off`, `--history [--json]`, `--extend [--for DUR]` (+ auto-prune expired `trustState`)
   - Снимает только требование подтверждения; политика путей остаётся
   - `--paths` не покрывает `bash` — для команд нужно указать `--tools bash`
   - «Approve for 3h» открывает окно на 3 часа для того же инструмента
@@ -136,7 +136,7 @@
 
 ## Журнал и артефакты
 
-- `~/.arena-bridge/audit.log` — JSONL: кто, что, когда, с аргументами и статусом
+- `~/.arena-bridge/audit.log` — JSONL: кто, что, когда, с аргументами и статусом; `/health` → `pending_approvals/trust_active/audit_count/log_size/has_public_url`
 - Маскирование: токены Telegram, GitHub, npm, PyPI, API-ключи — `***`
 - Артефакты: `~/.arena-bridge/audit/<entry>/` — `screen.png`, `ax-tree.json`
   - Запись: `ctx.artifact` на вызовах `mac_see`
@@ -179,7 +179,7 @@
 - Отдельные «кабинеты» браузера: именованные профили, один вход пользователя, `browser login <name>`
 - Не мешает работе: агент по умолчанию в фоне, окно можно уменьшить и прижать в угол,
   рабочий стол агента — отдельный Space macOS; виртуальная машина не используется
-- Диагностика: `arena-bridge doctor [--fix] [--json]`, `arena-bridge status [--json]`, `arena-bridge config validate|diff`, `arena-bridge service logs/status`, `mac_permissions`, логи туннеля и службы
+- Диагностика: `arena-bridge doctor [--fix] [--json]` (интегрирует `config validate` + `service health`), `arena-bridge status [--json]` (config/token/url/trust/pending/port/service), `arena-bridge config validate|diff`, `arena-bridge service logs/status/restart` (real `launchctl kickstart`), `mac_permissions`, логи туннеля и службы
 
 ## Ограничения
 

@@ -432,13 +432,21 @@ def cmd_update(args):
 def cmd_restart(args):
     from .config import load_config
     from .service import service_status
+    import subprocess as _sp, os as _os
     cfg = load_config()
     try:
         st = service_status()
         if st.get("installed"):
             print("restarting service...")
-            print("service is installed — run: arena-bridge service uninstall && arena-bridge service install")
-            print("then: arena-bridge service status")
+            try:
+                label="ai.arena.bridge"
+                uid=_os.getuid() if hasattr(_os,'getuid') else 501
+                res=_sp.run(["launchctl","kickstart","-k",f"gui/{uid}/{label}"], capture_output=True, text=True)
+                if res.returncode!=0: res=_sp.run(["launchctl","kickstart","-k",label], capture_output=True, text=True)
+                if res.returncode==0: print("✓ service kickstarted"); return
+                print(f"kickstart failed: {res.stderr or res.stdout or 'unknown'}")
+            except Exception as e: print(f"kickstart error: {e}")
+            print("fallback: arena-bridge service uninstall && arena-bridge service install")
             return
     except Exception: pass
     print("no service installed — restart your API manually:")
@@ -905,6 +913,23 @@ def cmd_doctor(args):
         ("shell", cfg.get("allowShell", True) is not False, "on" if cfg.get("allowShell", True) else "off"),
         ("protected paths", bool(cfg.get("protected")), f"{len(cfg.get('protected') or [])} entries"),
     ]
+    # config validate as doctor checks (integrated)
+    try:
+        if not cfg.get("roots"): checks.append(("config roots", False, "empty — run arena-bridge init --root ~/projects"))
+        else:
+            for r in cfg.get("roots") or []:
+                if not __import__('os').path.exists(r): checks.append((f"root {r}", False, "not found — mkdir -p "+r))
+        if not cfg.get("token"): checks.append(("config token", False, "missing — run arena-bridge init"))
+        try:
+            p=int(cfg.get("port",0))
+            if not (1 <= p <= 65535): checks.append(("config port", False, f"invalid: {cfg.get('port')}"))
+        except: checks.append(("config port", False, f"invalid: {cfg.get('port')}"))
+    except: pass
+    try:
+        from .service import service_status
+        svc=service_status()
+        checks.append(("service health", (not svc.get("installed")) or bool(svc.get("running")), "running" if svc.get("running") else "not running" if svc.get("installed") else "not installed"))
+    except: pass
     from .mac import find_peekaboo
 
     peek = find_peekaboo(cfg)

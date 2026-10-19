@@ -37,6 +37,16 @@ export function clearTrust() {
 }
 
 /** Normalised view of the trust window: { active, until, tools, paths, expired }. */
+export function pruneExpiredTrust() {
+  try {
+    const cur = trustState();
+    if (cur && cur.until && Date.now() > cur.until && cur.active) {
+      clearTrust();
+      return true;
+    }
+  } catch {}
+  return false;
+}
 export function trustState() {
   const t = loadTrust();
   if (!t) return { active: false, until: null, tools: [], paths: [] };
