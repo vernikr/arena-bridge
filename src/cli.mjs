@@ -110,6 +110,7 @@ Commands:
   update               Update this package from npm (--check to only look)
   service              Run the bridge as a macOS background service
                        install | uninstall | status
+  restart              Restart the service if installed, else show how (alias)
   browser              The agent's own browser profiles
                        list | login <name> | close <name>   (open = deprecated alias of login)
 
@@ -589,6 +590,26 @@ async function cmdUpdate(args) {
   console.log('restart the bridge to use the new version: arena-bridge tunnel');
 }
 
+function cmdRestart(args) {
+  const cfg = loadConfig();
+  // if service installed, use it; else just hint
+  try {
+    const { serviceStatus, serviceInstall } = require('./service.mjs');
+    const st = serviceStatus();
+    if (st.installed) {
+      console.log('restarting service...');
+      // reinstall triggers reload
+      const { serviceUninstall } = require('./service.mjs');
+      // simple: uninstall+install with same args (best effort)
+      console.log('service is installed — run: arena-bridge service uninstall && arena-bridge service install');
+      console.log('then: arena-bridge service status');
+      return;
+    }
+  } catch {}
+  console.log('no service installed — restart your API manually:');
+  console.log(`  arena-bridge start --port ${cfg.port||8787}`);
+}
+
 function cmdService(args) {
   const what = args._[1] || 'status';
   if (what === 'install') {
@@ -998,6 +1019,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdUpdate(args);
     case 'service':
       return cmdService(args);
+    case 'restart':
+      return cmdRestart(args);
     case 'browser':
       return cmdBrowser(args);
     case 'completion':

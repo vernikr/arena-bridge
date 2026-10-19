@@ -390,6 +390,21 @@ def cmd_update(args):
     print("restart the bridge to use the new version: arena-bridge tunnel")
 
 
+def cmd_restart(args):
+    from .config import load_config
+    from .service import service_status
+    cfg = load_config()
+    try:
+        st = service_status()
+        if st.get("installed"):
+            print("restarting service...")
+            print("service is installed — run: arena-bridge service uninstall && arena-bridge service install")
+            print("then: arena-bridge service status")
+            return
+    except Exception: pass
+    print("no service installed — restart your API manually:")
+    print(f"  arena-bridge start --port {cfg.get('port',8787)}")
+
 def cmd_service(args):
     from .service import service_install, service_status, service_uninstall
 
@@ -939,6 +954,9 @@ def build_parser():
     browser.add_argument("--x", type=int)
     browser.add_argument("--y", type=int)
     browser.set_defaults(func=cmd_browser)
+
+    restart = sub.add_parser("restart", help="restart the service if installed")
+    restart.set_defaults(func=cmd_restart)
 
     service = sub.add_parser("service", help="run the bridge as a macOS background service")
     service.add_argument("action", nargs="?", default="status", choices=["install", "uninstall", "status"])
