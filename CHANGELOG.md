@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.10.0
+
+### Added
+- `src/telemetry.mjs` — cold-start, RSS/heap and uptime exported to `doctor --json` (`telemetry` field) and as new `cold_start`/`memory`/`uptime` checks; `GET /health` still exposes `uptime_sec`/`trust_active`/`audit_count`/`log_size`.
+- `docs/reference/errors.md` — single source error code table generated from `src/errors.mjs` (`PROTECTED`, `APPROVAL_*`, `TIMEOUT`, `UNKNOWN_TOOL` → retryable/hint mapping).
+- `macos/ArenaBridge/Sources/MenuBar.swift` — optional `MenuBarExtra` popover (pending count + trust remaining), ready for Developer ID flow without replacing `WindowGroup`.
+- `.github/workflows/release.yml` now publishes `SHA256SUMS` (+ `SHA256SUMS-apps` for zips) and `install.sh` verifies them (`shasum -a 256 -c`).
+
+### Changed
+- `AppIcon.png` recompressed 982 KB → 82 KB (quantized 1024px PNG, `iconutil` still generates 5 scales + @2x).
+
+### Fixed
+- `release.yml` `if: success()` already — kept; macOS job now `needs: [release]` and uploads both arch zips with checksums.
+
 ## 0.9.0
 
 ### Added

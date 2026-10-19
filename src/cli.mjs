@@ -16,7 +16,9 @@ import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
+import { coldStartMs, mem, uptimeSec } from './telemetry.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
+import { VERSION } from './version.mjs';
 import { cmdBrowser as _cmdBrowserImpl } from './cli/browser.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { COMPLETION_BASH, COMPLETION_ZSH, COMPLETION_FISH } from './completion.mjs';
@@ -1046,6 +1048,9 @@ function cmdDoctor(args) {
   } catch {}
   const peek = findPeekaboo(cfg);
   checks.push({ name: 'peekaboo (desktop control)', code: 'peekaboo', passed: !!peek, detail: peek || 'not installed - screen and mouse control are off', hint: 'brew install peekaboo or set peekabooPath' });
+  try { const c = coldStartMs(); checks.push({ name: 'cold start', code: 'cold_start', passed: c < 2000, detail: `${c} ms`, hint: c > 2000 ? 'check bridge.log for slow imports' : '' }); } catch {}
+  try { const m = mem(); if (m) checks.push({ name: 'memory rss', code: 'memory', passed: m.rss < 300*1024, detail: `${Math.round(m.rss/1024)} MB rss / ${Math.round(m.heapUsed/1024)} MB heap`, hint: m.rss > 300*1024 ? 'restart bridge if growing' : '' }); } catch {}
+  try { const u = uptimeSec(); checks.push({ name: 'uptime', code: 'uptime', passed: true, detail: `${u}s`, hint: '' }); } catch {}
   const chrome = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -1053,7 +1058,7 @@ function cmdDoctor(args) {
   checks.push({ name: 'chrome', code: 'chrome', passed: !!chrome, detail: chrome || 'not found in /Applications', hint: 'install Chrome to use browser tools' });
   const ok = checks.every(c => c.passed);
   if (isJson) {
-    console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, checks }, null, 2));
+    try { const t = { cold_start_ms: coldStartMs(), memory: mem(), uptime_sec: uptimeSec() }; console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, telemetry: t, checks }, null, 2)); } catch { console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, checks }, null, 2)); }
   } else {
     for (const c of checks) {
       console.log(`${c.passed ? '✓' : '✗'} ${c.name.padEnd(18)} ${c.detail}`);

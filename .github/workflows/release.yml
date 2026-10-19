@@ -62,10 +62,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          shasum -a 256 arena-bridge-npm.tgz dist/*.tar.gz dist/*.whl > SHA256SUMS || sha256sum arena-bridge-npm.tgz dist/*.tar.gz dist/*.whl > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" \
             arena-bridge-npm.tgz \
             dist/*.tar.gz \
             dist/*.whl \
+            SHA256SUMS \
             --title "arena-bridge $GITHUB_REF_NAME" \
             --generate-notes
 
@@ -89,7 +91,10 @@ jobs:
             rm -rf "/tmp/Arena Bridge.app" "macos/ArenaBridge/dist"
           done
           mv "$RUNNER_TEMP"/Arena-Bridge-*.zip "$GITHUB_WORKSPACE"
-      - name: attach the apps to the release
+      - name: generate SHA256SUMS for apps
+        run: |
+          shasum -a 256 Arena-Bridge-*.zip > SHA256SUMS-apps || sha256sum Arena-Bridge-*.zip > SHA256SUMS-apps
+      - name: attach the apps and checksums to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.zip Arena-Bridge-x86_64.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.zip Arena-Bridge-x86_64.zip SHA256SUMS SHA256SUMS-apps --clobber
