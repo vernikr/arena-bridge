@@ -293,7 +293,7 @@ Deviations:
 
 ## 8. Decisions (2026-10-19)
 
-1. Clear: view only, plus separate "Delete history" with archive. [Default, not yet confirmed]
+1. Clear: view only. No "Delete history" in this scope. [Confirmed by owner 2026-10-19]
 2. Retention: audit log 7 days and at most 20 MB; artifacts 7 days and at most 200 MB; GUI window 5 000 rows. [Confirmed by owner: trim files to a reasonable limit]
 3. Time zone: automatic, the Mac's system zone (Europe/Moscow on the test Mac), with UTC toggle. [Confirmed by owner]
 4. Domain lookup via reverse DNS: allowed. [Confirmed by owner]
