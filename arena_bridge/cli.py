@@ -521,6 +521,17 @@ def cmd_completion(args):
         print(f"unknown shell: {shell} (use bash|zsh|fish)", file=sys.stderr)
         sys.exit(1)
 
+def cmd_cleanup(args):
+    from .audit import prune_artifacts
+    from .approvals import prune_approvals
+    days = getattr(args, 'days', 14) or 14
+    try: days = int(days)
+    except: days = 14
+    if days <= 0: days = 14
+    a1 = prune_artifacts(days)
+    a2 = prune_approvals(days)
+    print(f"cleanup: removed {a1.get('removed',0)} artifact folder(s) ({a1.get('freed_bytes',0)} bytes), {a2.get('removed',0)} old approval(s) older than {days} days")
+
 def cmd_logs(args):
     from .log import tail_log, log_path_for_cli
     n = getattr(args, 'n', 30) or 30
@@ -830,6 +841,10 @@ def build_parser():
     logs.add_argument("-n", type=int, default=30, help="number of entries")
     logs.add_argument("--json", action="store_true", help="json output")
     logs.set_defaults(func=cmd_logs)
+
+    clean = sub.add_parser("cleanup", help="remove old artifacts + approvals")
+    clean.add_argument("--days", type=int, default=14, help="older than N days")
+    clean.set_defaults(func=cmd_cleanup)
 
     setup = sub.add_parser("setup", help="one-shot: config, machine check, API + tunnel")
     setup.add_argument("--root", action="append", help="authorized root (repeatable)")

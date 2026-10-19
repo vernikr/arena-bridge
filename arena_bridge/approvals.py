@@ -99,6 +99,23 @@ def _redact(args: dict) -> dict:
     return out
 
 
+def prune_approvals(days=14):
+    from pathlib import Path
+    import time, json as _j
+    d = config_dir() / "approvals"
+    if not d.exists(): return {"removed": 0}
+    cutoff = int(time.time()*1000) - days*86400000
+    removed=0
+    for f in d.glob("*.json"):
+        try:
+            rec=_j.loads(f.read_text())
+            ts=rec.get("decidedAt") or rec.get("createdAt") or 0
+            if rec.get("status")!="pending" and ts and ts < cutoff:
+                f.unlink()
+                removed+=1
+        except: pass
+    return {"removed": removed}
+
 def request_approval(tool: str, args: dict, cfg: dict) -> dict:
     """Create a pending request and block until a local human decides."""
     ensure_dirs()

@@ -100,6 +100,25 @@ function redact(args) {
  * The request lives in a file so that the `arena-bridge approve` CLI (a separate
  * process) can pick it up.
  */
+export function pruneApprovals(days = 14) {
+  if (!fs.existsSync(APPROVALS_DIR)) return { removed: 0 };
+  const cutoff = Date.now() - days * 86400000;
+  let removed = 0;
+  for (const f of fs.readdirSync(APPROVALS_DIR)) {
+    if (!f.endsWith('.json')) continue;
+    const file = path.join(APPROVALS_DIR, f);
+    try {
+      const rec = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const ts = rec.decidedAt || rec.createdAt || 0;
+      if (rec.status !== 'pending' && ts && ts < cutoff) {
+        fs.unlinkSync(file);
+        removed++;
+      }
+    } catch {}
+  }
+  return { removed };
+}
+
 export async function requestApproval(tool, args, cfg) {
   ensureDirs();
   const id = crypto.randomUUID();

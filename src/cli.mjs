@@ -10,6 +10,7 @@ import { runDevice } from './device.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide } from './approvals.mjs';
 import { tailAudit, auditDir, listArtifacts, pruneArtifacts } from './audit.mjs';
+import { pruneApprovals } from './approvals.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
@@ -91,6 +92,7 @@ Commands:
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status
   audit [-n N]         Show the audit log
+  cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
   logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
                        get <key> | set <key> <value> | edit | list
@@ -832,6 +834,14 @@ function cmdCompletion(args) {
   }
 }
 
+function cmdCleanup(args) {
+  const days = Number(args.flags.days || args._[1] || 14);
+  const d = Number.isFinite(days) && days > 0 ? days : 14;
+  const a1 = pruneArtifacts(d);
+  const a2 = pruneApprovals(d);
+  console.log(`cleanup: removed ${a1.removed} artifact folder(s) (${a1.freed_bytes||0} bytes), ${a2.removed} old approval(s) older than ${d} days`);
+}
+
 function cmdLogs(args) {
   const isJson = !!(args.flags.json || args.flags['output-json']);
   let n = 30;
@@ -917,6 +927,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdAudit(args);
     case 'logs':
       return cmdLogs(args);
+    case 'cleanup':
+      return cmdCleanup(args);
     case 'config':
       return cmdConfig(args);
     case 'telegram':
