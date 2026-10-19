@@ -479,12 +479,34 @@ def _h_read_process_output(args, ctx):
         return {"ok": False, "error": f"unknown session: {args.get('session_id')}"}
     wait = min(int(args.get("timeout_sec") or 0), 120)
     deadline = time.time() + wait
+    # B10 fix: return early when new output available
+    last_len = 0
+    try:
+        with session["lock"]:
+            last_len = len(session["out"]) + len(session["err"])
+    except: pass
+    idle = 0
     while time.time() < deadline and session["proc"].poll() is None:
         time.sleep(0.2)
+        try:
+            with session["lock"]:
+                cur = len(session["out"]) + len(session["err"])
+        except:
+            cur = last_len
+        if cur != last_len:
+            last_len = cur
+            idle = 0
+            if wait <= 2:
+                time.sleep(0.3)
+                break
+        else:
+            idle += 1
+            if last_len > 0 and idle >= 2:
+                break
     if session["proc"].poll() is not None:
-        # the process is gone: let the reader threads flush the remaining output
-        for t in session["threads"]:
-            t.join(timeout=0.5)
+        for th in session["threads"]:
+            try: th.join(timeout=0.5)
+            except: pass
     with session["lock"]:
         stdout = "".join(session["out"])
         stderr = "".join(session["err"])

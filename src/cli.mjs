@@ -715,33 +715,38 @@ async function cmdTelegram(args) {
   }
 }
 
-function cmdDoctor() {
+function cmdDoctor(args) {
+  const isJson = !!(args?.flags?.json || args?.flags?.['output-json']);
   const cfg = loadConfig();
   const checks = [];
-  checks.push(['config file', fs.existsSync(path.join(CONFIG_DIR, 'config.json')), CONFIG_DIR]);
-  checks.push(['agent token', !!cfg.token, cfg.token ? 'present' : 'MISSING — run init']);
-  checks.push(['device token', !!cfg.deviceToken, cfg.deviceToken ? 'present' : 'MISSING — run init']);
-  checks.push(['mode', !!cfg.mode, cfg.mode]);
-  checks.push(['roots', (cfg.roots || []).length > 0, (cfg.roots || []).join(', ')]);
-  checks.push(['approval gate', cfg.requireApproval !== false, cfg.requireApproval ? 'on' : 'OFF (dangerous)']);
-  checks.push(['shell', cfg.allowShell !== false, cfg.allowShell ? 'on' : 'off']);
-  checks.push(['protected paths', (cfg.protected || []).length > 0, `${(cfg.protected || []).length} entries`]);
+  checks.push({ name: 'config file', code: 'config_file', passed: fs.existsSync(path.join(CONFIG_DIR, 'config.json')), detail: CONFIG_DIR, hint: 'run arena-bridge init --root <path>' });
+  checks.push({ name: 'agent token', code: 'agent_token', passed: !!cfg.token, detail: cfg.token ? 'present' : 'MISSING', hint: 'run arena-bridge init' });
+  checks.push({ name: 'device token', code: 'device_token', passed: !!cfg.deviceToken, detail: cfg.deviceToken ? 'present' : 'MISSING', hint: 'run arena-bridge init' });
+  checks.push({ name: 'mode', code: 'mode', passed: !!cfg.mode, detail: cfg.mode, hint: '' });
+  checks.push({ name: 'roots', code: 'roots', passed: (cfg.roots || []).length > 0, detail: (cfg.roots || []).join(', '), hint: 'arena-bridge init --root ~/Documents' });
+  checks.push({ name: 'approval gate', code: 'approval_gate', passed: cfg.requireApproval !== false, detail: cfg.requireApproval ? 'on' : 'OFF (dangerous)', hint: 'set requireApproval=true in config' });
+  checks.push({ name: 'shell', code: 'shell', passed: cfg.allowShell !== false, detail: cfg.allowShell ? 'on' : 'off', hint: '' });
+  checks.push({ name: 'protected paths', code: 'protected', passed: (cfg.protected || []).length > 0, detail: `${(cfg.protected || []).length} entries`, hint: '' });
   const peek = findPeekaboo(cfg);
-  checks.push(['peekaboo (desktop control)', !!peek, peek || 'not installed - screen and mouse control are off']);
+  checks.push({ name: 'peekaboo (desktop control)', code: 'peekaboo', passed: !!peek, detail: peek || 'not installed - screen and mouse control are off', hint: 'brew install peekaboo or set peekabooPath' });
   const chrome = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
   ].find((c) => fs.existsSync(c));
-  checks.push(['chrome', !!chrome, chrome || 'not found in /Applications']);
-  let ok = true;
-  for (const [name, passed, detail] of checks) {
-    if (!passed) ok = false;
-    console.log(`${passed ? '✓' : '✗'} ${name.padEnd(18)} ${detail}`);
+  checks.push({ name: 'chrome', code: 'chrome', passed: !!chrome, detail: chrome || 'not found in /Applications', hint: 'install Chrome to use browser tools' });
+  const ok = checks.every(c => c.passed);
+  if (isJson) {
+    console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, checks }, null, 2));
+  } else {
+    for (const c of checks) {
+      console.log(`${c.passed ? '✓' : '✗'} ${c.name.padEnd(18)} ${c.detail}`);
+    }
+    console.log(
+      `\nNode ${process.version} • public URL: ${cfg.publicUrl || '(not set — run with --public-url or set config.publicUrl)'}`,
+    );
   }
-  console.log(
-    `\nNode ${process.version} • public URL: ${cfg.publicUrl || '(not set — run with --public-url or set config.publicUrl)'}`,
-  );
   if (!ok) process.exitCode = 1;
+  return { ok, checks };
 }
 
 export async function main(argv = process.argv.slice(2)) {

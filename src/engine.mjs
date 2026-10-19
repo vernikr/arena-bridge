@@ -581,8 +581,26 @@ export function toolCatalog() {
         if (!s) return { ok: false, error: `unknown session: ${args.session_id}` };
         const wait = Math.min(Number(args.timeout_sec || 0), 120);
         const deadline = Date.now() + wait * 1000;
+        // B10 fix: return early when new output is available, don't wait full timeout
+        let lastLen = (s.outLen || 0) + (s.errLen || 0);
+        let idle = 0;
         while (!s.exited && Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 200));
+          const curLen = (s.outLen || 0) + (s.errLen || 0);
+          if (curLen !== lastLen) {
+            // new output arrived - wait a bit more for burst, then return
+            lastLen = curLen;
+            idle = 0;
+            // if we already have output and wait was small, return quickly
+            if (wait <= 2) {
+              await new Promise((r) => setTimeout(r, 300));
+              break;
+            }
+          } else {
+            idle++;
+            // if we have output and idle for 2 ticks, return early
+            if (lastLen > 0 && idle >= 2) break;
+          }
         }
         const stdout = Buffer.concat(s.out).toString('utf8');
         const stderr = Buffer.concat(s.err).toString('utf8');

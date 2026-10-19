@@ -597,6 +597,7 @@ def cmd_telegram(args):
 
 
 def cmd_doctor(args):
+    is_json = bool(getattr(args, 'json', False) or getattr(args, 'output_json', False))
     cfg = load_config()
     checks = [
         ("config file", config_path().exists(), str(config_dir())),
@@ -622,7 +623,11 @@ def cmd_doctor(args):
         if not passed:
             ok = False
         print(f"{'✓' if passed else '✗'} {name:18} {detail}")
-    print(f"\nPython {os.sys.version.split()[0]} • public URL: {cfg.get('publicUrl') or '(not set)'}")
+    if is_json:
+        import json as _j
+        print(_j.dumps({"ok": ok, "version": VERSION, "publicUrl": cfg.get("publicUrl"), "python": os.sys.version.split()[0], "checks": [{"name": n, "passed": bool(p), "detail": d} for n,p,d in checks]}, indent=2))
+    else:
+        print(f"\nPython {os.sys.version.split()[0]} • public URL: {cfg.get('publicUrl') or '(not set)'}")
     if not ok:
         sys.exit(1)
 

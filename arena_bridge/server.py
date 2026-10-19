@@ -159,13 +159,15 @@ def make_handler(cfg, engine):
                             "env": body.get("env"),
                         },
                     )
-                    return self._send(200 if result.get("ok") else 400, result)
+                    status = 200 if result.get("ok") else (202 if result.get("error") == "APPROVAL_PENDING" else 400)
+                return self._send(status, result)
                 if path == "/call":
                     body = self._json_body()
                     if not body.get("tool"):
                         return self._send(400, {"ok": False, "error": "tool is required"})
                     result = engine.call(str(body["tool"]), body.get("args") or {})
-                    return self._send(200 if result.get("ok") else 400, result)
+                    status = 200 if result.get("ok") else (202 if result.get("error") == "APPROVAL_PENDING" else 400)
+                return self._send(status, result)
                 if path == "/mcp":
                     body = self._json_body()
                     responses = handle_mcp_payload(

@@ -170,14 +170,17 @@ export function createDirectServer(cfg, engine) {
           timeout_sec: body.timeout_sec,
           env: body.env,
         });
-        return sendJson(res, result.ok ? 200 : 400, result);
+        const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
+        return sendJson(res, status, result);
       }
 
       if (req.method === 'POST' && p === '/call') {
         const body = await readJson(req, cfgNow.maxUploadBytes);
         if (!body.tool) return sendJson(res, 400, { ok: false, error: 'tool is required' });
         const result = await engine.call(String(body.tool), body.args || {});
-        return sendJson(res, result.ok ? 200 : 400, result);
+        // R5: return 202 for pending approvals, so client can poll GET /approvals/:id
+        const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
+        return sendJson(res, status, result);
       }
 
       if (p === '/files') {
