@@ -221,6 +221,7 @@ struct LogEntry: Identifiable {
 
     /// The list sends the start of the parameters as text; show the command without the JSON around it.
     static func previewText(_ preview: String) -> String {
+        if ["{}", "[]", "null", ""].contains(preview.trimmingCharacters(in: .whitespaces)) { return "" }
         var text = preview
         if text.hasPrefix("{\"command\":\"") { text = String(text.dropFirst(12)) }
         if text.hasSuffix("\"}") { text = String(text.dropLast(2)) }

@@ -421,6 +421,41 @@ struct LogCard: View {
     }
 }
 
+/// One symbol per tool family, in one colour. A text glyph takes its place when the symbol is missing.
+struct ToolIcon: View {
+    let tool: String
+
+    var body: some View {
+        let spec = Self.spec(tool)
+        Group {
+            if NSImage(systemSymbolName: spec.symbol, accessibilityDescription: nil) != nil {
+                Image(systemName: spec.symbol)
+            } else {
+                Text(spec.glyph)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .frame(width: 16, alignment: .center)
+    }
+
+    static func spec(_ tool: String) -> (symbol: String, glyph: String) {
+        if tool.hasPrefix("mac_") { return ("macwindow", "▣") }
+        if tool.hasPrefix("chrome_") { return ("globe", "◎") }
+        if tool.hasPrefix("telegram") || tool == "notify_user" { return ("paperplane", "➤") }
+        if tool.hasPrefix("log_") { return ("text.bubble", "✎") }
+        if tool.hasPrefix("audit") { return ("list.bullet", "≡") }
+        if tool.hasPrefix("trust") { return ("clock", "◷") }
+        if tool.hasPrefix("approval") { return ("hand.raised", "✋") }
+        if tool == "bash" || tool == "sysinfo" { return ("terminal", ">") }
+        if tool.hasSuffix("_process") || tool.hasSuffix("process_output") { return ("cpu", "▤") }
+        if ["list_dir", "read_file", "write_file", "edit_file", "delete_path", "search_files", "file_get", "file_put"].contains(tool) {
+            return ("doc", "▯")
+        }
+        if tool == "service" || tool == "tunnel" || tool == "step" { return ("gearshape", "⚙") }
+        return ("circle", "•")
+    }
+}
+
 struct LogLine: View {
     let entry: LogEntry
     let show: (Artifact) -> Void
@@ -433,6 +468,7 @@ struct LogLine: View {
             Circle()
                 .fill(Self.levelColor(entry.level))
                 .frame(width: 7, height: 7)
+            ToolIcon(tool: entry.tool)
             Text(entry.tool)
                 .frame(width: 150, alignment: .leading)
             Text(entry.status)
