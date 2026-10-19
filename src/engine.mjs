@@ -187,7 +187,12 @@ export function toolCatalog() {
         }
         await fsp.mkdir(path.dirname(chk.abs), { recursive: true });
         if (args.append) await fsp.appendFile(chk.abs, content);
-        else await fsp.writeFile(chk.abs, content);
+        else {
+          const dir = path.dirname(chk.abs);
+          const tmp = path.join(dir, `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          await fsp.writeFile(tmp, content);
+          await fsp.rename(tmp, chk.abs);
+        }
         return { ok: true, path: chk.abs, bytes: Buffer.byteLength(content), appended: !!args.append };
       },
     },
@@ -217,7 +222,12 @@ export function toolCatalog() {
         const next = args.replace_all
           ? buf.split(oldText).join(String(args.new_text ?? ''))
           : buf.replace(oldText, String(args.new_text ?? ''));
-        await fsp.writeFile(chk.abs, next);
+        {
+          const dir = path.dirname(chk.abs);
+          const tmp = path.join(dir, `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          await fsp.writeFile(tmp, next);
+          await fsp.rename(tmp, chk.abs);
+        }
         return { ok: true, path: chk.abs, replacements: args.replace_all ? count : 1 };
       },
     },
@@ -400,7 +410,12 @@ export function toolCatalog() {
         const data = Buffer.from(String(args.data_base64 ?? ''), 'base64');
         if (data.length > ctx.cfg.maxUploadBytes) return { ok: false, error: 'payload too large' };
         await fsp.mkdir(path.dirname(chk.abs), { recursive: true });
-        await fsp.writeFile(chk.abs, data);
+        {
+          const dir = path.dirname(chk.abs);
+          const tmp = path.join(dir, `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          await fsp.writeFile(tmp, data);
+          await fsp.rename(tmp, chk.abs);
+        }
         return { ok: true, path: chk.abs, bytes: data.length };
       },
     },
@@ -420,7 +435,7 @@ export function toolCatalog() {
       required: [],
       handler: async (args) => {
         const n = Math.min(200, Number(args.limit) || 30);
-        let entries = tailAudit(n * 4);
+        let entries = tailAudit(args.tool || args.since ? Math.max(n * 10, 500) : n * 4);
         if (args.tool) entries = entries.filter((e) => e.tool === args.tool);
         if (args.since) {
           const since = Date.parse(String(args.since));

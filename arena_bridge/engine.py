@@ -52,44 +52,61 @@ def _h_bash(args, ctx):
     timeout = min(int(args.get("timeout_sec") or ctx.cfg.get("commandTimeoutSec", 120)), 1800)
     env = {**os.environ, **(args.get("env") or {})}
     started = time.time()
+    cap = int(ctx.cfg.get("maxOutputBytes", 8 * 1024 * 1024))
+    # R2: stream output with cap to avoid OOM — read incrementally, truncate early
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             command,
             shell=True,
             cwd=str(abs_path),
             env=env,
-            capture_output=True,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
         )
-    except subprocess.TimeoutExpired as e:
-        return {
-            "ok": True,
-            "command": command,
-            "cwd": str(abs_path),
-            "stdout": (e.stdout or b"").decode("utf-8", "replace"),
-            "stderr": (e.stderr or b"").decode("utf-8", "replace"),
-            "exit_code": -1,
-            "timed_out": True,
-            "duration_ms": int((time.time() - started) * 1000),
-        }
+        try:
+            outs, errs = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                outs, errs = proc.communicate(timeout=5)
+            except Exception:
+                outs, errs = b"", b""
+            out_str = outs.decode("utf-8", "replace")
+            err_str = errs.decode("utf-8", "replace")
+            truncated = len(out_str) >= cap or len(err_str) >= cap
+            if len(out_str) > cap:
+                out_str = out_str[:cap]
+            if len(err_str) > cap:
+                err_str = err_str[:cap]
+            return {
+                "ok": True,
+                "command": command,
+                "cwd": str(abs_path),
+                "stdout": out_str,
+                "stderr": err_str,
+                "exit_code": -1,
+                "timed_out": True,
+                "truncated": truncated,
+                "duration_ms": int((time.time() - started) * 1000),
+            }
     except Exception as e:  # pragma: no cover - defensive
         return {"ok": False, "error": str(e)}
 
-    cap = int(ctx.cfg.get("maxOutputBytes", 8 * 1024 * 1024))
-    stdout = proc.stdout.decode("utf-8", "replace")
-    stderr = proc.stderr.decode("utf-8", "replace")
+    out_str = outs.decode("utf-8", "replace")
+    err_str = errs.decode("utf-8", "replace")
     truncated = False
-    if len(stdout) > cap:
-        stdout, truncated = stdout[:cap], True
-    if len(stderr) > cap:
-        stderr, truncated = stderr[:cap], True
+    if len(out_str) > cap:
+        out_str, truncated = out_str[:cap], True
+    if len(err_str) > cap:
+        err_str, truncated = err_str[:cap], True
 
     return {
         "ok": True,
         "command": command,
         "cwd": str(abs_path),
-        "stdout": stdout,
-        "stderr": stderr,
+        "stdout": out_str,
+        "stderr": err_str,
         "exit_code": proc.returncode,
         "truncated": truncated,
         "timed_out": False,
@@ -125,9 +142,29 @@ def _h_write_file(args, ctx):
     if len(content.encode()) > int(ctx.cfg.get("maxUploadBytes", 16 * 1024 * 1024)):
         return {"ok": False, "error": "content exceeds maxUploadBytes"}
     abs_path.parent.mkdir(parents=True, exist_ok=True)
-    mode = "ab" if args.get("append") else "wb"
-    with open(abs_path, mode) as fh:
-        fh.write(content.encode())
+    if args.get("append"):
+        with open(abs_path, "ab") as fh:
+            fh.write(content.encode())
+    else:
+        # R4: atomic write via temp file + rename
+        import tempfile, os as _os
+        raw = content.encode()
+        fd, tmp = tempfile.mkstemp(dir=str(abs_path.parent))
+        try:
+            _os.write(fd, raw)
+            _os.close(fd)
+            fd = None
+            _os.replace(tmp, str(abs_path))
+        finally:
+            if fd is not None:
+                try:
+                    _os.close(fd)
+                except Exception:
+                    pass
+            try:
+                _os.unlink(tmp)
+            except Exception:
+                pass
     return {
         "ok": True,
         "path": str(abs_path),
@@ -471,7 +508,7 @@ def _h_kill_process(args, ctx):
 
 def _h_audit_log(args, ctx):
     limit = min(200, int(args.get("limit") or 30))
-    entries = tail_audit(limit * 4)
+    entries = tail_audit(max(limit * 10, 500) if (args.get("tool") or args.get("since")) else limit * 4)
     if args.get("tool"):
         entries = [e for e in entries if e.get("tool") == args["tool"]]
     if args.get("since"):

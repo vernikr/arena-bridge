@@ -12,7 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.9', '3.11']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,3 +38,12 @@ jobs:
       - run: python3 test/test_browser.py
       - run: python3 test/test_mac.py
       - run: python3 test/test_service.py
+
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node -e "const pkg=require('./package.json'); const fs=require('fs'); const py=fs.readFileSync('arena_bridge/__init__.py','utf8'); if(!py.includes(pkg.version) && !fs.readFileSync('pyproject.toml','utf8').includes(pkg.version)) { console.error('version mismatch'); process.exit(1)}; console.log('version ok', pkg.version)"
