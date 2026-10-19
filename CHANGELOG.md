@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- MacOS app: work log panel with level filter, clear view (view only; records stay), full record on click, and a new-entries button when scrolled up.
+- MacOS app: Start and Stop run as numbered steps with a step indicator; a failure names the step and the reason and is written to the log.
+- CI builds the macOS app on every push.
+
+### Changed
+- The macOS app needs macOS 15 or later.
+- The work log shows times in the Mac's system time zone and keeps the newest 5 000 rows in view.
+
 ## 0.12.0
 
 ### Added

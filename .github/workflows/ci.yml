@@ -47,6 +47,12 @@ jobs:
       - run: python3 test/test_service.py
       - run: python3 test/test_telegram.py
 
+  macos-app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash macos/ArenaBridge/build.sh
+
   version-check:
     runs-on: ubuntu-latest
     steps:

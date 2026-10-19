@@ -22,7 +22,7 @@ Keep it short; details go to `docs/reference/`.
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
 | `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
-| `macos/ArenaBridge/` | SwiftUI app + `Bridge.swift` | One poll cycle, async `Bridge.run()`, `Info.plist` version from `package.json`. |
+| `macos/ArenaBridge/` | SwiftUI app: `Bridge.swift` (API client, log record parsing), `Model.swift` (state, log paging, start/stop steps), `Views.swift` (cards, log panel, detail sheet) | Log: cursor reads with `after`, 5 000-row window, level filter, clear view. Start/stop: numbered steps via `run(starting:_:)`. macOS 15 minimum. `Info.plist` version from `package.json`. |
 
 ## How to run tests
 
@@ -33,7 +33,7 @@ python3 test/test_bridge.py       # Python bridge smoke
 npm run test:python               # all Python suites via npm
 ```
 
-CI (`ci.yml`): Node on ubuntu+macos, Python 3.9+3.11 on ubuntu+macos, `version-check` job.
+CI (`ci.yml`): Node on ubuntu+macos, Python 3.9+3.11 on ubuntu+macos, `macos-app` job (builds the app), `version-check` job.
 Telegram tests are in CI (T1) — don't remove them. Release `if: success()` not `if: always()`.
 
 ## Parity rules

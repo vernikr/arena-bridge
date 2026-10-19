@@ -258,9 +258,9 @@ Deviations:
 - Access window open/close actions use the CLI path from Wave 2.
 - Acceptance: each step name shows in the indicator; a forced failure at step 5 shows the step and reason and logs it; refresh never changes the state during an operation.
 
-### Wave 5 — release (S)
+### Wave 5 — release (S) — status: docs and CI done on branch `wave-5/docs-ci`; live stop test and release pending
 - Docs: `docs/reference/api.md`, `tools.md`, `README` (generated counts), `AGENTS.md` module map, `feature-tree.md`, `CHANGELOG.md`.
-- Version 0.11.0 in all version files (CI `version-check`).
+- Version: set at the batch release (0.14.0 as the final of waves 3 and 4), in all version files (CI `version-check`).
 - Swift build in CI on macOS runner (currently not built in CI).
 - Optional: source aliases in config.
 - Move this folder to `docs/worklog/archive/` when closed.
