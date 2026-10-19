@@ -333,11 +333,14 @@ def start_poller(cfg: dict, on_message=None, on_callback=None):
                     _write_state(state)
                     cb = upd.get("callback_query") or {}
                     if cb:
+                        chat_id = ((cb.get("message") or {}).get("chat") or {}).get("id")
+                        if not allowed_chat(current_config(cfg), chat_id):
+                            continue
                         item = {
                             "id": upd.get("update_id"),
                             "callback_id": cb.get("id"),
                             "data": cb.get("data") or "",
-                            "chat_id": ((cb.get("message") or {}).get("chat") or {}).get("id"),
+                            "chat_id": chat_id,
                             "message_id": (cb.get("message") or {}).get("message_id"),
                             "from": (cb.get("from") or {}).get("username")
                             or (cb.get("from") or {}).get("first_name")

@@ -1,5 +1,6 @@
 """Hub (relay) server: many devices connect out to it, the cloud agent talks to it."""
 
+import hmac
 import json
 import threading
 import urllib.parse
@@ -33,7 +34,7 @@ class HubState:
         if not header.lower().startswith("bearer "):
             return False
         token = header[7:].strip()
-        return any(token == t for t in self.device_tokens())
+        return any(hmac.compare_digest(token, t) for t in self.device_tokens())
 
     def touch(self, name: str):
         import time

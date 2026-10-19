@@ -257,6 +257,11 @@ export function toolCatalog() {
             if (entries.length >= max) return;
             if (!showHidden && it.name.startsWith('.')) continue;
             const full = path.join(dir, it.name);
+            // enforce protected/roots policy on every element
+            try {
+              const chkEl = checkPath(full, ctx.cfg, ctx.base);
+              if (!chkEl.ok) continue;
+            } catch { continue; }
             let size = null;
             let mtime = null;
             let type = 'file';
@@ -329,6 +334,11 @@ export function toolCatalog() {
               continue;
             }
             if (!it.isFile()) continue;
+            // enforce policy
+            try {
+              const chkEl = checkPath(full, ctx.cfg, ctx.base);
+              if (!chkEl.ok) continue;
+            } catch { continue; }
             const st = await fsp.stat(full).catch(() => null);
             if (!st || st.size > maxFile) continue;
             const text = await fsp.readFile(full, 'utf8').catch(() => null);
@@ -637,9 +647,11 @@ export class Engine {
     return [...toolCatalog(), ...this.browser.tools(), ...macTools(this.cfg), ...telegramTools(this.cfg)];
   }
 
-  async call(name, args = {}, { requireApproval } = {}) {
+  async call(name, args = {}, { requireApproval, cfg } = {}) {
+    let cfgNow = cfg || this.cfg;
+    this.cfg = cfgNow;
     try {
-      if (fs.existsSync(CONFIG_PATH)) this.cfg = loadConfig();
+      if (fs.existsSync(CONFIG_PATH)) cfgNow = loadConfig();
     } catch {
       /* keep the last valid snapshot */
     }

@@ -85,8 +85,10 @@ def save_artifact(entry_id: str, kind: str, name: str, data, meta=None):
 
 def read_artifact(entry_id: str, name: str):
     try:
-        target = audit_dir() / str(entry_id) / Path(str(name)).name
-        if not target.exists():
+        base = audit_dir().resolve()
+        # treat entry_id and name as single components
+        target = (base / Path(str(entry_id)).name / Path(str(name)).name).resolve()
+        if not target.is_relative_to(base) or not target.is_file():
             return None
         return {"file": str(target), "data": target.read_bytes()}
     except Exception:

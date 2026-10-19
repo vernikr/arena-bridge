@@ -338,6 +338,13 @@ export function startPoller(cfg, { onMessage, onCallback } = {}) {
           writeState(state);
           const cb = upd.callback_query;
           if (cb) {
+            // only accept callbacks from allowed chats
+            if (!allowedChat(fresh(), cb.message?.chat?.id)) {
+              const state2 = readState();
+              state2.offset = offset;
+              writeState(state2);
+              continue;
+            }
             const item = {
               id: upd.update_id,
               callback_id: cb.id,
@@ -358,6 +365,8 @@ export function startPoller(cfg, { onMessage, onCallback } = {}) {
           }
           const msg = upd.message;
           if (!msg) continue;
+          // only accept messages from allowed chats
+          if (!allowedChat(fresh(), msg.chat?.id)) continue;
           const item = {
             id: upd.update_id,
             chat_id: msg.chat?.id ?? null,

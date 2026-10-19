@@ -84,9 +84,14 @@ export function saveArtifact(entryId, kind, name, data, meta = {}) {
 
 export function readArtifact(entryId, name) {
   try {
-    const file = path.join(auditDir(), String(entryId), path.basename(String(name)));
-    if (!fs.existsSync(file)) return null;
-    return { file, data: fs.readFileSync(file) };
+    const base = path.resolve(auditDir());
+    // entryId and name are treated as single path components (no slashes, no traversal)
+    const target = path.resolve(path.join(base, path.basename(String(entryId)), path.basename(String(name))));
+    // ensure target stays inside audit dir
+    const rel = path.relative(base, target);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    if (!fs.existsSync(target)) return null;
+    return { file: target, data: fs.readFileSync(target) };
   } catch {
     return null;
   }

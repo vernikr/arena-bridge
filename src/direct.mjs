@@ -113,7 +113,10 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'GET' && p === '/audit') {
-        const limit = Math.min(200, Number(url.searchParams.get('limit')) || 30);
+        let limit = Number(url.searchParams.get('limit'));
+        if (!Number.isFinite(limit) || limit <= 0) limit = 30;
+        else limit = Math.min(200, Math.floor(limit));
+        if (Number.isNaN(limit)) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
         return sendJson(res, 200, { ok: true, entries: tailAudit(limit), artifacts_dir: auditDir() });
       }
 
@@ -180,6 +183,34 @@ export function createDirectServer(cfg, engine) {
         if (!target) return sendJson(res, 400, { ok: false, error: 'path query parameter is required' });
         const chk = checkPath(target, cfgNow, engine.base, { write: req.method !== 'GET' });
         if (!chk.ok) return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
+        // PUT/DELETE must go through the approval gate and audit, like the tools
+        if (req.method !== 'GET') {
+          const toolName = req.method === 'DELETE' ? 'delete_path' : 'file_put';
+          const { trustState, trustAllows } = await import('./trust.mjs');
+          const { requestApproval } = await import('./approvals.mjs');
+          const { audit } = await import('./audit.mjs');
+          const trust = trustState();
+          let needApproval = true;
+          if (trustAllows(trust, toolName, { path: target }, cfgNow)) {
+            needApproval = false;
+          } else if (cfgNow.requireApproval === false) {
+            needApproval = false;
+          }
+          if (needApproval) {
+            const approval = await requestApproval(toolName, { path: target }, cfgNow);
+            if (!approval.approved) {
+              const status = approval.rec?.status || 'denied';
+              audit({ tool: toolName, args: { path: target }, status: 'approval_denied', approval_status: status });
+              const pending = status === 'pending' || status === 'timeout' || status === 'expired';
+              return sendJson(res, pending ? 202 : 403, {
+                ok: false,
+                error: pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED',
+                status,
+                approval_id: approval.rec?.id || null,
+              });
+            }
+          }
+        }
         try {
           if (req.method === 'GET') {
             const buf = await fsp.readFile(chk.abs);
@@ -187,12 +218,14 @@ export function createDirectServer(cfg, engine) {
           }
           if (req.method === 'PUT' || req.method === 'POST') {
             const buf = await readBody(req, cfgNow.maxUploadBytes);
-            await fsp.mkdir(chk.abs.replace(/\/[^/]*$/, ''), { recursive: true });
+            await fsp.mkdir(path.dirname(chk.abs), { recursive: true });
             await fsp.writeFile(chk.abs, buf);
+            try { const { audit } = await import('./audit.mjs'); audit({ tool: 'file_put', args: { path: target }, status: 'ok', via: 'files_api' }); } catch {}
             return sendJson(res, 200, { ok: true, path: chk.abs, bytes: buf.length });
           }
           if (req.method === 'DELETE') {
             await fsp.rm(chk.abs, { recursive: true, force: true });
+            try { const { audit } = await import('./audit.mjs'); audit({ tool: 'delete_path', args: { path: target }, status: 'ok', via: 'files_api' }); } catch {}
             return sendJson(res, 200, { ok: true, path: chk.abs, deleted: true });
           }
         } catch (e) {

@@ -227,6 +227,28 @@ def make_handler(cfg, engine):
             ok, abs_path, err, reason = check_path(target, current, engine.base, write=(method != "GET"))
             if not ok:
                 return self._send(403, {"ok": False, "error": err, "reason": reason})
+            # PUT/DELETE must go through the approval gate and audit
+            if method != "GET":
+                from .trust import trust_allows, trust_state
+                from .approvals import request_approval
+                from .audit import audit as audit_fn
+                trust = trust_state()
+                tool_name = "delete_path" if method == "DELETE" else "file_put"
+                need_approval = True
+                if trust_allows(trust, tool_name, {"path": target}, current):
+                    need_approval = False
+                elif current.get("requireApproval") is False:
+                    need_approval = False
+                if need_approval:
+                    decision = request_approval(tool_name, {"path": target}, current)
+                    if not decision.get("approved"):
+                        status = decision.get("rec", {}).get("status", "denied")
+                        try:
+                            audit_fn({"tool": tool_name, "args": {"path": target}, "status": "approval_denied", "approval_status": status})
+                        except Exception:
+                            pass
+                        pending = status in ("pending", "timeout", "expired")
+                        return self._send(202 if pending else 403, {"ok": False, "error": "APPROVAL_PENDING" if pending else "APPROVAL_DENIED", "status": status, "approval_id": decision.get("rec", {}).get("id")})
             try:
                 if method == "GET":
                     data = abs_path.read_bytes()
@@ -235,6 +257,11 @@ def make_handler(cfg, engine):
                     data = self._read_body()
                     abs_path.parent.mkdir(parents=True, exist_ok=True)
                     abs_path.write_bytes(data)
+                    try:
+                        from .audit import audit as audit_fn
+                        audit_fn({"tool": "file_put", "args": {"path": target}, "status": "ok", "via": "files_api"})
+                    except Exception:
+                        pass
                     return self._send(200, {"ok": True, "path": str(abs_path), "bytes": len(data)})
                 if method == "DELETE":
                     if abs_path.is_dir():
@@ -243,6 +270,11 @@ def make_handler(cfg, engine):
                         shutil.rmtree(abs_path, ignore_errors=True)
                     elif abs_path.exists():
                         abs_path.unlink()
+                    try:
+                        from .audit import audit as audit_fn
+                        audit_fn({"tool": "delete_path", "args": {"path": target}, "status": "ok", "via": "files_api"})
+                    except Exception:
+                        pass
                     return self._send(200, {"ok": True, "path": str(abs_path), "deleted": True})
             except Exception as e:
                 return self._send(400, {"ok": False, "error": str(e)})
