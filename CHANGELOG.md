@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.13
+
+### Added
+- `src/catalog.mjs` single source for `toolCatalog()` (re-export from `engine.mjs` as phase 1), `src/gate.mjs` unified `authorize(tool,args,cfg)` (trust+gate+audit) for `POST /call` and `PUT/DELETE /files`, `src/cli/` modularity scaffold (wave 3 step 1). `docs/reference/security.md` documents `state.json` runtime split.
+
+### Changed
+- `state.json` migration: `publicUrl` is runtime state (not user intent) — `config.mjs` `loadConfig()` merges `state.publicUrl` if `config.json` lacks it, `saveConfig()` moves `publicUrl` to `state.json` via `tmp+rename` (B7/B12 fix). `package.json` is still single source for `VERSION`.
+
 ## 0.8.12
 
 ### Added

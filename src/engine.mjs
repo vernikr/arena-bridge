@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { checkPath, resolveTarget, isInside } from './policy.mjs';
 import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
 import { requestApproval } from './approvals.mjs';
+// catalog is now single-source in catalog.mjs (re-export kept for compat)
 import { loadConfig, CONFIG_PATH } from './config.mjs';
 import { BrowserManager, cleanupOrphanChromes } from './browser.mjs';
 import { macTools } from './mac.mjs';
