@@ -251,7 +251,7 @@ Deviations:
 - Windowed buffer, cached formatting, lazy detail fetch.
 - Acceptance: new entries appear at the bottom and follow only when pinned; 10 000 rows scroll without stutter; time matches the Mac's clock and changes when the time zone changes.
 
-### Wave 4 — controls (Swift, M)
+### Wave 4 — controls (Swift, M) — status: done on branch `wave-4/controls`, not released
 - `ServiceOperation` state machine with steps, timeouts and failure reasons.
 - Single toggle with intermediate disabled states; indicator; right-aligned Setup and Copy prompt.
 - App menu Start/Stop routed through the same operation.
