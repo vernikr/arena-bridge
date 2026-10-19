@@ -15,6 +15,7 @@ import { spawn, execSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
+import { COMPLETION_BASH, COMPLETION_ZSH, COMPLETION_FISH } from './completion.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
 import { serviceStatus, serviceInstall, serviceUninstall } from './service.mjs';
 import {
@@ -121,7 +122,12 @@ Common options:
   --no-approval        disable the human approval gate (dangerous)
   --no-shell           disable shell execution entirely
 
-Config file: ${CONFIG_DIR}/config.json`);
+Config file: ${CONFIG_DIR}/config.json
+
+Shell completion:
+  arena-bridge completion bash|zsh|fish   print shell completion script
+  # then: arena-bridge completion bash >> ~/.bashrc   or   eval "$(arena-bridge completion bash)"
+`);
 }
 
 function cmdInit(args) {
@@ -795,6 +801,17 @@ async function cmdTelegram(args) {
   }
 }
 
+function cmdCompletion(args) {
+  const shell = String(args._[1] || 'bash').toLowerCase();
+  if (shell === 'bash') console.log(COMPLETION_BASH);
+  else if (shell === 'zsh') console.log(COMPLETION_ZSH);
+  else if (shell === 'fish') console.log(COMPLETION_FISH);
+  else {
+    console.error(`unknown shell: ${shell} (use bash|zsh|fish)`);
+    process.exit(1);
+  }
+}
+
 function cmdDoctor(args) {
   const isJson = !!(args?.flags?.json || args?.flags?.['output-json']);
   const cfg = loadConfig();
@@ -875,6 +892,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdService(args);
     case 'browser':
       return cmdBrowser(args);
+    case 'completion':
+      return cmdCompletion(args);
     case undefined:
     case 'help':
     case '--help':

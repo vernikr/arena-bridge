@@ -497,6 +497,19 @@ def cmd_rotate(args):
     )
 
 
+def cmd_completion(args):
+    from .completion import COMPLETION_BASH, COMPLETION_FISH, COMPLETION_ZSH
+    shell = (getattr(args, "shell", None) or "bash").lower()
+    if shell == "bash":
+        print(COMPLETION_BASH)
+    elif shell == "zsh":
+        print(COMPLETION_ZSH)
+    elif shell == "fish":
+        print(COMPLETION_FISH)
+    else:
+        print(f"unknown shell: {shell} (use bash|zsh|fish)", file=sys.stderr)
+        sys.exit(1)
+
 def cmd_audit(args):
     action = getattr(args, "action", None)
     if action == "dir":
@@ -823,6 +836,10 @@ def build_parser():
     service.add_argument("--authtoken", help="ngrok authtoken")
     service.add_argument("--port", type=int, help="API port")
     service.set_defaults(func=cmd_service)
+
+    comp = sub.add_parser("completion", help="print shell completion script")
+    comp.add_argument("shell", nargs="?", default="bash", choices=["bash", "zsh", "fish"], help="shell to generate completion for")
+    comp.set_defaults(func=cmd_completion)
     return p
 
 
