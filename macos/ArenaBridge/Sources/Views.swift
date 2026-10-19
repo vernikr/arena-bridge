@@ -380,7 +380,7 @@ struct LogCard: View {
                             .onTapGesture { model.detailEntry = entry }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.vertical, 4)
                 }
                 .overlay {
