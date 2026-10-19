@@ -14,7 +14,7 @@ export const DEFAULTS = {
   mode: 'direct', // 'direct' = this machine serves the API | 'hub' = relay for many devices
   host: '127.0.0.1',
   port: 8787,
-  publicUrl: null, // public base URL the cloud agent should use (e.g. https://x.trycloudflare.com)
+  publicUrl: null, // public base URL (runtime, stored in state.json; config holds user intent only)
   token: null, // agent token: the cloud agent authenticates with this
   deviceToken: null, // device token: only a device may use this
   hub: null, // hub base URL, when mode=hub
@@ -79,6 +79,16 @@ export function loadConfig() {
       throw new Error(`Invalid config file ${CONFIG_PATH}: ${e.message}`);
     }
   }
+  // Merge state (publicUrl) — state wins if config doesn't have it, for backward compat
+  try {
+    const statePath = path.join(CONFIG_DIR, 'state.json');
+    if (fs.existsSync(statePath)) {
+      const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      if (state.publicUrl && !fileCfg.publicUrl) fileCfg.publicUrl = state.publicUrl;
+      // also expose state for debug
+      fileCfg._state = state;
+    }
+  } catch {}
   const cfg = { ...DEFAULTS, ...fileCfg };
   cfg.roots = (cfg.roots || []).map((p) => path.resolve(expandHome(String(p))));
   cfg.protected = (cfg.protected || []).map((p) => path.resolve(expandHome(String(p))));
@@ -88,26 +98,33 @@ export function loadConfig() {
 
 export function saveConfig(cfg) {
   ensureDirs();
-  // B12 fix: don't write all DEFAULTS to disk; only persist keys that were set in file or changed
-  // Read existing file to preserve minimal writes and avoid overwriting with defaults (B7)
+  // B7: publicUrl is runtime state, not user config — store in state.json
+  if ('publicUrl' in cfg) {
+    try {
+      const statePath = path.join(CONFIG_DIR, 'state.json');
+      let state = {};
+      try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch {}
+      if (cfg.publicUrl) state.publicUrl = cfg.publicUrl;
+      else delete state.publicUrl;
+      fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+      const tmpS = statePath + '.tmp';
+      fs.writeFileSync(tmpS, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
+      fs.renameSync(tmpS, statePath);
+    } catch {}
+  }
   let existing = {};
   try { existing = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
   const out = { ...existing };
-  // Merge in explicitly set keys from cfg (excluding runtime-only ones)
   for (const [k, v] of Object.entries(cfg)) {
-    if (k === 'configPath') continue;
-    // For B7: only persist publicUrl if it was intentionally set; but tunnel case should persist
-    // We persist any key that differs from DEFAULTS or already existed
+    if (k === 'configPath' || k === '_state' || k === 'publicUrl') continue;
     const def = DEFAULTS[k];
     const already = k in existing;
-    // Always persist if already in file or if value differs from defaults or is non-default like token/publicUrl
-    if (already || JSON.stringify(v) !== JSON.stringify(def) || ['token','publicUrl','deviceToken','localToken','hub','device','port','host','mode'].includes(k)) {
+    if (already || JSON.stringify(v) !== JSON.stringify(def) || ['token','deviceToken','localToken','hub','device','port','host','mode'].includes(k)) {
       out[k] = v;
     } else if (v !== undefined && v !== null && JSON.stringify(v) !== JSON.stringify(def)) {
       out[k] = v;
     }
   }
-  // Use atomic write
   const tmp = CONFIG_PATH + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n', { mode: 0o600 });
   fs.renameSync(tmp, CONFIG_PATH);

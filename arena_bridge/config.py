@@ -107,7 +107,43 @@ def load_config() -> dict:
     cfg = defaults()
     p = config_path()
     if p.exists():
-        cfg.update(json.loads(p.read_text()))
+        try:
+            cfg.update(json.loads(p.read_text()))
+        except: pass
+    # merge state publicUrl (B7: config = intent, state = runtime)
+    try:
+        sp = config_dir() / "state.json"
+        if sp.exists():
+            state = json.loads(sp.read_text())
+            if state.get("publicUrl") and not cfg.get("publicUrl"):
+                # also handle case where cfg already has publicUrl but empty
+                cfg["publicUrl"] = state["publicUrl"]
+            # keep state for debug
+            cfg["_state"] = state
+    except: pass
+    # migrate publicUrl from config to state if needed
+    try:
+        if p.exists():
+            raw = json.loads(p.read_text())
+            if raw.get("publicUrl"):
+                sp = config_dir() / "state.json"
+                cur = {}
+                if sp.exists():
+                    try: cur = json.loads(sp.read_text())
+                    except: cur = {}
+                if not cur.get("publicUrl"):
+                    cur["publicUrl"] = raw["publicUrl"]
+                    sp.parent.mkdir(parents=True, exist_ok=True)
+                    sp.write_text(json.dumps(cur, indent=2) + "\n")
+                # remove from config
+                del raw["publicUrl"]
+                tmp = p.with_suffix(".tmp")
+                tmp.write_text(json.dumps(raw, indent=2) + "\n")
+                tmp.replace(p)
+                cfg.pop("publicUrl", None)
+                if raw.get("publicUrl"):
+                    cfg["publicUrl"] = raw["publicUrl"]
+    except: pass
     cfg["roots"] = [str(Path(expand_home(r)).resolve()) for r in cfg.get("roots") or []]
     cfg["protected"] = [str(Path(expand_home(r)).resolve()) for r in cfg.get("protected") or []]
     cfg["configPath"] = str(p)
@@ -117,7 +153,15 @@ def load_config() -> dict:
 def save_config(cfg: dict) -> None:
     ensure_dirs()
     p = config_path()
-    # B12 fix: don't write all defaults; merge with existing file
+    # B7: publicUrl is runtime — store in state.json, not config.json
+    if "publicUrl" in cfg:
+        try:
+            from .state import save_state, clear_state_key
+            if cfg["publicUrl"]:
+                save_state({"publicUrl": cfg["publicUrl"]})
+            else:
+                clear_state_key("publicUrl")
+        except: pass
     existing = {}
     if p.exists():
         try:
@@ -127,13 +171,11 @@ def save_config(cfg: dict) -> None:
     out = dict(existing)
     defs = defaults()
     for k, v in cfg.items():
-        if k == "configPath":
+        if k in ("configPath", "_state", "publicUrl"):
             continue
         already = k in existing
-        # persist if already in file, or differs from defaults, or is identity-critical
-        if already or json.dumps(v, sort_keys=True) != json.dumps(defs.get(k), sort_keys=True) or k in ("token","publicUrl","deviceToken","localToken","hub","device","port","host","mode"):
+        if already or json.dumps(v, sort_keys=True) != json.dumps(defs.get(k), sort_keys=True) or k in ("token","deviceToken","localToken","hub","device","port","host","mode"):
             out[k] = v
-    # atomic write via tmp+rename
     import tempfile, os as _os
     fd, tmp = tempfile.mkstemp(dir=str(p.parent))
     try:
