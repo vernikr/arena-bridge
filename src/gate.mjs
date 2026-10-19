@@ -2,7 +2,7 @@ import { trustState, trustAllows } from './trust.mjs';
 import { requestApproval } from './approvals.mjs';
 import { audit } from './audit.mjs';
 
-export async function authorize(tool, args, cfg) {
+export async function authorize(tool, args, cfg, source = null) {
   const trust = trustState();
   let needApproval = true;
   if (trustAllows(trust, tool, args, cfg)) needApproval = false;
@@ -11,8 +11,8 @@ export async function authorize(tool, args, cfg) {
   const approval = await requestApproval(tool, args, cfg);
   if (!approval.approved) {
     const status = approval.rec?.status || "denied";
-    try { audit({ tool, args, status: "approval_denied", approval_status: status }); } catch {}
     const pending = status === "pending" || status === "timeout" || status === "expired";
+    try { audit({ tool, args, status: "approval_denied", approval_status: status, via: "approval", source, error: pending ? "APPROVAL_PENDING" : "APPROVAL_DENIED" }); } catch {}
     return { ok: false, status, approval_id: approval.rec?.id || null, pending };
   }
   return { ok: true };

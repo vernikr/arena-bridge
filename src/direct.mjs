@@ -8,7 +8,9 @@ import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide, settle } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
-import { tailAudit, readArtifact, auditDir } from './audit.mjs';
+import { tailAudit, readArtifact, auditDir, audit } from './audit.mjs';
+import { describeSource, sourceOf, admitUnauthorized } from './source.mjs';
+import { errorResponse } from './errors.mjs';
 import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
 
 export function createDirectServer(cfg, engine) {
@@ -95,6 +97,14 @@ export function createDirectServer(cfg, engine) {
       const cfgNow = loadConfig();
       mcpCtx.cfg = cfgNow;
       if (!isAuthorized(req, cfgNow)) {
+        const source = describeSource(req, 'http');
+        const seen = admitUnauthorized(source.ip);
+        if (seen.previousSuppressed) {
+          audit({ kind: 'auth', tool: null, status: 'unauthorized', error: 'UNAUTHORIZED', via: 'direct', actor: 'system', source, args: { path: p, suppressed: seen.previousSuppressed } });
+        }
+        if (seen.write) {
+          audit({ kind: 'auth', tool: null, status: 'unauthorized', error: 'UNAUTHORIZED', via: 'direct', actor: 'system', source, args: { path: p, method: req.method, count_in_minute: seen.count } });
+        }
         res.setHeader('www-authenticate', 'Bearer');
         return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       }
@@ -171,6 +181,7 @@ export function createDirectServer(cfg, engine) {
         const expected = loadConfig().localToken;
         const presented = bearer(req);
         if (!expected || !presented || !safeEqual(presented, expected)) {
+          audit({ kind: 'approval', tool: null, status: 'forbidden', error: 'FORBIDDEN', via: 'api', actor: 'agent', source: await sourceOf(req, 'http'), args: { approval_id: approveMatch[1] } });
           return sendJson(res, 403, {
             ok: false,
             error: 'forbidden',
@@ -185,20 +196,25 @@ export function createDirectServer(cfg, engine) {
 
       if (req.method === 'POST' && p === '/exec') {
         const body = await readJson(req, cfgNow.maxUploadBytes);
+        const source = await sourceOf(req, 'http');
         const result = await engine.call('bash', {
           command: body.command,
           cwd: body.cwd,
           timeout_sec: body.timeout_sec,
           env: body.env,
-        });
+        }, { source });
         const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
         return sendJson(res, status, result);
       }
 
       if (req.method === 'POST' && p === '/call') {
         const body = await readJson(req, cfgNow.maxUploadBytes);
-        if (!body.tool) return sendJson(res, 400, { ok: false, error: 'tool is required' });
-        const result = await engine.call(String(body.tool), body.args || {});
+        const source = await sourceOf(req, 'http');
+        if (!body.tool) {
+          audit({ kind: 'call', tool: null, status: 'rejected', error: 'INVALID_ARGS', via: 'direct', source, args: {} });
+          return sendJson(res, 400, { ok: false, error: 'tool is required' });
+        }
+        const result = await engine.call(String(body.tool), body.args || {}, { source });
         // R5: return 202 for pending approvals, so client can poll GET /approvals/:id
         const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
         return sendJson(res, status, result);
@@ -206,14 +222,18 @@ export function createDirectServer(cfg, engine) {
 
       if (p === '/files') {
         const target = url.searchParams.get('path');
+        const source = await sourceOf(req, 'http');
+        const toolName = req.method === 'GET' ? 'file_get' : req.method === 'DELETE' ? 'delete_path' : 'file_put';
         if (!target) return sendJson(res, 400, { ok: false, error: 'path query parameter is required' });
         const chk = checkPath(target, cfgNow, engine.base, { write: req.method !== 'GET' });
-        if (!chk.ok) return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
+        if (!chk.ok) {
+          audit({ tool: toolName, args: { path: target }, status: 'error', error: chk.error, via: 'files_api', source });
+          return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
+        }
         // PUT/DELETE must go through the approval gate and audit, like the tools
         if (req.method !== 'GET') {
-          const toolName = req.method === 'DELETE' ? 'delete_path' : 'file_put';
           const { authorize } = await import('./gate.mjs');
-          const resAuth = await authorize(toolName, { path: target }, cfgNow);
+          const resAuth = await authorize(toolName, { path: target }, cfgNow, source);
           if (!resAuth.ok) {
             const status = resAuth.status || 'denied';
             const pending = resAuth.pending;
@@ -228,21 +248,23 @@ export function createDirectServer(cfg, engine) {
         try {
           if (req.method === 'GET') {
             const buf = await fsp.readFile(chk.abs);
+            audit({ tool: 'file_get', args: { path: target }, status: 'ok', via: 'files_api', source, bytes: buf.length });
             return sendRaw(res, 200, buf);
           }
           if (req.method === 'PUT' || req.method === 'POST') {
             const buf = await readBody(req, cfgNow.maxUploadBytes);
             await fsp.mkdir(path.dirname(chk.abs), { recursive: true });
             await fsp.writeFile(chk.abs, buf);
-            try { const { audit } = await import('./audit.mjs'); audit({ tool: 'file_put', args: { path: target }, status: 'ok', via: 'files_api' }); } catch {}
+            audit({ tool: 'file_put', args: { path: target }, status: 'ok', via: 'files_api', source, bytes: buf.length });
             return sendJson(res, 200, { ok: true, path: chk.abs, bytes: buf.length });
           }
           if (req.method === 'DELETE') {
             await fsp.rm(chk.abs, { recursive: true, force: true });
-            try { const { audit } = await import('./audit.mjs'); audit({ tool: 'delete_path', args: { path: target }, status: 'ok', via: 'files_api' }); } catch {}
+            audit({ tool: 'delete_path', args: { path: target }, status: 'ok', via: 'files_api', source });
             return sendJson(res, 200, { ok: true, path: chk.abs, deleted: true });
           }
         } catch (e) {
+          audit({ tool: toolName, args: { path: target }, status: 'error', error: e.message, via: 'files_api', source });
           return sendJson(res, 400, { ok: false, error: e.message });
         }
         return sendJson(res, 405, { ok: false, error: 'method not allowed' });
@@ -288,12 +310,18 @@ export function createDirectServer(cfg, engine) {
         if (req.method !== 'POST') {
           return sendJson(res, 405, { ok: false, error: 'method not allowed', hint: 'use POST /mcp' });
         }
-        return handleMcp(req, res, mcpCtx);
+        const source = await sourceOf(req, 'mcp');
+        return handleMcp(req, res, { ...mcpCtx, callTool: (name, args) => engine.call(name, args, { source }) });
       }
 
       return sendJson(res, 404, { ok: false, error: `no route for ${req.method} ${p}` });
     } catch (e) {
-      return sendJson(res, 500, { ok: false, error: e.message });
+      const code = /invalid JSON/.test(e.message) ? 'INVALID_JSON' : /too large/.test(e.message) ? 'PAYLOAD_TOO_LARGE' : null;
+      if (!code) return sendJson(res, 500, { ok: false, error: e.message });
+      if (p === '/call' || p === '/exec') {
+        audit({ kind: 'call', tool: null, status: 'rejected', error: code, via: 'direct', source: describeSource(req, 'http'), args: {} });
+      }
+      return sendJson(res, code === 'PAYLOAD_TOO_LARGE' ? 413 : 400, errorResponse(code));
     }
   });
 

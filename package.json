@@ -19,8 +19,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node --test test/test_security.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
-    "test:node": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs",
+    "test": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node --test test/test_security.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs && node --test test/log.test.mjs",
+    "test:node": "node --test test/approvals.test.mjs && node --test test/telegram.test.mjs && node test/smoke.mjs && node test/browser.test.mjs && node test/mac.test.mjs && node test/service.test.mjs && node --test test/log.test.mjs",
     "test:python": "python3 test/test_approvals.py && python3 test/test_bridge.py && python3 test/test_browser.py && python3 test/test_mac.py && python3 test/test_service.py && python3 test/test_telegram.py",
     "pack:check": "npm pack --dry-run"
   },

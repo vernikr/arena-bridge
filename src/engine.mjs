@@ -43,7 +43,7 @@ export class Engine {
     return [...toolCatalog(), ...this.browser.tools(), ...macTools(this.cfg), ...telegramTools(this.cfg)];
   }
 
-  async call(name, args = {}, { requireApproval, cfg } = {}) {
+  async call(name, args = {}, { requireApproval, cfg, source } = {}) {
     let cfgNow;
     if (cfg) {
       cfgNow = cfg;
@@ -56,6 +56,10 @@ export class Engine {
       }
     }
     this.cfg = cfgNow;
+    const src = source || { channel: 'local', ip: null, country: null, host: null, client: null };
+    const record = (fields) => {
+      if (this.cfg.audit !== false) audit({ tool: name, args, source: src, kind: name === 'log_note' ? 'note' : 'call', ...fields });
+    };
     const tool = this.catalog().find((t) => t.name === name);
     if (!tool) {
       const all = this.catalog().map(t=>t.name);
@@ -63,6 +67,7 @@ export class Engine {
       const lev=(a,b)=>{ a=String(a); b=String(b); const m=a.length,n=b.length; const dp=Array(m+1).fill(null).map(()=>Array(n+1).fill(0)); for(let i=0;i<=m;i++) dp[i][0]=i; for(let j=0;j<=n;j++) dp[0][j]=j; for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return dp[m][n]; };
       for (const n of all) { const d=lev(name,n); if(d<bestD){bestD=d; best=n;} }
       const hint = best && bestD <= 3 ? `did you mean '${best}'?` : `available: ${all.slice(0,10).join(', ')}`;
+      record({ kind: 'call', status: 'rejected', error: 'UNKNOWN_TOOL', via: 'direct' });
       return errorResponse('UNKNOWN_TOOL', { message: `unknown tool: ${name}`, tool: name, hint });
     }
     const started = Date.now();
@@ -73,6 +78,7 @@ export class Engine {
     const ctx = Object.create(this);
     ctx.entryId = entryId;
     ctx.artifacts = [];
+    ctx.source = src;
     ctx.artifact = (kind, file, data, meta) => {
       const saved = saveArtifact(entryId, kind, file, data, meta);
       if (saved) ctx.artifacts.push(saved);
@@ -84,25 +90,24 @@ export class Engine {
     if (requireApproval === true) needApproval = true;
     else if (requireApproval === false) needApproval = false;
 
+    const artifactsOf = () => (ctx.artifacts.length ? ctx.artifacts : undefined);
+
     if (needApproval) {
       const trust = trustState();
       if (trustAllows(trust, tool.name, args, this.cfg)) {
         const res = await tool.handler(args, ctx);
-        if (this.cfg.audit !== false) {
-          audit({ id: entryId, tool: tool.name, args, status: res.ok ? 'ok' : 'error', duration_ms: Date.now() - started, via: 'trust_window', exit_code: res.exit_code, error: res.ok ? undefined : res.error, artifacts: ctx.artifacts.length ? ctx.artifacts : undefined });
-        }
+        record({ id: entryId, status: res.ok ? 'ok' : 'error', duration_ms: Date.now() - started, via: 'trust_window', exit_code: res.exit_code, error: res.ok ? undefined : res.error, artifacts: artifactsOf() });
         return res;
       }
       approval = await requestApproval(tool.name, args, this.cfg);
       if (!approval.approved) {
         const status = approval.rec?.status || 'denied';
-        if (this.cfg.audit !== false) {
-          audit({ id: entryId, tool: tool.name, args, status: 'approval_denied', approval_status: status });
-        }
         const pending = status === 'pending' || status === 'timeout' || status === 'expired';
+        const code = pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED';
+        record({ id: entryId, status: 'approval_denied', approval_status: status, error: code, via: 'approval', duration_ms: Date.now() - started });
         return {
           ok: false,
-          error: pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED',
+          error: code,
           status,
           pending,
           reason: pending
@@ -116,33 +121,21 @@ export class Engine {
       }
     }
 
+    const via = approval ? 'approval' : 'direct';
     try {
       const res = await tool.handler(args, ctx);
-      if (this.cfg.audit !== false) {
-        audit({
-          id: entryId,
-          tool: tool.name,
-          args,
-          status: res.ok ? 'ok' : 'error',
-          duration_ms: Date.now() - started,
-          exit_code: res.exit_code,
-          error: res.ok ? undefined : res.error,
-          artifacts: ctx.artifacts.length ? ctx.artifacts : undefined,
-        });
-      }
+      record({
+        id: entryId,
+        status: res.ok ? 'ok' : 'error',
+        duration_ms: Date.now() - started,
+        exit_code: res.exit_code,
+        error: res.ok ? undefined : res.error,
+        via,
+        artifacts: artifactsOf(),
+      });
       return res;
     } catch (e) {
-      if (this.cfg.audit !== false) {
-        audit({
-          id: entryId,
-          tool: tool.name,
-          args,
-          status: 'exception',
-          duration_ms: Date.now() - started,
-          error: e.message,
-          artifacts: ctx.artifacts.length ? ctx.artifacts : undefined,
-        });
-      }
+      record({ id: entryId, status: 'exception', duration_ms: Date.now() - started, error: e.message, via, artifacts: artifactsOf() });
       return { ok: false, error: e.message };
     }
   }

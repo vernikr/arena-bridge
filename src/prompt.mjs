@@ -109,6 +109,7 @@ Every call is logged with its arguments, result and duration. Screenshots taken 
 the accessibility trees that were read are stored next to the log.
 - \`audit_log\` — the recent calls (filter by tool or time).
 - \`audit_artifact\` — fetch a saved artifact: a screenshot (base64 PNG) or an accessibility tree (JSON).
+- \`log_note\` — write a short comment into the work log before a step (what you are about to do and why). It changes nothing else.
 Use them when you need to look back at what was on the screen or what the interface contained.
 
 ## Talking to the user (Telegram)

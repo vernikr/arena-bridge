@@ -1063,7 +1063,6 @@ export class BrowserManager {
             if (!chk.ok) return { ok: false, error: chk.error, reason: chk.reason };
             fs.mkdirSync(path.dirname(chk.abs), { recursive: true });
             fs.writeFileSync(chk.abs, Buffer.from(b64, 'base64'));
-            audit({ tool: 'chrome_screenshot', args, status: 'ok', path: chk.abs });
             return { ok: true, tab_id: tab.targetId, path: chk.abs, bytes: Math.round((b64.length * 3) / 4) };
           }
           return { ok: true, tab_id: tab.targetId, image_base64: b64, bytes: Math.round((b64.length * 3) / 4) };

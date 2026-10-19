@@ -15,6 +15,8 @@ export const ERROR_CODES = {
   PAYLOAD_TOO_LARGE: { message: 'payload exceeds maxUploadBytes', hint: 'reduce file size or increase limit', retryable: false },
   INVALID_JSON: { message: 'invalid JSON body', hint: 'check JSON syntax', retryable: false },
   UNKNOWN_TOOL: { message: 'unknown tool', hint: 'GET /tools for catalog', retryable: false },
+  INVALID_ARGS: { message: 'arguments are missing or malformed', hint: 'check the tool schema in GET /tools', retryable: false },
+  RATE_LIMITED: { message: 'too many calls in a short time', hint: 'wait a second and retry', retryable: true },
 };
 
 export function errorResponse(code, extra = {}) {

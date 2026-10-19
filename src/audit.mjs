@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { CONFIG_DIR } from './config.mjs';
 
 /** The config directory is resolved on every call so tests and relocations stay isolated. */
@@ -11,58 +12,105 @@ export function auditPath() {
   return path.join(configDir(), 'audit.log');
 }
 
+export const LEVELS = ['info', 'notice', 'warning', 'alert'];
+const ARGS_INLINE_BYTES = 64 * 1024;
+const FIELD_CLIP = 4000;
+
 const SECRETS = [
   /(?<!\d)\d{6,12}:[A-Za-z0-9_-]{25,}/g, // telegram bot tokens
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, // github tokens
   /\bnpm_[A-Za-z0-9]{20,}\b/g, // npm tokens
   /\bpypi-[A-Za-z0-9_-]{20,}\b/g, // pypi tokens
   /\bsk-[A-Za-z0-9]{20,}\b/g, // api keys
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, // bearer credentials
+  /\bAKIA[0-9A-Z]{16}\b/g, // aws access key ids
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
 ];
+const SENSITIVE_KEY = /token|secret|passw|authorization|api[_-]?key|cookie|credential/i;
 
 /** Mask anything that looks like a credential, so the log never becomes a secret store. */
-export function scrub(value) {
+export function scrub(value, key = '') {
   if (typeof value === 'string') {
+    if (SENSITIVE_KEY.test(key)) return '***';
     let out = value;
     for (const re of SECRETS) out = out.replace(re, '***');
     return out;
   }
-  if (Array.isArray(value)) return value.map(scrub);
+  if (Array.isArray(value)) return value.map((v) => scrub(v, key));
   if (value && typeof value === 'object') {
     const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = scrub(v);
+    for (const [k, v] of Object.entries(value)) {
+      const masked = (key === 'env' || SENSITIVE_KEY.test(k)) && v !== null && typeof v !== 'object';
+      out[k] = masked ? '***' : scrub(v, k);
+    }
     return out;
   }
   return value;
 }
 
-export function audit(entry) {
+/** The alert level of an entry: explicit level wins, otherwise derived from kind and status. */
+export function levelFor({ kind = 'call', status = '', level } = {}) {
+  if (level) return level;
+  if (kind === 'auth' || (kind === 'approval' && status === 'forbidden')) return 'alert';
+  if (kind === 'note') return status === 'ok' ? 'info' : 'warning';
+  if (status === 'ok') return 'info';
+  if (['trust', 'service', 'tunnel', 'log', 'approval'].includes(kind)) return 'notice';
+  return 'warning';
+}
+
+function newEntryId(tool) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const name = String(tool || 'event').replace(/[^\w.-]/g, '_');
+  return `${stamp}-${name}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+/** Long free-text fields other than the parameters are clipped; parameters are kept whole (see argsFor). */
+function clipFields(value) {
+  if (typeof value === 'string') return value.length > FIELD_CLIP ? `[${value.length} chars truncated]` : value;
+  if (Array.isArray(value)) return value.map(clipFields);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = clipFields(v);
+    return out;
+  }
+  return value;
+}
+
+/** Parameters are stored whole; the ones above the inline limit go to an artifact next to the entry. */
+function argsFor(id, args) {
+  if (args === undefined) return { args: {}, truncated: false };
+  const clean = scrub(args);
+  const json = JSON.stringify(clean);
+  if (Buffer.byteLength(json) <= ARGS_INLINE_BYTES) return { args: clean, truncated: false };
+  const saved = saveArtifact(id, 'args', 'args.json', JSON.stringify(clean, null, 2));
+  return {
+    args: { preview: json.slice(0, 2000) },
+    truncated: true,
+    artifact: saved ? 'args.json' : undefined,
+  };
+}
+
+export function audit(entry = {}) {
   try {
     const dir = configDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     // auto-rotate if over 10 MB (cheap stat, keeps log bounded)
     try { const st = fs.statSync(auditPath()); if (st.size > 10*1024*1024) rotateAuditIfNeeded(); } catch {}
-    // R2 fix: don't store huge bodies in audit log — store size instead
-    function trunc(v, depth=0) {
-      if (depth > 6) return '[max depth]';
-      if (typeof v === 'string' && v.length > 4000) {
-        return `[${v.length} chars truncated]`;
-      }
-      if (v && typeof v === 'object') {
-        if (Array.isArray(v)) return v.map(x => trunc(x, depth+1));
-        const out = {};
-        for (const [k, val] of Object.entries(v)) {
-          if ((k === 'content' || k === 'data_base64' || k === 'data' || k === 'text') && typeof val === 'string' && val.length > 1000) {
-            out[k] = `[${val.length} chars truncated]`;
-            out[k + '_bytes'] = Buffer.byteLength(val);
-          } else {
-            out[k] = trunc(val, depth+1);
-          }
-        }
-        return out;
-      }
-      return v;
-    }
-    const rec = { ts: new Date().toISOString(), ...trunc(scrub(entry)) };
+    const { id, args, ...fields } = entry;
+    const recId = String(id || newEntryId(fields.tool));
+    const params = argsFor(recId, args);
+    const body = clipFields(scrub({ kind: 'call', ...fields }));
+    const rec = {
+      id: recId,
+      ts: new Date().toISOString(),
+      ...body,
+      level: levelFor({ kind: body.kind, status: body.status, level: body.level }),
+      actor: body.actor || 'agent',
+      source: body.source ?? null,
+      args: params.args,
+      args_truncated: params.truncated,
+      ...(params.artifact ? { args_artifact: params.artifact } : {}),
+    };
     fs.appendFileSync(auditPath(), JSON.stringify(rec) + '\n', { mode: 0o600 });
   } catch {
     /* auditing must never break the request */

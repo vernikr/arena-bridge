@@ -9,6 +9,8 @@ import { listApprovals, decide } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
 import fsp from 'node:fs/promises';
+import { audit } from './audit.mjs';
+import { sourceOf, describeSource, admitUnauthorized } from './source.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -32,7 +34,7 @@ export function createHubServer(cfg) {
   const queues = new Map(); // name -> [{id, tool, args}]
   const jobs = new Map(); // id -> { resolve, timer }
 
-  const dispatch = (device, tool, args, timeoutSec = 120) =>
+  const dispatch = (device, tool, args, timeoutSec = 120, source = null) =>
     new Promise((resolve) => {
       const id = crypto.randomUUID();
       const timer = setTimeout(() => {
@@ -45,11 +47,11 @@ export function createHubServer(cfg) {
       }, (timeoutSec + 15) * 1000);
       jobs.set(id, { resolve, timer });
       const q = queues.get(device) || [];
-      q.push({ id, tool, args });
+      q.push({ id, tool, args, source });
       queues.set(device, q);
     });
 
-  const callTool = async (tool, args) => {
+  const callTool = async (tool, args, source = null) => {
     const device = args?.device || cfg.device;
     if (!device) return { ok: false, error: 'no target device specified' };
     const known = devices.get(device);
@@ -58,7 +60,7 @@ export function createHubServer(cfg) {
     }
     const clean = { ...args };
     delete clean.device;
-    return dispatch(device, tool, clean, Number(args?.timeout_sec || 120));
+    return dispatch(device, tool, clean, Number(args?.timeout_sec || 120), source);
   };
 
   const mcpCtx = {
@@ -112,7 +114,7 @@ export function createHubServer(cfg) {
             res.writeHead(204).end();
             return;
           }
-          return sendJson(res, 200, { id: job.id, tool: job.tool, args: job.args });
+          return sendJson(res, 200, { id: job.id, tool: job.tool, args: job.args, source: job.source });
         }
         if (req.method === 'POST' && p === '/device/result') {
           const body = await readJson(req, cfg.maxUploadBytes);
@@ -128,6 +130,14 @@ export function createHubServer(cfg) {
 
       /* ---------- agent side (agent token) ---------- */
       if (!isAuthorized(req, loadConfig())) {
+        const source = describeSource(req, 'http');
+        const seen = admitUnauthorized(source.ip);
+        if (seen.previousSuppressed) {
+          audit({ kind: 'auth', tool: null, status: 'unauthorized', error: 'UNAUTHORIZED', via: 'hub', actor: 'system', source, args: { path: p, suppressed: seen.previousSuppressed } });
+        }
+        if (seen.write) {
+          audit({ kind: 'auth', tool: null, status: 'unauthorized', error: 'UNAUTHORIZED', via: 'hub', actor: 'system', source, args: { path: p, method: req.method, count_in_minute: seen.count } });
+        }
         res.setHeader('www-authenticate', 'Bearer');
         return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       }
@@ -177,20 +187,22 @@ export function createHubServer(cfg) {
 
       if (req.method === 'POST' && p === '/exec') {
         const body = await readJson(req, cfg.maxUploadBytes);
+        const source = await sourceOf(req, 'http');
         const result = await callTool('bash', {
           device: body.device,
           command: body.command,
           cwd: body.cwd,
           timeout_sec: body.timeout_sec,
           env: body.env,
-        });
+        }, source);
         return sendJson(res, result.ok ? 200 : 400, result);
       }
 
       if (req.method === 'POST' && p === '/call') {
         const body = await readJson(req, cfg.maxUploadBytes);
         if (!body.tool) return sendJson(res, 400, { ok: false, error: 'tool is required' });
-        const result = await callTool(String(body.tool), body.args || {});
+        const source = await sourceOf(req, 'http');
+        const result = await callTool(String(body.tool), body.args || {}, source);
         return sendJson(res, result.ok ? 200 : 400, result);
       }
 
@@ -222,7 +234,8 @@ export function createHubServer(cfg) {
       }
 
       if (req.method === 'POST' && p === '/mcp') {
-        return handleMcp(req, res, mcpCtx);
+        const source = await sourceOf(req, 'mcp');
+        return handleMcp(req, res, { ...mcpCtx, callTool: (name, args) => callTool(name, args, source) });
       }
 
       return sendJson(res, 404, { ok: false, error: `no route for ${req.method} ${p}` });

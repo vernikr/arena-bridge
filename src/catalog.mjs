@@ -5,6 +5,9 @@ import path from 'node:path';
 import { checkPath, resolveTarget } from './policy.mjs';
 import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
 import { clip, runShell } from './engine_helpers.mjs';
+import { errorResponse } from './errors.mjs';
+
+let lastNoteAt = 0;
 
 const S = (o) => ({ type: 'object', properties: o, required: [], additionalProperties: false });
 
@@ -350,6 +353,24 @@ export function toolCatalog() {
         }
         entries = entries.slice(-n);
         return { ok: true, count: entries.length, entries, artifacts_dir: auditDir() };
+      },
+    },
+    {
+      name: 'log_note',
+      description:
+        'Write a short comment into the work log that the user reads, for example what you are about to do and why. It changes nothing else and needs no approval. Plain text, up to 500 characters, at most one note per second.',
+      approval: false,
+      schema: S({ text: { type: 'string', description: 'the comment, plain text, 1 to 500 characters' } }),
+      required: ['text'],
+      handler: async (args) => {
+        const text = typeof args.text === 'string' ? args.text.trim() : '';
+        if (!text || [...text].length > 500) {
+          return errorResponse('INVALID_ARGS', { message: 'text must be 1 to 500 characters' });
+        }
+        const now = Date.now();
+        if (now - lastNoteAt < 1000) return errorResponse('RATE_LIMITED');
+        lastNoteAt = now;
+        return { ok: true, noted: true, text };
       },
     },
     {
