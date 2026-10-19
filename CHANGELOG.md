@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.12.0
+
+### Added
+- Trust window events: open, extend, change, close and expire, each logged once; changes made by another writer (such as the app) are logged as external. The `trust` command takes `--source`.
+- Bridge start and stop, and tunnel up and down, are logged with their origin.
+- `GET /audit` pages with `before`, `after`, `tool`, `kind` and `level` filters; `GET /audit/entry?id=` returns the full record.
+- `POST /log/event` accepts interface step events. `GET /v1/events` sends new audit records as they arrive.
+
+### Changed
+- The audit log rotates into 5 MB segments; retention keeps 7 days and at most 20 MB of audit log (the newest archive is never removed) and 7 days and at most 200 MB of artifacts.
+- `arena-bridge cleanup` removes artifacts older than 7 days by default (was 14).
+
+### Fixed
+- The macOS release job uploads the app checksums with the release checksums file instead of failing.
+
+### CI
+- npm publishing uses trusted publishing (OIDC) with Node 24; no npm token is used.
+
 ## 0.11.0
 
 ### Added

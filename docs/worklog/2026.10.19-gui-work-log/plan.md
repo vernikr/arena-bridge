@@ -219,6 +219,22 @@ Deviations from the plan:
 - Tests: `test/audit.test.mjs` (contract, masking, overflow), note rate limit, source capture from a fake request.
 - Acceptance: a call with a 1 MB `content` argument is fully recoverable; `401` shows in the log at alert level; a note appears in the log.
 
+### Wave 2 — lifecycle and paging — status: done in 0.12.0
+
+Delivered:
+- Trust events: open, extend, change, close, expire, and external changes (for example the app writing the file). Each change is logged once. Writers never duplicate each other: `trust.marker` holds the last logged state. `--source` on `trust` sets the origin.
+- Launch auto-open (3 h) logged with origin `launch`.
+- Bridge start and stop, tunnel up and down, with origin `launchd` or `cli`.
+- `GET /audit` with `before`, `after`, `tool`, `kind`, `level` (minimum) and lean records; `GET /audit/entry` for the full record; `POST /log/event` for interface steps only; SSE `audit` deltas.
+- Segments of 5 MB; retention 7 days and 20 MB for the audit log, 7 days and 200 MB for artifacts; the newest archive is never removed.
+- Measured: a 500-record page from a 100 000-record log, median under 1 ms in the test (acceptance: under 100 ms).
+- Tests: `test/log-paging.test.mjs` (8 cases).
+
+Deviations:
+- The app still writes `trust.json` directly until Wave 3; its changes are logged as `via: external`.
+- Cursors survive one rotation within the same process; across processes a stale cursor returns `reset`.
+- CI: npm publishing moved to trusted publishing (OIDC); the macOS job appends app checksums to `SHA256SUMS`.
+
 ### Wave 2 — lifecycle and paging (Node + CLI, M)
 - Single writer for trust file; `--source` flag on `trust` CLI; expiry timer; `POST /log/event` (local token).
 - `service` and `tunnel` events written by the bridge process; GUI step events via `POST /log/event` or the CLI when stopped.
