@@ -28,6 +28,12 @@ def build_prompt(cfg, base_url=None, tools=None) -> str:
             "need a local approval."
         )
 
+    _n_tools = len(tools or [])
+    tools_line = (
+        f"Full tool catalog ({_n_tools} tools) at GET {url}/tools — fetch when you need a specific tool schema."
+        if _n_tools else "No tools available."
+    )
+
     return f"""# Arena Bridge — remote access to your own machine
 
 You have controlled access to the user's own computer ("{target}") through a small HTTP API.
@@ -59,7 +65,7 @@ The token is: {token}
 - `POST /mcp`     — MCP Streamable HTTP endpoint (if you speak MCP)
 
 ## Tools
-{chr(10).join(tool_lines)}
+{tools_line}
 
 ## Choosing the right tool
 | The agent wants to | Use |

@@ -9,8 +9,9 @@ import { trustState } from './trust.mjs';
 export function buildPrompt(cfg, { baseUrl, tool, device } = {}) {
   const url = (baseUrl || cfg.publicUrl || `http://${cfg.host}:${cfg.port}`).replace(/\/+$/, '');
   const target = device || cfg.device;
+  // Prompt is now short: link to /tools instead of full catalog (52 tools) — agent can fetch when needed
   const all = tool?.catalog?.() || [];
-  const tools = all.map((t) => `- \`${t.name}\` — ${t.description.split('.')[0]}.`);
+  const toolsLine = `Full tool catalog (${all.length} tools) at GET ${url}/tools — fetch when you need a specific tool schema.`;
   const trust = trustState();
   const trustLine = trust.active
     ? `- A trust window is open until ${new Date(trust.until).toLocaleString()}: side-effecting actions run without confirmation.`
@@ -47,7 +48,7 @@ The token is: ${cfg.token || '<TOKEN>'}
 - \`POST /mcp\`     — MCP Streamable HTTP endpoint (if you speak MCP)
 
 ## Tools
-${tools.join('\n')}
+${toolsLine}
 
 ## Choosing the right tool
 | The agent wants to | Use |
