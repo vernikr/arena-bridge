@@ -374,8 +374,8 @@ struct LogCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .defaultScrollAnchor(UnitPoint(x: 0, y: 1), for: .initialOffset)
+                .defaultScrollAnchor(UnitPoint(x: 0, y: 1), for: .sizeChanges)
                 .onScrollGeometryChange(for: Bool.self) { geo in
                     geo.contentSize.height - geo.containerSize.height - geo.contentOffset.y < 24
                 } action: { _, atBottom in
@@ -386,7 +386,7 @@ struct LogCard: View {
                     if model.unseen > 0 && !model.atBottom {
                         Button {
                             if let last = model.visibleEntries.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                                withAnimation { proxy.scrollTo(last.id, anchor: UnitPoint(x: 0, y: 1)) }
                             }
                         } label: {
                             Label("New entries", systemImage: "arrow.down")

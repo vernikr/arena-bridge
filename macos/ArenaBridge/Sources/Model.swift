@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     @Published var guide: PermissionKind? = nil
     @Published var permissionsChecking = false
     @Published var permissionsCheckedAt: Date? = nil
+    private var focusObserver: AnyCancellable?
 
     /// True when the app is signed with a certificate, so macOS keeps its permissions across updates.
     static let hasCertificate: Bool = {
@@ -70,6 +71,7 @@ final class AppModel: ObservableObject {
             accessibilityAccess = code == 200 ? PermissionKind.granted("Accessibility", in: text) : nil
             permissionsCheckedAt = Date()
             permissionsChecking = false
+            if missingPermissions.isEmpty { guide = nil }
         }
     }
 
@@ -91,6 +93,9 @@ final class AppModel: ObservableObject {
         Task { await self.ensureTrustOnLaunch() }
         // Live events via SSE — falls back to polling if unavailable
         startEventStream()
+        // Permissions are checked again whenever the window comes back to the front
+        focusObserver = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.checkPermissions(force: true) }
     }
 
     /// SSE live stream from /v1/events ( approvals/audit delta ). Reconnects on drop.
