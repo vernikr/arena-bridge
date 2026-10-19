@@ -37,8 +37,6 @@ final class AppModel: ObservableObject {
     @Published var notificationsAllowed = false
     @Published var screenAccess: Bool? = nil
     @Published var accessibilityAccess: Bool? = nil
-    @Published var guide: PermissionKind? = nil
-    @Published var showSigningGuide = false
     @Published var permissionsChecking = false
     @Published var permissionsCheckedAt: Date? = nil
     private var focusObserver: AnyCancellable?
@@ -59,6 +57,21 @@ final class AppModel: ObservableObject {
             .compactMap { $0.1 == false ? $0.0 : nil }
     }
 
+    /// Opens the guide for one permission in its own floating window.
+    func openGuide(_ kind: PermissionKind) {
+        GuideWindow.show(id: kind.rawValue, title: "\(kind.title) · Arena Bridge", size: NSSize(width: 640, height: 620)) {
+            PermissionGuideView(kind: kind).environmentObject(self)
+        }
+        checkPermissions(force: true)
+    }
+
+    /// Opens the certificate guide in its own floating window.
+    func openSigningGuide() {
+        GuideWindow.show(id: "signing", title: "Keep permissions after updates · Arena Bridge", size: NSSize(width: 680, height: 700)) {
+            SigningGuideView().environmentObject(self)
+        }
+    }
+
     /// Asks the running service which permissions its screen runtime has. Read-only; at most once a minute unless forced.
     func checkPermissions(force: Bool = false) {
         guard !permissionsChecking else { return }
@@ -72,7 +85,10 @@ final class AppModel: ObservableObject {
             accessibilityAccess = code == 200 ? PermissionKind.granted("Accessibility", in: text) : nil
             permissionsCheckedAt = Date()
             permissionsChecking = false
-            if missingPermissions.isEmpty { guide = nil }
+            if screenAccess == true && accessibilityAccess == true {
+                GuideWindow.close(PermissionKind.screen.rawValue)
+                GuideWindow.close(PermissionKind.accessibility.rawValue)
+            }
         }
     }
 
