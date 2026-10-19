@@ -235,8 +235,8 @@ struct ActionsCard: View {
                 Image(systemName: AppModel.hasCertificate ? "checkmark.seal.fill" : "seal")
                     .foregroundStyle(AppModel.hasCertificate ? Color.green : Color.secondary)
                 Text(AppModel.hasCertificate
-                     ? "Signed with a certificate: permissions survive updates."
-                     : "Ad-hoc signed: permissions reset after each new build.")
+                     ? "Signed with the project certificate: permissions survive updates."
+                     : "Not signed with the project certificate: permissions may reset after an update.")
                     .font(.callout)
                     .lineLimit(2)
                 Spacer()

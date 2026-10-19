@@ -116,7 +116,7 @@ struct PermissionGuideView: View {
             .frame(maxHeight: .infinity)
             Text(AppModel.hasCertificate
                  ? "This build is signed with a certificate. Permissions normally survive updates."
-                 : "This build is ad-hoc signed. macOS may reset the permissions after an update.")
+                 : "This build is not signed with the project certificate. macOS may ask for this permission again after an update.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -145,31 +145,28 @@ struct PermissionGuideView: View {
     }
 }
 
-/// One-time setup of a signing certificate, and the sequence that keeps the permissions after each build.
+/// Explains when permissions survive an update, and what to do after one.
 struct SigningGuideView: View {
     @EnvironmentObject var model: AppModel
 
-    static let identity = "Arena Bridge Local"
     static let command = "ARENA_SIGN_IDENTITY=\"Arena Bridge Local\" bash macos/ArenaBridge/build.sh"
 
-    private static let setup: [String] = [
-        "Open Keychain Access: press ⌘Space, type Keychain Access, press Return.",
-        "In the menu bar choose Keychain Access → Certificate Assistant → Create a Certificate…",
-        "Name: Arena Bridge Local (click the name below to copy it, then paste). Identity Type: Self Signed Root. Certificate Type: Code Signing. Leave the other options off. Click Create, then Done.",
-        "Find the certificate: in Keychain Access, under Keychains on the left, click login. Type Arena Bridge Local in the search box at the top right. Three items appear: a certificate, a public key and a private key. Double-click the one whose Kind is certificate.",
-        "In that window open the Trust section. Set When using this certificate to Always Trust. Close the window and enter your Mac password.",
+    private static let why: [String] = [
+        "macOS ties Screen Recording and Accessibility to the app's signature. An update that changes the signature makes macOS treat the app as new.",
+        "Builds signed with the project certificate keep these permissions across updates. Other builds reset them.",
+        "Check the release notes: a release says whether it is signed with the project certificate.",
     ]
 
-    private static let sequence: [String] = [
-        "You do not download or build anything yourself. In the chat, write to the agent: \"Rebuild Arena Bridge with the certificate Arena Bridge Local and install it.\"",
-        "The first install with the certificate resets the permissions once more. Grant Screen Recording and Accessibility again with the Fix buttons, then quit with ⌘Q and open the app.",
-        "From then on every rebuild with the same certificate keeps the permissions. Do not rename the certificate.",
+    private static let after: [String] = [
+        "Open Arena Bridge. The Control card shows any permission that is missing.",
+        "Click Fix Screen Recording… and Fix Accessibility… if they appear, and follow the steps in each guide.",
+        "Quit with ⌘Q and open the app again. The warning disappears when both permissions are granted.",
     ]
 
-    private static let trouble: [String] = [
-        "The build says \"signing failed\": the name must match exactly, and the certificate must show Always Trust.",
-        "The certificate is not in the list: look under login → My Certificates. If it is missing, create it again.",
-        "Release downloads from GitHub are not signed with this certificate. Their permissions still reset after an update.",
+    private static let developer: [String] = [
+        "Create a certificate once: Keychain Access → Certificate Assistant → Create a Certificate…, name Arena Bridge Local, Identity Type Self Signed Root, Certificate Type Code Signing.",
+        "Set its Trust to Always Trust. The certificate is in the login keychain; find it by searching for the name.",
+        "Build with this certificate. The command for the repository folder is below. Keep the name unchanged.",
     ]
 
     var body: some View {
@@ -178,46 +175,41 @@ struct SigningGuideView: View {
                 .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
             Text(AppModel.hasCertificate
-                 ? "This build is signed with a certificate."
-                 : "This build is ad-hoc signed. Its permissions reset after each new build until the steps below are done.")
+                 ? "This build is signed with the project certificate. Its permissions normally survive updates."
+                 : "This build is not signed with the project certificate. After an update macOS may ask for Screen Recording and Accessibility again.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("1. Create the certificate (once)")
+                    Text("Why")
                         .font(.headline)
                         .textSelection(.enabled)
-                    ForEach(Array(Self.setup.enumerated()), id: \.offset) { index, step in
-                        Text("\(index + 1). \(step)")
-                            .font(.callout)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    CopyRow(text: Self.identity)
-                    Text("2. Use the certificate for every build")
-                        .font(.headline)
-                        .textSelection(.enabled)
-                    ForEach(Array(Self.sequence.enumerated()), id: \.offset) { index, step in
-                        Text("\(index + 1). \(step)")
-                            .font(.callout)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Text("For developers only: the build command in the repository folder")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    CopyRow(text: Self.command)
-                    Text("If something fails")
-                        .font(.headline)
-                        .textSelection(.enabled)
-                    ForEach(Array(Self.trouble.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(Self.why.enumerated()), id: \.offset) { _, line in
                         Text("• \(line)")
                             .font(.callout)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Text("After an update")
+                        .font(.headline)
+                        .textSelection(.enabled)
+                    ForEach(Array(Self.after.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("For people who build the app from source")
+                        .font(.headline)
+                        .textSelection(.enabled)
+                    ForEach(Array(Self.developer.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    CopyRow(text: Self.command)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
