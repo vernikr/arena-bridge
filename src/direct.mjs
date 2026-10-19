@@ -8,7 +8,8 @@ import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide, settle } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig } from './config.mjs';
-import { tailAudit, readArtifact, auditDir, audit } from './audit.mjs';
+import { tailAudit, readArtifact, auditDir, audit, auditPage, findEntry, lean, headCursor, LEVELS, pruneAudit, pruneArtifacts } from './audit.mjs';
+import { reconcileTrust } from './trust.mjs';
 import { describeSource, sourceOf, admitUnauthorized } from './source.mjs';
 import { errorResponse } from './errors.mjs';
 import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
@@ -136,14 +137,49 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'GET' && p === '/audit') {
-        const raw = url.searchParams.get('limit');
-        let limit = 30;
-        if (raw !== null && raw !== '') {
-          const parsed = Number(raw);
-          if (!Number.isFinite(parsed) || parsed <= 0) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
-          limit = Math.min(200, Math.floor(parsed));
-        }
-        return sendJson(res, 200, { ok: true, entries: tailAudit(limit), artifacts_dir: auditDir() });
+        const q = url.searchParams;
+        const raw = q.get('limit');
+        const limit = raw === null || raw === '' ? 100 : Number(raw);
+        if (!Number.isFinite(limit) || limit <= 0) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
+        const page = auditPage({
+          limit: Math.min(500, Math.floor(limit)),
+          before: q.get('before') || undefined,
+          after: q.get('after') || undefined,
+          tool: q.get('tool') || undefined,
+          kind: q.get('kind') || undefined,
+          level: q.get('level') || undefined,
+        });
+        if (page.error) return sendJson(res, 400, { ok: false, error: page.error });
+        return sendJson(res, 200, {
+          ok: true,
+          entries: page.entries.map(lean),
+          next: page.next,
+          has_more: page.has_more,
+          reset: page.reset,
+          head: headCursor(),
+          artifacts_dir: auditDir(),
+        });
+      }
+
+      if (req.method === 'GET' && p === '/audit/entry') {
+        const id = url.searchParams.get('id');
+        if (!id) return sendJson(res, 400, { ok: false, error: 'id query parameter is required' });
+        const entry = findEntry(id);
+        if (!entry) return sendJson(res, 404, { ok: false, error: 'entry_not_found' });
+        return sendJson(res, 200, { ok: true, entry });
+      }
+
+      if (req.method === 'POST' && p === '/log/event') {
+        // Interface steps only: trust and service events are written by their own modules.
+        const body = await readJson(req, 16 * 1024);
+        const tool = typeof body.tool === 'string' ? body.tool : 'gui';
+        const level = body.level ?? 'notice';
+        const ok = body.kind === 'step' && typeof body.status === 'string' && body.status.length <= 20
+          && typeof body.message === 'string' && body.message.length <= 500
+          && LEVELS.includes(level) && /^[\w.-]{1,40}$/.test(tool);
+        if (!ok) return sendJson(res, 400, { ok: false, error: 'invalid event' });
+        audit({ kind: 'step', tool, status: body.status, level, message: body.message, via: 'gui', actor: 'user', source: describeSource(req, 'http') });
+        return sendJson(res, 200, { ok: true });
       }
 
       if (req.method === 'GET' && p === '/audit/artifact') {
@@ -292,11 +328,15 @@ export function createDirectServer(cfg, engine) {
           const pending = listApprovals().filter(a=>a.status==='pending');
           send('approvals', { pending: pending.length, approvals: pending.slice(0,10) });
         } catch {}
-        try { const { tailAudit } = await import('./audit.mjs'); send('audit', { entries: tailAudit(5) }); } catch {}
+        let cursor = headCursor();
+        try { send('audit', { entries: tailAudit(5).map(lean) }); } catch {}
         send('hello', { version: VERSION, time: new Date().toISOString() });
         const interval = setInterval(async ()=>{
           if (closed) { clearInterval(interval); return; }
           try {
+            const delta = auditPage({ after: cursor, limit: 200 });
+            cursor = delta.next || cursor;
+            if (delta.entries.length) send('audit', { entries: delta.entries.map(lean) });
             const pending = listApprovals().filter(a=>a.status==='pending');
             // simple: send heartbeat + counts every tick; client can diff
             send('heartbeat', { ts: Date.now(), pending_approvals: pending.length });
@@ -326,7 +366,12 @@ export function createDirectServer(cfg, engine) {
   });
 
   const poller = startPoller(cfg, { onMessage: handleTelegramMessage, onCallback: handleTelegramCallback });
-  server.on('close', () => poller?.stop());
+  try { reconcileTrust(); pruneAudit(); pruneArtifacts(); } catch {}
+  const maint = setInterval(() => { try { reconcileTrust(); } catch {} }, 5000);
+  const sweep = setInterval(() => { try { pruneAudit(); pruneArtifacts(); } catch {} }, 3600000);
+  maint.unref();
+  sweep.unref();
+  server.on('close', () => { poller?.stop(); clearInterval(maint); clearInterval(sweep); });
 
   return server;
 }

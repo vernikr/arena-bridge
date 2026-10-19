@@ -45,7 +45,7 @@ export function killStaleNgrok(domain) {
 
 export function startTunnel(
   cfg,
-  { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000 } = {},
+  { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000, onExit } = {},
 ) {
   const target = `http://127.0.0.1:${port}`;
   const isNgrok = /ngrok/i.test(bin);
@@ -97,6 +97,7 @@ export function startTunnel(
       }
     });
     child.on('exit', (code) => {
+      onExit?.(code);
       if (!settled) {
         if (isNgrok && attempt++ < restarts) {
           killStaleNgrok(domain);

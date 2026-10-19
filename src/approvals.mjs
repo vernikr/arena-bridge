@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { APPROVALS_DIR, ensureDirs } from './config.mjs';
 import { sendTelegram, approvalKeyboard } from './telegram.mjs';
-import { saveTrust } from './trust.mjs';
+import { openTrust } from './trust.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,13 +64,11 @@ export function decide(id, decision, by = 'cli') {
 export function settle(id, decision, by = 'cli', { trustSec = 0 } = {}) {
   const res = decide(id, decision, by);
   if (res.ok && trustSec > 0) {
-    saveTrust({
-      enabled: true,
+    openTrust({
       until: Date.now() + trustSec * 1000,
       tools: [], // blanket: all tools, any agent
       paths: [],
-      createdAt: Date.now(),
-    });
+    }, { via: 'approval' });
   }
   return res;
 }

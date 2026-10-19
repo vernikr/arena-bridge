@@ -14,7 +14,8 @@ import { pruneInbox } from './telegram.mjs';
 import { pruneApprovals } from './approvals.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
-import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
+import { parseDuration, trustState, openTrust, closeTrust, reconcileTrust } from './trust.mjs';
+import { bridgeEvent, tunnelEvent } from './lifecycle.mjs';
 import { findPeekaboo } from './mac.mjs';
 import { coldStartMs, mem, uptimeSec } from './telemetry.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
@@ -96,7 +97,7 @@ Commands:
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status | --extend --for 1h
   audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json] Show the audit log
-  cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
+  cleanup [--days N]   Remove old artifacts + approvals (default 7 days)
   events [--json]      Stream live events (approvals/audit) via SSE /v1/events
   logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
@@ -189,11 +190,11 @@ async function cmdStart(args) {
     process.exit(1);
   }
   try {
-    const { trustState, saveTrust } = await import('./trust.mjs');
+    const { trustState, openTrust } = await import('./trust.mjs');
     const st = trustState();
     if (!st.active) {
       const now = Date.now();
-      saveTrust({ enabled: true, until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now });
+      openTrust({ until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now }, { via: 'launch', source: { channel: 'local' } });
       console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
     }
   } catch {}
@@ -212,6 +213,7 @@ async function cmdStart(args) {
     process.exit(1);
   });
   server.listen(cfg.port, cfg.host, () => {
+    bridgeEvent('start', { port: cfg.port });
     const local = `http://${cfg.host}:${cfg.port}`;
     console.log(`arena-bridge listening on ${local} (device "${cfg.device}")`);
     console.log(`\nExpose it to the cloud agent, e.g.:\n  cloudflared tunnel --url ${local}\n  ngrok http ${cfg.port}\n  tailscale funnel --bg ${cfg.port}\n`);
@@ -221,6 +223,7 @@ async function cmdStart(args) {
     console.log('-----8<-----');
   });
   const bye = () => {
+    bridgeEvent('stop', { reason: 'signal' });
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   };
@@ -241,11 +244,11 @@ async function cmdTunnel(args) {
 
   // Auto-open blanket trust window on start (3h, all tools, any agent) per user request
   try {
-    const { trustState, saveTrust } = await import('./trust.mjs');
+    const { trustState, openTrust } = await import('./trust.mjs');
     const st = trustState();
     if (!st.active) {
       const now = Date.now();
-      saveTrust({ enabled: true, until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now });
+      openTrust({ until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now }, { via: 'launch', source: { channel: 'local' } });
       console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
     }
   } catch {}
@@ -256,6 +259,7 @@ async function cmdTunnel(args) {
   } else {
     server = createDirectServer(cfg, engine);
     await new Promise((r) => server.listen(port, cfg.host, r));
+    bridgeEvent('start', { port });
     console.log(`arena-bridge API on http://${cfg.host}:${port}`);
   }
 
@@ -266,6 +270,7 @@ async function cmdTunnel(args) {
     bin,
     authtoken: args.flags.authtoken,
     domain: args.flags.domain,
+    onExit: (code) => tunnelEvent('down', { code }),
   });
 
   let publicUrl;
@@ -288,6 +293,7 @@ async function cmdTunnel(args) {
 
   cfg.publicUrl = publicUrl;
   cfg.port = port;
+  tunnelEvent('up', { url: new URL(publicUrl).host });
   saveConfig(cfg);
 
   onUrl((url) => {
@@ -295,6 +301,7 @@ async function cmdTunnel(args) {
     publicUrl = url;
     cfg.publicUrl = url;
     saveConfig(cfg);
+    tunnelEvent('up', { url: new URL(url).host, reason: 'reconnected' });
     console.log(`\n⚠ tunnel reconnected — new public URL: ${url}`);
     console.log('Update the base URL in the agent chat (arena-bridge prompt prints a fresh copy).');
   });
@@ -307,6 +314,7 @@ async function cmdTunnel(args) {
   console.log('Ctrl+C stops both the tunnel and the API.');
 
   const bye = () => {
+    bridgeEvent('stop', { reason: 'signal' });
     try {
       child.kill();
     } catch {
@@ -411,11 +419,14 @@ function cmdApprove(args) {
 
 function cmdTrust(args) {
   const state = trustState();
+  reconcileTrust();
+  const via = /^[a-z]{1,20}$/.test(String(args.flags.source || '')) ? args.flags.source : 'cli';
+  const source = { channel: 'cli' };
   if (args.flags.extend || args.flags.extend) {
     const cur = trustState();
     if (!cur.active) { console.error('no active trust window to extend — use arena-bridge trust --for 2h'); process.exit(1); }
     const ms = parseDuration(args.flags.for || args.flags.extend || '1h');
-    const saved = saveTrust({ ...cur, until: cur.until + ms, enabled: true, createdAt: cur.createdAt || Date.now() });
+    const saved = openTrust({ ...cur, until: cur.until + ms, createdAt: cur.createdAt || Date.now() }, { via, source });
     console.log(`✓ trust window extended: until ${new Date(saved.until).toLocaleString()} (+${Math.round(ms/60000)} min)`);
     return;
   }
@@ -430,7 +441,7 @@ function cmdTrust(args) {
     return;
   }
   if (args.flags.off) {
-    clearTrust();
+    closeTrust({ via, source });
     console.log('✓ trust window cleared — every side-effecting action needs approval again');
     return;
   }
@@ -465,13 +476,7 @@ function cmdTrust(args) {
       .filter(Boolean);
   const tools = list(args.flags.tools);
   const paths = list(args.flags.paths).map((p) => path.resolve(p.replace(/^~/, os.homedir())));
-  const saved = saveTrust({
-    enabled: true,
-    until: Date.now() + ms,
-    tools,
-    paths,
-    createdAt: Date.now(),
-  });
+  const saved = openTrust({ until: Date.now() + ms, tools, paths, createdAt: Date.now() }, { via, source });
   console.log(`✓ trust window: until ${new Date(saved.until).toLocaleString()} (${Math.round(ms / 60000)} min)`);
   console.log(`  tools: ${tools.length ? tools.join(', ') : 'all side-effecting tools'}`);
   console.log(`  paths: ${paths.length ? paths.join(', ') : 'no path restriction'}`);
@@ -485,7 +490,7 @@ function cmdAudit(args) {
     return;
   }
   if (what === 'prune') {
-    const res = pruneArtifacts(Number(args.flags.days || 14));
+    const res = pruneArtifacts(Number(args.flags.days || 7));
     console.log(`removed ${res.removed} artifact folder(s), ${res.freed_bytes} bytes`);
     return;
   }

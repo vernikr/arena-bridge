@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_DIR, ensureDirs } from './config.mjs';
 import { isInside, resolveTarget } from './policy.mjs';
+import { audit } from './audit.mjs';
 
 export const TRUST_PATH = path.join(CONFIG_DIR, 'trust.json');
 
@@ -36,17 +37,90 @@ export function clearTrust() {
   if (fs.existsSync(TRUST_PATH)) fs.rmSync(TRUST_PATH);
 }
 
-/** Normalised view of the trust window: { active, until, tools, paths, expired }. */
-export function pruneExpiredTrust() {
+/*
+ * Every writer (CLI, approvals, app launch, expiry) goes through openTrust/closeTrust, which log one event.
+ * trust.marker holds the signature of the last state that was logged; reconcileTrust compares it with the file,
+ * so a change made by another writer (for example the app) is logged once, as external.
+ */
+const MARKER = path.join(path.dirname(TRUST_PATH), 'trust.marker');
+const signature = (t) =>
+  t && t.enabled !== false && t.until ? `${t.until}|${(t.tools || []).join(',')}|${(t.paths || []).join(',')}` : 'none';
+const readMarker = () => {
   try {
-    const cur = trustState();
-    if (cur && cur.until && Date.now() > cur.until && cur.active) {
-      clearTrust();
-      return true;
-    }
-  } catch {}
+    return fs.readFileSync(MARKER, 'utf8');
+  } catch {
+    return null;
+  }
+};
+const writeMarker = (sig) => fs.writeFileSync(MARKER, sig, { mode: 0o600 });
+
+function record(status, t, via, source = null, reason = null) {
+  audit({
+    kind: 'trust',
+    tool: 'trust',
+    status,
+    via,
+    source,
+    reason,
+    actor: via === 'expiry' || via === 'launch' ? 'bridge' : 'user',
+    until: t?.until ?? null,
+    tools: t?.tools || [],
+    paths: t?.paths || [],
+  });
+}
+
+/** Open or change the window. Records one event: open, extend (later end time) or change. */
+export function openTrust(state, { via = 'cli', source = null } = {}) {
+  const prev = trustState();
+  const saved = saveTrust({
+    enabled: true,
+    until: state.until,
+    tools: state.tools || [],
+    paths: state.paths || [],
+    createdAt: state.createdAt || Date.now(),
+  });
+  writeMarker(signature(saved));
+  const status = !prev.active ? 'open' : saved.until > (prev.until || 0) ? 'extend' : 'change';
+  record(status, saved, via, source);
+  return saved;
+}
+
+/** Close the window by hand or from the app; records one close event. */
+export function closeTrust({ via = 'cli', source = null, reason = 'manual' } = {}) {
+  const cur = loadTrust();
+  if (!cur) return false;
+  clearTrust();
+  writeMarker('none');
+  record('close', cur, via, source, reason);
+  return true;
+}
+
+/**
+ * Expire a window whose end time has passed (one expire event), and log changes made outside this module.
+ * Returns true when a window expired.
+ */
+export function reconcileTrust(now = Date.now()) {
+  const t = loadTrust();
+  const cur = signature(t);
+  let mark = readMarker();
+  if (mark === null) {
+    writeMarker(cur);
+    mark = cur;
+  }
+  if (t && t.enabled !== false && t.until && t.until <= now) {
+    clearTrust();
+    writeMarker('none');
+    record('expire', t, 'expiry', null, 'expired');
+    return true;
+  }
+  if (cur !== mark) {
+    writeMarker(cur);
+    record(cur === 'none' ? 'close' : mark === 'none' ? 'open' : 'change', t, 'external', null, 'external');
+  }
   return false;
 }
+
+/** Normalised view of the trust window: { active, until, tools, paths, expired }. */
 export function trustState() {
   const t = loadTrust();
   if (!t) return { active: false, until: null, tools: [], paths: [] };
