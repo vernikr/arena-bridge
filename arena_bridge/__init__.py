@@ -11,7 +11,7 @@ except Exception:
         _pkg = pathlib.Path(__file__).parent.parent / "package.json"
         __version__ = json.loads(_pkg.read_text()).get("version", "0.8.4")
     except Exception:
-        __version__ = "0.16.1"
+        __version__ = "0.17.0"
 
 # 0.8.0: Python bridge is frozen — only security fixes. Use npm/brew for new features.
 # This will become a thin shim in 0.9 or be removed per owner decision (pip-only not a priority).
