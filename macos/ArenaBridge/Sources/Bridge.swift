@@ -152,8 +152,8 @@ struct LogEntry: Identifiable {
     private static let iso = ISO8601DateFormatter()
     private static let clockFormat: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "HH:mm:ss"
+        f.locale = .current
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jjmmss", options: 0, locale: .current) ?? "HH:mm:ss"
         return f
     }()
 

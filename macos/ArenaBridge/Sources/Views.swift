@@ -341,7 +341,7 @@ struct LogCard: View {
                 .buttonStyle(.bordered)
             }
             ScrollViewReader { proxy in
-                ScrollView {
+                ScrollView([.horizontal, .vertical]) {
                     LazyVStack(alignment: .leading, spacing: 3) {
                         ForEach(model.visibleEntries) { entry in
                             LogLine(entry: entry) { artifact in
@@ -396,55 +396,37 @@ struct LogLine: View {
     let show: (Artifact) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.clock)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: 78, alignment: .leading)
-                Circle()
-                    .fill(Self.levelColor(entry.level))
-                    .frame(width: 7, height: 7)
-                Text(entry.tool)
-                    .lineLimit(1)
-                    .frame(width: 110, alignment: .leading)
-                Text(entry.status)
-                    .foregroundStyle(Self.statusColor(entry.status))
-                    .lineLimit(1)
-                    .frame(width: 70, alignment: .leading)
-                if !entry.duration.isEmpty {
-                    Text(entry.duration)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        HStack(spacing: 8) {
+            Text(entry.clock)
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+            Circle()
+                .fill(Self.levelColor(entry.level))
+                .frame(width: 7, height: 7)
+            Text(entry.tool)
+                .frame(width: 160, alignment: .leading)
+            Text(entry.status)
+                .foregroundStyle(Self.statusColor(entry.status))
+                .frame(width: 72, alignment: .leading)
+            Text(entry.source)
+                .foregroundStyle(.tertiary)
+                .fixedSize()
+            Text([entry.summary, entry.detail].filter { !$0.isEmpty }.joined(separator: "  — "))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            ForEach(entry.artifacts) { artifact in
+                Button {
+                    show(artifact)
+                } label: {
+                    Text(artifact.name)
                 }
-                Spacer(minLength: 0)
-                ForEach(entry.artifacts) { artifact in
-                    Button {
-                        show(artifact)
-                    } label: {
-                        Text(artifact.name)
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 10))
-                    .help("Open \(artifact.name)")
-                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 10))
+                .help("Open \(artifact.name)")
             }
-            HStack(spacing: 8) {
-                Text([entry.summary, entry.detail].filter { !$0.isEmpty }.joined(separator: "  — "))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 8)
-                if !entry.source.isEmpty {
-                    Text(entry.source)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                }
-            }
-            .padding(.leading, 101)
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .font(.system(size: 11, design: .monospaced))
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
