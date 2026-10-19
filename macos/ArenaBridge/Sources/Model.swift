@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
     @Published var atBottom = true
     @Published var unseen = 0
     @Published var detailEntry: LogEntry?
+    @Published var operation: ServiceOp?
+    @Published var publicReady = false
     @Published var trustEnabled = false
     @Published var trustRemaining = 0
     @Published var trustTools: [String] = []
@@ -183,6 +185,7 @@ final class AppModel: ObservableObject {
             version = health.1["version"] as? String ?? "—"
             device = health.1["device"] as? String ?? "—"
             mode = health.1["mode"] as? String ?? "—"
+            publicReady = health.1["has_public_url"] as? Bool ?? false
             running = true
         }
 
@@ -225,30 +228,96 @@ final class AppModel: ObservableObject {
 
     // -- actions -------------------------------------------------------- //
 
+    /// Start and stop run as numbered steps. The toggle, the indicator and the app menu read this one state.
+    struct ServiceOp: Equatable {
+        let starting: Bool
+        var step: Int
+        var total: Int
+        var name: String
+        var reason: String?
+    }
+
+    var transitioning: Bool { operation.map { $0.reason == nil } ?? false }
+
+    func toggleService() {
+        if running { stop() } else { start() }
+    }
+
     func start() {
-        busy = true
-        Task.detached {
-            Bridge.start()
-            await MainActor.run {
-                self.notice = "The bridge was started."
-                self.failure = nil
-                self.busy = false
-                Task { await self.refresh() }
-            }
+        guard !transitioning, !running else { return }
+        Task {
+            await run(starting: true, [
+                ("Checking setup", checkSetup),
+                ("Loading service", { await Task.detached { Bridge.load() }.value; return nil }),
+                ("Starting bridge", { await Task.detached { Bridge.kick() }.value; return nil }),
+                ("Waiting for the local API", { await self.waitFor(15) { await self.flag("ok") } ? nil : "local API did not answer in 15 s" }),
+                ("Opening public address", { await self.waitFor(30) { await self.flag("has_public_url") } ? nil : "public address not ready" }),
+                ("Checking tools", { await self.waitFor(5) { await self.toolCount() > 0 } ? nil : "no tools reported" }),
+            ])
         }
     }
 
     func stop() {
-        busy = true
-        Task.detached {
-            Bridge.stop()
-            await MainActor.run {
-                self.notice = "The bridge was stopped."
-                self.failure = nil
-                self.busy = false
-                Task { await self.refresh() }
+        guard !transitioning, running else { return }
+        Task {
+            await run(starting: false, [
+                ("Checking open work", { await self.note("\(self.approvals.count) approvals pending"); return nil }),
+                ("Stopping bridge", { await Task.detached { Bridge.stop() }.value; return nil }),
+                ("Waiting for the public address to close", { await self.waitFor(10) { await Task.detached { !Bridge.tunnelRunning() }.value } ? nil : "public address still open after 10 s" }),
+                ("Confirming stopped", { await Task.detached { !Bridge.serviceState().running }.value ? nil : "service still running" }),
+            ])
+        }
+    }
+
+    private func run(starting: Bool, _ steps: [(String, () async -> String?)]) async {
+        operation = ServiceOp(starting: starting, step: 0, total: steps.count, name: "", reason: nil)
+        for (index, step) in steps.enumerated() {
+            operation?.step = index + 1
+            operation?.name = step.0
+            await note("\(index + 1)/\(steps.count) \(step.0)")
+            if let reason = await step.1() {
+                operation?.reason = reason
+                await note("failed at step \(index + 1)/\(steps.count): \(reason)", level: "alert")
+                await refresh(log: false, showBusy: false)
+                return
             }
         }
+        operation = nil
+        notice = starting ? "The bridge is running." : "The bridge is stopped."
+        await refresh()
+    }
+
+    private func checkSetup() async -> String? {
+        let installed = await Task.detached { Bridge.serviceState().installed }.value
+        return installed ? nil : "run Setup first"
+    }
+
+    private func health() async -> [String: Any]? {
+        let result = await bridge.call("health")
+        return result.0 == 200 ? result.1 : nil
+    }
+
+    private func flag(_ key: String) async -> Bool {
+        (await health()?[key] as? Bool) == true
+    }
+
+    private func toolCount() async -> Int {
+        let result = await bridge.call("tools")
+        return (result.1["tools"] as? [[String: Any]])?.count ?? 0
+    }
+
+    /// Writes one step line to the work log.
+    private func note(_ text: String, level: String = "info") async {
+        _ = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text])
+    }
+
+    private func waitFor(_ seconds: Double, _ check: () async -> Bool) async -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if await check() { return true }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        return await check()
     }
 
     func decide(_ approval: Approval, approve: Bool, trustHours: Int = 0) {

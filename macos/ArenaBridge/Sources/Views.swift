@@ -157,39 +157,68 @@ struct StatusCard: View {
     }
 }
 
-struct ActionsCard: View {
+/// Current step of a start or stop, or the state when nothing is running.
+struct StepIndicator: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
+        HStack(spacing: 6) {
+            if let op = model.operation, let reason = op.reason {
+                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+                Text("Failed at step \(op.step)/\(op.total): \(reason)").foregroundStyle(.red)
+            } else if let op = model.operation {
+                ProgressView().controlSize(.small)
+                Text("Step \(op.step)/\(op.total) · \(op.name)")
+            } else if model.running {
+                Image(systemName: "circle.fill").foregroundStyle(.green)
+                Text(model.publicReady ? "Running · public address ready" : "Running · no public address")
+            } else {
+                Image(systemName: "circle").foregroundStyle(.secondary)
+                Text("Stopped").foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .lineLimit(1)
+    }
+}
+
+struct ActionsCard: View {
+    @EnvironmentObject var model: AppModel
+
+    private var toggleTitle: String {
+        if let op = model.operation, op.reason == nil { return op.starting ? "Starting…" : "Stopping…" }
+        return model.running ? "Stop" : "Start"
+    }
+
+    private var toggleSymbol: String {
+        if model.transitioning { return "hourglass" }
+        return model.running ? "stop.fill" : "play.fill"
+    }
+
+    var body: some View {
         Card(title: "Control", symbol: "switch.2") {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
-                    model.start()
+                    model.toggleService()
                 } label: {
-                    Label("Start", systemImage: "play.fill")
+                    Label(toggleTitle, systemImage: toggleSymbol)
+                        .frame(minWidth: 96)
                 }
-                .disabled(model.running)
-
-                Button {
-                    model.stop()
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                }
-                .disabled(!model.running)
-
+                .buttonStyle(.borderedProminent)
+                .tint(model.running ? .red : .green)
+                .disabled(model.transitioning)
+                StepIndicator()
+                Spacer(minLength: 8)
                 Button {
                     model.showSetup = true
                 } label: {
                     Label("Setup…", systemImage: "gearshape")
                 }
-
                 Button {
                     model.copyPrompt()
                 } label: {
                     Label("Copy the agent prompt", systemImage: "doc.on.doc")
                 }
-
-                Spacer()
             }
             Divider()
             HStack(spacing: 10) {

@@ -368,8 +368,24 @@ struct Bridge {
     }
 
     static func start() {
-        _ = launchctl(["bootstrap", "gui/\(getuid())", plistPath])
-        _ = launchctl(["kickstart", "-k", serviceTarget])
+        load()
+        kick()
+    }
+
+    static func load() { _ = launchctl(["bootstrap", "gui/\(getuid())", plistPath]) }
+
+    static func kick() { _ = launchctl(["kickstart", "-k", serviceTarget]) }
+
+    /// True while a cloudflared process is alive; used to confirm the public address closed.
+    static func tunnelRunning() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "cloudflared"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     static func stop() {
