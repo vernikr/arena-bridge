@@ -4,6 +4,7 @@ import json
 from .config import VERSION
 
 PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_VERSIONS = ["2025-06-18", "2026-07-28"]
 
 
 def _ok(msg_id, result):
@@ -32,11 +33,13 @@ def handle_mcp_payload(body, ctx):
             continue
 
         if method == "initialize":
+            _requested = (params or {}).get("protocolVersion")
+            _negotiated = _requested if _requested in SUPPORTED_VERSIONS else PROTOCOL_VERSION
             responses.append(
                 _ok(
                     msg_id,
                     {
-                        "protocolVersion": PROTOCOL_VERSION,
+                        "protocolVersion": _negotiated,
                         "capabilities": {"tools": {"listChanged": False}},
                         "serverInfo": {"name": "arena-bridge", "version": VERSION},
                         "instructions": (

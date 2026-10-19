@@ -7,6 +7,7 @@ import { readJson, sendJson } from './http.mjs';
 import { VERSION } from './version.mjs';
 
 const PROTOCOL_VERSION = '2025-06-18';
+const SUPPORTED_VERSIONS = ['2025-06-18', '2026-07-28'];
 
 export function mcpResponse(id, result) {
   return { jsonrpc: '2.0', id, result };
@@ -44,10 +45,12 @@ export async function handleMcp(req, res, ctx) {
     }
 
     switch (method) {
-      case 'initialize':
+      case 'initialize': {
+        const requested = params?.protocolVersion;
+        const negotiated = SUPPORTED_VERSIONS.includes(requested) ? requested : PROTOCOL_VERSION;
         responses.push(
           mcpResponse(id, {
-            protocolVersion: PROTOCOL_VERSION,
+            protocolVersion: negotiated,
             capabilities: { tools: { listChanged: false } },
             serverInfo: { name: 'arena-bridge', version: VERSION },
             instructions:
@@ -56,6 +59,7 @@ export async function handleMcp(req, res, ctx) {
           }),
         );
         break;
+      }
       case 'ping':
         responses.push(mcpResponse(id, {}));
         break;

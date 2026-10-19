@@ -174,6 +174,39 @@ def make_handler(cfg, engine):
                 return self._send(200, art["data"], content_type=ctype)
             if path == "/approvals":
                 return self._send(200, {"ok": True, "approvals": list_approvals()})
+            if path == "/v1/events":
+                # SSE stream
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-store")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                try:
+                    self.wfile.write(b": arena-bridge events\n\n")
+                    self.wfile.flush()
+                except: return
+                import time as _time
+                try:
+                    from .approvals import list_approvals as _la
+                    pending = [a for a in _la() if a.get("status")=="pending"]
+                    payload = json.dumps({"pending": len(pending)}).encode()
+                    self.wfile.write(b"event: approvals\n" + b"data: " + payload + b"\n\n")
+                    self.wfile.flush()
+                except: pass
+                try:
+                    self.wfile.write(b"event: hello\n" + (b"data: " + json.dumps({"version": VERSION}).encode() + b"\n\n"))
+                    self.wfile.flush()
+                except: pass
+                # keep connection open with heartbeats until client disconnects
+                for _ in range(60):  # 60 *3s = 3min max; client reconnects
+                    try:
+                        _time.sleep(3)
+                        self.wfile.write(b"event: heartbeat\n" + (b"data: " + json.dumps({"ts": int(_time.time()*1000)}).encode() + b"\n\n"))
+                        self.wfile.flush()
+                    except:
+                        break
+                return
             if path == "/files":
                 return self._files(query, "GET")
             return self._send(404, {"ok": False, "error": f"no route for GET {path}"})

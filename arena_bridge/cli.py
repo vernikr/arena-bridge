@@ -634,6 +634,39 @@ def cmd_cleanup(args):
     except: a3 = {"removed":0}
     print(f"cleanup: removed {a1.get('removed',0)} artifact folder(s) ({a1.get('freed_bytes',0)} bytes), {a2.get('removed',0)} old approval(s), {a3.get('removed',0)} telegram file(s) older than {days} days")
 
+def cmd_events(args):
+    import json, urllib.request
+    cfg = load_config()
+    host = cfg.get("host","127.0.0.1"); port = cfg.get("port",8787)
+    url = f"http://{host}:{port}/v1/events"
+    token = cfg.get("token") or cfg.get("localToken") or ""
+    print(f"# streaming {url} (Ctrl-C to stop)")
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"} if token else {})
+        import urllib.error
+        with urllib.request.urlopen(req, timeout=3600) as resp:
+            buf=""
+            while True:
+                chunk = resp.read(4096)
+                if not chunk: break
+                buf += chunk.decode(errors="replace")
+                while "\n\n" in buf:
+                    idx = buf.index("\n\n")
+                    piece = buf[:idx]; buf = buf[idx+2:]
+                    if not piece.strip() or piece.startswith(":"): continue
+                    ev="message"; data=""
+                    for line in piece.splitlines():
+                        if line.startswith("event:"): ev=line[6:].strip()
+                        if line.startswith("data:"): data+=line[5:].strip()
+                    if getattr(args,"json",False):
+                        try: parsed=json.loads(data)
+                        except: parsed=data
+                        print(json.dumps({"event":ev,"data":parsed}))
+                    else:
+                        print(f"[{ev}] {data}")
+    except KeyboardInterrupt: pass
+    except Exception as e: print(f"events error: {e}")
+
 def cmd_logs(args):
     from .log import tail_log, log_path_for_cli
     n = getattr(args, 'n', 30) or 30
@@ -1102,6 +1135,10 @@ def build_parser():
     logs.add_argument("-n", type=int, default=30, help="number of entries")
     logs.add_argument("--json", action="store_true", help="json output")
     logs.set_defaults(func=cmd_logs)
+
+    events = sub.add_parser("events", help="stream live events (approvals/audit) via SSE")
+    events.add_argument("--json", action="store_true", help="json output")
+    events.set_defaults(func=cmd_events)
 
     clean = sub.add_parser("cleanup", help="remove old artifacts + approvals")
     clean.add_argument("--days", type=int, default=14, help="older than N days")

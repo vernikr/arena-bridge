@@ -142,7 +142,7 @@
   - Запись: `ctx.artifact` на вызовах `mac_see`
   - Чтение: `GET /audit/artifact?entry=&file=`, инструменты `audit_log`, `audit_artifact`
   - Хранение 14 дней; `arena-bridge audit prune|dir|artifacts`
-- Команды: `arena-bridge audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json]`, `arena-bridge audit <id>`, `arena-bridge logs [-n N] [--json]`, `arena-bridge cleanup [--days N]`
+- Команды: `arena-bridge audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json]`, `arena-bridge audit <id>`, `arena-bridge logs [-n N] [--json]`, `arena-bridge events [--json]`, `arena-bridge cleanup [--days N]`
 
 ## Связь с Telegram
 

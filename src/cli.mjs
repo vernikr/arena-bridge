@@ -94,6 +94,7 @@ Commands:
                        --off | --status | --extend --for 1h
   audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json] Show the audit log
   cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
+  events [--json]      Stream live events (approvals/audit) via SSE /v1/events
   logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
                        get <key> | set <key> <value> | edit | list
@@ -1032,6 +1033,40 @@ function cmdCleanup(args) {
   console.log(`cleanup: removed ${a1.removed} artifact folder(s) (${a1.freed_bytes||0} bytes), ${a2.removed} old approval(s), ${a3.removed||0} telegram file(s) older than ${d} days`);
 }
 
+async function cmdEvents(args) {
+  const cfg = loadConfig();
+  const isJson = !!(args.flags.json);
+  const url = `http://${cfg.host||'127.0.0.1'}:${cfg.port||8787}/v1/events`;
+  const token = cfg.token || cfg.localToken;
+  console.log(`# streaming ${url} (Ctrl-C to stop)`);
+  try {
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) { console.error(`events: ${res.status} ${res.statusText}`); return; }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf='';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream:true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const chunk = buf.slice(0, idx);
+        buf = buf.slice(idx+2);
+        if (!chunk.trim() || chunk.startsWith(':')) continue;
+        // parse event: and data:
+        let event='message', data='';
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('event:')) event=line.slice(6).trim();
+          if (line.startsWith('data:')) data+=line.slice(5).trim();
+        }
+        if (isJson) console.log(JSON.stringify({ event, data: (()=>{ try{return JSON.parse(data)}catch{return data}})() }));
+        else console.log(`[${event}] ${data}`);
+      }
+    }
+  } catch (e) { console.error(`events error: ${e.message}`); }
+}
+
 function cmdLogs(args) {
   const isJson = !!(args.flags.json || args.flags['output-json']);
   let n = 30;
@@ -1133,6 +1168,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdApprove(args);
     case 'audit':
       return cmdAudit(args);
+    case 'events':
+      return cmdEvents(args);
     case 'logs':
       return cmdLogs(args);
     case 'cleanup':

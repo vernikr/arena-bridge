@@ -250,6 +250,42 @@ export function createDirectServer(cfg, engine) {
         return sendJson(res, 405, { ok: false, error: 'method not allowed' });
       }
 
+      if (p === '/v1/events') {
+        // SSE: stream approvals/audit/health deltas; no auth? require auth
+        // (use same auth as other endpoints)
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.write(': arena-bridge events\n\n');
+        let closed=false;
+        res.on('close', ()=>{ closed=true; });
+        req.on('close', ()=>{ closed=true; });
+        const send = (event, data) => {
+          if (closed) return;
+          try { res.write(`event: ${event}\n` + `data: ${JSON.stringify(data)}\n\n`); } catch {}
+        };
+        // initial snapshot
+        try {
+          const pending = listApprovals().filter(a=>a.status==='pending');
+          send('approvals', { pending: pending.length, approvals: pending.slice(0,10) });
+        } catch {}
+        try { const { tailAudit } = await import('./audit.mjs'); send('audit', { entries: tailAudit(5) }); } catch {}
+        send('hello', { version: VERSION, time: new Date().toISOString() });
+        const interval = setInterval(async ()=>{
+          if (closed) { clearInterval(interval); return; }
+          try {
+            const pending = listApprovals().filter(a=>a.status==='pending');
+            // simple: send heartbeat + counts every tick; client can diff
+            send('heartbeat', { ts: Date.now(), pending_approvals: pending.length });
+          } catch {}
+        }, 3000);
+        // keep open; do not end response
+        return;
+      }
+
       if (p === '/mcp') {
         if (req.method !== 'POST') {
           return sendJson(res, 405, { ok: false, error: 'method not allowed', hint: 'use POST /mcp' });
