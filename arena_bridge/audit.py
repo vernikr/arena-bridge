@@ -34,6 +34,11 @@ def scrub(value):
 def audit(entry: dict) -> None:
     try:
         config_dir().mkdir(parents=True, exist_ok=True)
+        try:
+            ap = audit_path()
+            if ap.exists() and ap.stat().st_size > 10*1024*1024:
+                rotate_audit_if_needed()
+        except: pass
         def _trunc(v, depth=0):
             if depth > 6:
                 return "[max depth]"

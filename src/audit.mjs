@@ -39,6 +39,8 @@ export function audit(entry) {
   try {
     const dir = configDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // auto-rotate if over 10 MB (cheap stat, keeps log bounded)
+    try { const st = fs.statSync(auditPath()); if (st.size > 10*1024*1024) rotateAuditIfNeeded(); } catch {}
     // R2 fix: don't store huge bodies in audit log — store size instead
     function trunc(v, depth=0) {
       if (depth > 6) return '[max depth]';
