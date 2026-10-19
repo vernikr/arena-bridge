@@ -690,6 +690,24 @@ def cmd_config(args):
         save_config(cfg)
         print(f"✓ config {key} = {json.dumps(parsed)}")
         return
+    if action == "diff":
+        defs=defaults()
+        diffs={}
+        for k,v in cfg.items():
+            if k in ("configPath","_state"): continue
+            if __import__('json').dumps(v, sort_keys=True) != __import__('json').dumps(defs.get(k), sort_keys=True):
+                diffs[k] = {"current": v, "default": defs.get(k)}
+        is_json=bool(getattr(args,'json',False))
+        if is_json: print(__import__('json').dumps(diffs, indent=2, default=str))
+        else:
+            if not diffs: print("✓ config matches defaults")
+            else:
+                print("config diff (current vs default):")
+                for k,v in diffs.items():
+                    print(f"  {k}:")
+                    print(f"    current: {__import__('json').dumps(v['current'])}")
+                    print(f"    default: {__import__('json').dumps(v['default'])}")
+        return
     if action == "validate":
         errs=[]
         if not cfg.get("roots"): errs.append("roots is empty — run arena-bridge init --root ~/projects")

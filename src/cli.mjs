@@ -825,6 +825,30 @@ function cmdConfig(args) {
     console.log(`✓ config ${key} = ${JSON.stringify(parsed)}`);
     return;
   }
+  if (sub === 'diff') {
+    const isJson = !!(args.flags.json);
+    const defs = DEFAULTS;
+    const diffs = {};
+    for (const k of Object.keys(cfg)) {
+      if (k === 'configPath' || k === '_state') continue;
+      const cur = cfg[k];
+      const def = defs[k];
+      if (JSON.stringify(cur) !== JSON.stringify(def)) diffs[k] = { current: cur, default: def };
+    }
+    if (isJson) console.log(JSON.stringify(diffs, null, 2));
+    else {
+      if (!Object.keys(diffs).length) console.log('✓ config matches defaults');
+      else {
+        console.log('config diff (current vs default):');
+        for (const [k,v] of Object.entries(diffs)) {
+          console.log(`  ${k}:`);
+          console.log(`    current: ${JSON.stringify(v.current)}`);
+          console.log(`    default: ${JSON.stringify(v.default)}`);
+        }
+      }
+    }
+    return;
+  }
   if (sub === 'validate') {
     const isJson = !!(args.flags.json);
     const errs = [];
@@ -844,7 +868,7 @@ function cmdConfig(args) {
     if (res.error) console.error(`cannot open editor: ${res.error.message}`);
     return;
   }
-  console.error(`unknown config action: ${sub}\nuse: get <key> | set <key> <value> | edit | list | validate`);
+  console.error(`unknown config action: ${sub}\nuse: get <key> | set <key> <value> | edit | list | validate | diff`);
   process.exit(1);
 }
 
