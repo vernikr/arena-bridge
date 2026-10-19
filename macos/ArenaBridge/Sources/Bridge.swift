@@ -385,6 +385,13 @@ struct Bridge {
     @discardableResult
     static func kick() -> Bool { launchctl(["kickstart", "-k", serviceTarget]) != nil }
 
+    /// Unloads and loads the service again, then starts it. Used when a plain kick does not answer.
+    static func reload() -> Bool {
+        stop()
+        load()
+        return kick()
+    }
+
     /// True while a tunnel process is alive; used to confirm the public address closed.
     static func tunnelRunning() -> Bool {
         let process = Process()

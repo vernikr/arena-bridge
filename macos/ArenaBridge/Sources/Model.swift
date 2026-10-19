@@ -76,7 +76,9 @@ final class AppModel: ObservableObject {
     /// Asks the running service which permissions its screen runtime has. Read-only; at most once a minute unless forced.
     func checkPermissions(force: Bool = false) {
         guard !permissionsChecking else { return }
-        if !force, let at = permissionsCheckedAt, Date().timeIntervalSince(at) < 60 { return }
+        // Each check can make macOS show a prompt, so explicit checks are spaced by 10 s and the others by 60 s.
+        let gap: TimeInterval = force ? 10 : 60
+        if let at = permissionsCheckedAt, Date().timeIntervalSince(at) < gap { return }
         permissionsChecking = true
         Task {
             let (code, json) = await bridge.call("call", method: "POST",
@@ -312,7 +314,7 @@ final class AppModel: ObservableObject {
                 ("Checking setup", checkSetup),
                 ("Stopping old process", stopOld),
                 ("Loading service", { await self.blocking("launchctl did not answer in 10 s") { Bridge.load() } }),
-                ("Starting process", { await self.blocking("launchctl did not answer in 10 s") { Bridge.kick() } }),
+                ("Starting process", { await self.blocking("launchctl did not answer in 10 s") { Bridge.kick() || Bridge.reload() } }),
                 ("Waiting for the local API", { await self.waitFor(15) { await self.flag("ok") } ? nil : "local API did not answer in 15 s" }),
                 ("Waiting for the public address", { await self.waitFor(30) { await self.flag("has_public_url") } ? nil : "public address not ready in 30 s" }),
                 ("Checking tools", { await self.waitFor(5) { await self.toolCount() > 0 } ? nil : "no tools reported in 5 s" }),
