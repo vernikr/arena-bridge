@@ -38,6 +38,7 @@ jobs:
       - run: python3 test/test_browser.py
       - run: python3 test/test_mac.py
       - run: python3 test/test_service.py
+      - run: python3 test/test_telegram.py
 
   version-check:
     runs-on: ubuntu-latest

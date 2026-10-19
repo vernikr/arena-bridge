@@ -30,10 +30,25 @@ def make_handler(cfg, engine):
             token = header[7:].strip()
             # re-read the config per request so a rotated token takes effect without a restart
             cfg_now = load_config()
-            if cfg_now.get("token") and token == cfg_now.get("token"):
+            # S6: use timing-safe compare
+            import hmac
+            tok = cfg_now.get("token")
+            if tok and isinstance(token, str) and isinstance(tok, str):
+                try:
+                    if hmac.compare_digest(token, tok):
+                        return True
+                except Exception:
+                    if token == tok:
+                        return True
+            elif tok and token == tok:
                 return True
-            # the local token is for the machine owner: approvals and trust
-            return bool(cfg_now.get("localToken")) and token == cfg_now.get("localToken")
+            local = cfg_now.get("localToken")
+            if local and isinstance(token, str) and isinstance(local, str):
+                try:
+                    return bool(hmac.compare_digest(token, local))
+                except Exception:
+                    return token == local
+            return bool(local) and token == local
 
         def _cfg_now(self):
             current = load_config()

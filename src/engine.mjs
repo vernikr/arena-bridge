@@ -435,7 +435,9 @@ export function toolCatalog() {
       ),
       required: [],
       handler: async (args) => {
-        const n = Math.min(200, Number(args.limit) || 30);
+        let n = Number(args.limit);
+        if (!Number.isFinite(n) || n <= 0) n = 30;
+        n = Math.min(200, Math.floor(n));
         let entries = tailAudit(args.tool || args.since ? Math.max(n * 10, 500) : n * 4);
         if (args.tool) entries = entries.filter((e) => e.tool === args.tool);
         if (args.since) {
@@ -682,13 +684,18 @@ export class Engine {
   }
 
   async call(name, args = {}, { requireApproval, cfg } = {}) {
-    let cfgNow = cfg || this.cfg;
-    this.cfg = cfgNow;
-    try {
-      if (fs.existsSync(CONFIG_PATH)) cfgNow = loadConfig();
-    } catch {
-      /* keep the last valid snapshot */
+    let cfgNow;
+    if (cfg) {
+      cfgNow = cfg;
+    } else {
+      try {
+        if (fs.existsSync(CONFIG_PATH)) cfgNow = loadConfig();
+        else cfgNow = this.cfg;
+      } catch {
+        cfgNow = this.cfg;
+      }
     }
+    this.cfg = cfgNow;
     const tool = this.catalog().find((t) => t.name === name);
     if (!tool) return { ok: false, error: `unknown tool: ${name}` };
     const started = Date.now();

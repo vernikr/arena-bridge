@@ -58,7 +58,7 @@ def resolve_target(p, base=None) -> Path:
         cur = real.joinpath(*tail) if tail else real
         # Check if cur itself is symlink not yet resolved
         try:
-            if cur.lstat().is_symlink():
+            if cur.is_symlink():
                 continue
         except FileNotFoundError:
             pass
@@ -68,7 +68,7 @@ def resolve_target(p, base=None) -> Path:
         for part in tail:
             check = check / part
             try:
-                if check.lstat().is_symlink():
+                if check.is_symlink():
                     has_symlink = True
                     break
             except FileNotFoundError:

@@ -556,7 +556,10 @@ def _h_kill_process(args, ctx):
 # --------------------------------------------------------------------------- #
 
 def _h_audit_log(args, ctx):
-    limit = min(200, int(args.get("limit") or 30))
+    try:
+        limit = min(200, int(args.get("limit") or 30))
+    except (ValueError, TypeError):
+        limit = 30
     entries = tail_audit(max(limit * 10, 500) if (args.get("tool") or args.get("since")) else limit * 4)
     if args.get("tool"):
         entries = [e for e in entries if e.get("tool") == args["tool"]]
@@ -833,12 +836,17 @@ class Engine:
             for t in self.catalog()
         ]
 
-    def call(self, name: str, args=None, require_approval=None):
+    def call(self, name: str, args=None, require_approval=None, cfg=None):
         args = args or {}
-        try:
-            self.cfg = load_config()
-        except Exception:
-            pass
+        if cfg is not None:
+            cfg_now = cfg
+            self.cfg = cfg_now
+        else:
+            try:
+                cfg_now = load_config()
+                self.cfg = cfg_now
+            except Exception:
+                cfg_now = self.cfg
         tool = next((t for t in self.catalog() if t["name"] == name), None)
         if not tool:
             return {"ok": False, "error": f"unknown tool: {name}"}
@@ -854,7 +862,7 @@ class Engine:
         approval_for = tool.get("approval_for")
         if approval_for:
             need_approval = bool(approval_for(args, self))
-        if self.cfg.get("requireApproval", True) is False:
+        if cfg_now.get("requireApproval", True) is False:
             need_approval = False
         if require_approval is True:
             need_approval = True
@@ -863,15 +871,15 @@ class Engine:
 
         if need_approval:
             trust = trust_state()
-            if trust_allows(trust, name, args, self.cfg):
+            if trust_allows(trust, name, args, cfg_now):
                 res = tool["handler"](args, ctx)
-                if self.cfg.get("audit", True):
+                if cfg_now.get("audit", True):
                     audit({"id": entry_id, "tool": name, "args": args, "status": "ok" if res.get("ok") else "error", "duration_ms": int((time.time() - started)*1000), "via": "trust_window", "exit_code": res.get("exit_code"), "error": None if res.get("ok") else res.get("error")})
                 return res
-            decision = request_approval(name, args, self.cfg)
+            decision = request_approval(name, args, cfg_now)
             if not decision["approved"]:
                 status = decision["rec"].get("status", "denied")
-                if self.cfg.get("audit", True):
+                if cfg_now.get("audit", True):
                     audit({"id": entry_id, "tool": name, "args": args, "status": "approval_denied", "approval_status": status})
                 pending = status in ("pending", "timeout", "expired")
                 return {
@@ -896,11 +904,11 @@ class Engine:
         try:
             res = tool["handler"](args, ctx)
         except Exception as e:  # pragma: no cover - defensive
-            if self.cfg.get("audit", True):
+            if cfg_now.get("audit", True):
                 audit({"id": entry_id, "tool": name, "args": args, "status": "exception", "error": str(e)})
             return {"ok": False, "error": str(e)}
 
-        if self.cfg.get("audit", True):
+        if cfg_now.get("audit", True):
             audit(
                 {
                     "id": entry_id,
