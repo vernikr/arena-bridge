@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .audit import audit_dir, read_artifact, tail_audit
 from .approvals import decide, list_approvals, settle
-from .config import load_config
+from .config import VERSION, load_config
 from .mcp import handle_mcp_payload
 from .policy import check_path
 from .prompt import build_prompt
@@ -16,7 +16,7 @@ from .telegram import answer_callback, edit_message_text, parse_command, send_te
 
 def make_handler(cfg, engine):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.8.1"
+        server_version = f"arena-bridge/{VERSION}"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):  # quiet: we keep our own audit log
@@ -81,7 +81,7 @@ def make_handler(cfg, engine):
             path, query = self._route()
             if path == "/health":
                 current = load_config()
-                return self._send(200, {"ok": True, "mode": "direct", "device": current.get("device"), "version": "0.8.1"})
+                return self._send(200, {"ok": True, "mode": "direct", "device": current.get("device"), "version": VERSION})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             cfg_now = self._cfg_now()

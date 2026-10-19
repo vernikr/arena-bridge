@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { VERSION } from './version.mjs';
 import fsp from 'node:fs/promises';
 import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -73,7 +74,7 @@ export function createDirectServer(cfg, engine) {
           ok: true,
           mode: 'direct',
           device: cfg.device,
-          version: '0.8.1',
+          version: VERSION,
           uptime_sec: Math.round(process.uptime()),
         });
       }

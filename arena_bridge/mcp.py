@@ -1,6 +1,7 @@
 """Minimal MCP (Model Context Protocol) JSON-RPC handling over HTTP."""
 
 import json
+from .config import VERSION
 
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -37,7 +38,7 @@ def handle_mcp_payload(body, ctx):
                     {
                         "protocolVersion": PROTOCOL_VERSION,
                         "capabilities": {"tools": {"listChanged": False}},
-                        "serverInfo": {"name": "arena-bridge", "version": "0.8.1"},
+                        "serverInfo": {"name": "arena-bridge", "version": VERSION},
                         "instructions": (
                             "Tools operate the user's own machine. Dangerous operations may return "
                             "PROTECTED and require a local human approval."

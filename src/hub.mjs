@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { VERSION } from './version.mjs';
 import crypto from 'node:crypto';
 import { sendJson, sendText, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -90,7 +91,7 @@ export function createHubServer(cfg) {
         return sendJson(res, 200, {
           ok: true,
           mode: 'hub',
-          version: '0.8.1',
+          version: VERSION,
           devices: [...devices.keys()],
         });
       }

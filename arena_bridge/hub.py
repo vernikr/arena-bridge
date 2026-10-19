@@ -8,7 +8,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .approvals import decide, list_approvals
-from .config import load_config
+from .config import VERSION, load_config
 from .engine import TOOLS
 from .mcp import handle_mcp_payload
 from .policy import check_path
@@ -97,7 +97,7 @@ def make_handler(cfg, state: HubState):
         ]
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "arena-bridge/0.8.1"
+        server_version = f"arena-bridge/{VERSION}"
         protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt, *args):
@@ -155,7 +155,7 @@ def make_handler(cfg, state: HubState):
         def do_GET(self):
             path, query = self._route()
             if path == "/health":
-                return self._send(200, {"ok": True, "mode": "hub", "version": "0.8.1", "devices": list(state.devices)})
+                return self._send(200, {"ok": True, "mode": "hub", "version": VERSION, "devices": list(state.devices)})
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             if path == "/devices":

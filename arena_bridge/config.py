@@ -3,7 +3,15 @@ import os
 import secrets
 from pathlib import Path
 
-VERSION = "0.8.1"
+try:
+    from importlib.metadata import version as _pkg_version
+    VERSION = _pkg_version("arena-bridge")
+except Exception:
+    import json, pathlib
+    try:
+        VERSION = json.loads((pathlib.Path(__file__).parent.parent / "package.json").read_text()).get("version", "0.8.1")
+    except Exception:
+        VERSION = "0.8.1"
 
 
 def config_dir() -> Path:
