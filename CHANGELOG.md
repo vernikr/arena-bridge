@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.9
+
+### Added
+- `doctor` now checks `audit.log` and `bridge.log` sizes — warns when over 10 MB / 5 MB with hint `arena-bridge cleanup`; `status` now includes `audit entries` and `bridge.log` size alongside `pending approvals`/`trust`/`publicUrl`.
+
 ## 0.8.8
 
 ### Changed

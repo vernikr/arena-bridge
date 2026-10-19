@@ -1120,6 +1120,22 @@ function cmdDoctor(args) {
   // service health as doctor check (non-fatal)
   try { const svc = serviceStatus(); checks.push({ name: 'service health', code: 'service_health', passed: svc.installed ? svc.running : true, detail: svc.installed ? (svc.running ? 'running' : 'not running') : 'not installed', hint: svc.installed && !svc.running ? 'arena-bridge service install' : '' }); } catch {}
 
+  // audit log + bridge.log size checks (R6)
+  try {
+    const alPath = path.join(CONFIG_DIR, 'audit.log');
+    if (fs.existsSync(alPath)) {
+      const sz = fs.statSync(alPath).size;
+      if (sz > 10*1024*1024) checks.push({ name: 'audit log size', code: 'audit_log_size', passed: false, detail: `${(sz/1024/1024).toFixed(1)} MB — run arena-bridge cleanup`, hint: 'arena-bridge cleanup --days 14' });
+      else checks.push({ name: 'audit log size', code: 'audit_log_size', passed: true, detail: `${(sz/1024).toFixed(0)} KB`, hint: '' });
+    }
+  } catch {}
+  try {
+    const blPath = path.join(CONFIG_DIR, 'logs', 'bridge.log');
+    if (fs.existsSync(blPath)) {
+      const sz = fs.statSync(blPath).size;
+      if (sz > 5*1024*1024) checks.push({ name: 'bridge.log size', code: 'bridge_log_size', passed: false, detail: `${(sz/1024/1024).toFixed(1)} MB — consider arena-bridge logs prune`, hint: 'arena-bridge cleanup' });
+    }
+  } catch {}
   const peek = findPeekaboo(cfg);
   checks.push({ name: 'peekaboo (desktop control)', code: 'peekaboo', passed: !!peek, detail: peek || 'not installed - screen and mouse control are off', hint: 'brew install peekaboo or set peekabooPath' });
   const chrome = [

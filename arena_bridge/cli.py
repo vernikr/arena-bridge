@@ -967,6 +967,26 @@ def cmd_doctor(args):
         svc=service_status()
         checks.append(("service health", (not svc.get("installed")) or bool(svc.get("running")), "running" if svc.get("running") else "not running" if svc.get("installed") else "not installed"))
     except: pass
+    # R6: audit log + bridge.log size checks
+    try:
+        from pathlib import Path as _P
+        from .config import config_dir
+        al = _P(config_dir()) / "audit.log"
+        if al.exists():
+            sz = al.stat().st_size
+            if sz > 10*1024*1024:
+                checks.append(("audit log size", False, f"{sz/1024/1024:.1f} MB — run arena-bridge cleanup"))
+            else:
+                checks.append(("audit log size", True, f"{sz/1024:.0f} KB"))
+    except: pass
+    try:
+        from .config import config_dir as _cd
+        bl = _cd() / "logs" / "bridge.log"
+        if bl.exists():
+            sz = bl.stat().st_size
+            if sz > 5*1024*1024:
+                checks.append(("bridge.log size", False, f"{sz/1024/1024:.1f} MB"))
+    except: pass
     from .mac import find_peekaboo
 
     peek = find_peekaboo(cfg)
@@ -1008,6 +1028,17 @@ def cmd_status(args):
         pending=len([a for a in list_approvals() if a.get("status")=="pending"])
         checks.append(("pending approvals", True, f"{pending} pending"))
     except Exception: pass
+    try:
+        from .audit import tail_audit as _ta
+        cnt=len(_ta(500))
+        checks.append(("audit entries", True, f"{cnt} entries"))
+    except: pass
+    try:
+        from pathlib import Path as _P
+        from .config import config_dir as _cd2
+        bl=_cd2()/"logs"/"bridge.log"
+        if bl.exists(): checks.append(("bridge.log", True, f"{bl.stat().st_size/1024:.0f} KB"))
+    except: pass
     checks.append(("API port", True, f"{cfg.get('host','127.0.0.1')}:{cfg.get('port',8787)} (expected)"))
     try:
         from .service import service_status
