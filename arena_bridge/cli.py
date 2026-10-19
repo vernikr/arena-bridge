@@ -585,6 +585,19 @@ def cmd_audit(args):
         print(json.dumps(rec, indent=2, default=str) if rec else f"no entry with id {action}")
         return
     entries = tail_audit(min(args.n*5, 500))
+    if getattr(args, 'since', None):
+        try:
+            from .trust import parse_duration
+            ms = parse_duration(str(args.since))
+            cutoff = __import__('time').time()*1000 - ms
+            def _ts(e):
+                ts = e.get('ts')
+                if ts:
+                    try: return __import__('datetime').datetime.fromisoformat(ts.replace('Z','+00:00')).timestamp()*1000
+                    except: pass
+                return e.get('createdAt',0) or 0
+            entries = [e for e in entries if _ts(e) >= cutoff]
+        except Exception: pass
     if getattr(args, 'tool', None):
         want = str(args.tool).lower()
         entries = [e for e in entries if str(e.get('tool','')).lower()==want]
@@ -881,6 +894,7 @@ def build_parser():
     audit.add_argument("action", nargs="?", default="list", help="list, dir, artifacts, prune or an entry id")
     audit.add_argument("-n", type=int, default=30)
     audit.add_argument("--tool", help="filter by tool name")
+    audit.add_argument("--since", help="only entries since duration (e.g. 2h, 1d, 30m)")
     audit.add_argument("--days", type=int, default=14)
     audit.set_defaults(func=cmd_audit)
 
