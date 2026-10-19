@@ -811,6 +811,18 @@ function cmdConfig(args) {
     console.log(`✓ config ${key} = ${JSON.stringify(parsed)}`);
     return;
   }
+  if (sub === 'validate') {
+    const isJson = !!(args.flags.json);
+    const errs = [];
+    if (!cfg.roots || !cfg.roots.length) errs.push('roots is empty — run arena-bridge init --root ~/projects');
+    else for (const r of cfg.roots) { try { if (!fs.existsSync(r)) errs.push(`root not found: ${r}`); } catch {} }
+    if (!cfg.token) errs.push('token missing — run arena-bridge init');
+    if (!cfg.deviceToken) errs.push('deviceToken missing');
+    if (!Number.isFinite(Number(cfg.port)) || Number(cfg.port) < 1 || Number(cfg.port) > 65535) errs.push(`port invalid: ${cfg.port}`);
+    if (isJson) console.log(JSON.stringify({ ok: errs.length===0, errors: errs }, null, 2));
+    else { if (!errs.length) console.log('✓ config valid'); else { console.log('✗ config issues:'); for (const e of errs) console.log(`  - ${e}`); process.exitCode=1; } }
+    return;
+  }
   if (sub === 'edit') {
     const editor = process.env.EDITOR || process.env.VISUAL || 'nano';
     const { spawnSync } = require('node:child_process');
@@ -818,7 +830,7 @@ function cmdConfig(args) {
     if (res.error) console.error(`cannot open editor: ${res.error.message}`);
     return;
   }
-  console.error(`unknown config action: ${sub}\nuse: get <key> | set <key> <value> | edit | list`);
+  console.error(`unknown config action: ${sub}\nuse: get <key> | set <key> <value> | edit | list | validate`);
   process.exit(1);
 }
 

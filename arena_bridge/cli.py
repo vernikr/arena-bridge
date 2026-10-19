@@ -673,6 +673,27 @@ def cmd_config(args):
         save_config(cfg)
         print(f"✓ config {key} = {json.dumps(parsed)}")
         return
+    if action == "validate":
+        errs=[]
+        if not cfg.get("roots"): errs.append("roots is empty — run arena-bridge init --root ~/projects")
+        else:
+            for r in cfg.get("roots") or []:
+                if not __import__('os').path.exists(r): errs.append(f"root not found: {r}")
+        if not cfg.get("token"): errs.append("token missing — run arena-bridge init")
+        if not cfg.get("deviceToken"): errs.append("deviceToken missing")
+        try:
+            p=int(cfg.get("port",0))
+            if not (1 <= p <= 65535): errs.append(f"port invalid: {cfg.get('port')}")
+        except: errs.append(f"port invalid: {cfg.get('port')}")
+        is_json=bool(getattr(args,'json',False))
+        if is_json: print(__import__('json').dumps({"ok": len(errs)==0, "errors": errs}, indent=2))
+        else:
+            if not errs: print("✓ config valid")
+            else:
+                print("✗ config issues:")
+                for e in errs: print(f"  - {e}")
+                import sys as _sys; _sys.exit(1)
+        return
     if action == "edit":
         import subprocess as _sp
         editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
@@ -680,7 +701,7 @@ def cmd_config(args):
         try: _sp.run([editor, path])
         except Exception as e: print(f"cannot open editor: {e}", file=sys.stderr)
         return
-    print(f"unknown config action: {action}", file=sys.stderr); sys.exit(1)
+    print(f"unknown config action: {action} (use get/set/edit/list/validate)", file=sys.stderr); sys.exit(1)
 
 def cmd_telegram(args):
     cfg = load_config()
