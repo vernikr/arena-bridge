@@ -100,6 +100,19 @@ def make_handler(cfg, engine):
                 payload = {"ok": True, "mode": "direct", "version": VERSION}
                 if expose:
                     payload["device"] = current.get("device")
+                # observability: pending approvals, trust, publicUrl
+                try:
+                    from .approvals import list_approvals
+                    pending = len([a for a in list_approvals() if a.get("status") == "pending"])
+                    payload["pending_approvals"] = pending
+                except Exception:
+                    pass
+                try:
+                    from .trust import trust_state
+                    payload["trust_active"] = bool(trust_state().get("active"))
+                except Exception:
+                    pass
+                payload["has_public_url"] = bool(current.get("publicUrl"))
                 return self._send(200, payload)
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})

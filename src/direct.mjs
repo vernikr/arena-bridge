@@ -72,12 +72,18 @@ export function createDirectServer(cfg, engine) {
     try {
       if (p === '/health') {
         const expose = cfg.exposeDeviceInHealth !== false;
+        let pending = 0, trustActive = false;
+        try { pending = listApprovals().filter(a => a.status === 'pending').length; } catch {}
+        try { const { trustState } = await import('./trust.mjs'); trustActive = !!trustState().active; } catch {}
         return sendJson(res, 200, {
           ok: true,
           mode: 'direct',
           ...(expose ? { device: cfg.device } : {}),
           version: VERSION,
           uptime_sec: Math.round(process.uptime()),
+          pending_approvals: pending,
+          trust_active: trustActive,
+          has_public_url: !!cfg.publicUrl,
         });
       }
 
