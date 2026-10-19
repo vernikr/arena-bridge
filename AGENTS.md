@@ -12,7 +12,8 @@ Keep it short; details go to `docs/reference/`.
 | `src/gate.mjs` `arena_bridge/gate.py` | `authorize(tool,args,cfg)` | Single source for `PUT/DELETE /files` + `POST /call` gate: trust → requireApproval → requestApproval, 202 vs 403. |
 | `src/policy.mjs` `arena_bridge/policy.py` | `resolveTarget`/`checkPath` + `isInside` | lstat-based symlink handling (B1). Single source for path policy. |
 | `src/config.mjs` `arena_bridge/config.py` `src/state.mjs` | `loadConfig`/`saveConfig` + `DEFAULTS` + `loadState`/`saveState` (`STATE_PATH`) | `config.json` = user intent, `state.json` = runtime (`publicUrl`). Atomic tmp+rename. |
-| `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()` | JSON-lines, reverse-read, 5–10MB rotation, no large bodies. |
+| `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()`/`levelFor()` | JSON-lines, reverse-read, 5–10MB rotation. Parameters kept whole, >64 KB overflow to `args.json` artifact. Levels info/notice/warning/alert. |
+| `src/source.mjs` | `describeSource()`/`sourceOf()`/`admitUnauthorized()` | Caller identity from the tunnel's `Cf-Connecting-IP`, reverse-DNS host (250 ms budget, cached), 401 rate limit per address. Node only. |
 | `src/approvals.mjs` `arena_bridge/approvals.py` | `requestApproval()` file-based | 400ms poll, TTL vs wait, `trust.json` blanket window. |
 | `src/trust.mjs` `arena_bridge/trust.py` | `trustState()`/`trustAllows()` + `pruneExpiredTrust()` | Blanket `tools:[]` = all tools, auto-prune expired on status. |
 | `src/direct.mjs` `arena_bridge/server.py` | HTTP API (`/call`, `/files`, `/health`) | `PUT/DELETE /files` via gate + audit. 202 for pending. `/health` → `pending_approvals`, `trust_active`, `audit_count`, `log_size`. |

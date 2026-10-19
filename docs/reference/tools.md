@@ -15,6 +15,7 @@ Single source: `src/engine.mjs` `toolCatalog()` → `GET /tools` + MCP `tools/li
 - `file_put`
 - `audit_log`
 - `audit_artifact`
+- `log_note`
 - `sysinfo`
 - `start_process`
 - `read_process_output`

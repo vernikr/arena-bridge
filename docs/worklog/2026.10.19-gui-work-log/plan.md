@@ -192,6 +192,24 @@ Results (2026-10-19, on the Mac via the bridge, macOS 15.8.1):
 - Decisions in section 8 recorded.
 - Acceptance: contract and fixture exist; bug confirmed; header behaviour known; open questions answered.
 
+### Wave 1 — recording (Node, M) — status: done on branch `wave-1/log-recording`
+
+Delivered:
+- Every call goes through one recording path, with the caller (`source`) passed from the HTTP API, MCP, the hub and the device job queue. Unknown tools, invalid JSON, oversized bodies, file reads and writes through `/files`, and forbidden approval attempts are recorded.
+- Full parameters: inline up to 64 KB, larger payloads in `args.json` next to the entry. Masking extended (bearer tokens, AWS key ids, private key blocks, `env` values and secret-named keys).
+- Alert levels assigned in one function (`levelFor`) for all current outcomes.
+- Failed authentications: first 5 per address per minute logged at alert level, the rest counted and reported when the minute ends.
+- `log_note` tool: 1 to 500 characters, at most one per second, info level; listed in the agent prompt and in the tool reference.
+- Tests: `test/log.test.mjs` (12 cases incl. record contract and HTTP paths). Full `npm test` passes.
+
+Deviations from the plan:
+- `via` is the authorization path for calls (`direct`, `trust_window`, `approval`, `files_api`, `api`). Lifecycle events (Wave 2) use it for their origin. Contract updated.
+- MCP client name is the User-Agent: the MCP client info arrives only at initialize and the server keeps no session.
+- Hub 401 entries are recorded; the hub's own job path is covered by the job source, but only by the existing smoke test, not by an assertion of its own.
+- Python parity not done (Node only). Python suites already fail on main, see `docs/blockers/b01-python-approvals-unbound.md`.
+- Retention (7 days, 20 MB, artifacts cap) is not in this wave: it belongs with segment rotation in Wave 2.
+- Removed a duplicate screenshot entry; the call itself is recorded once by the engine with its path argument.
+
 ### Wave 1 — recording (Node, M)
 - `Engine.call` takes `source`; `direct.mjs`, MCP, Telegram and CLI pass it.
 - Full parameters with artifact overflow; extended masking tests.

@@ -12,9 +12,9 @@ Fixture with one example per kind: `fixtures/audit-v2.jsonl`.
 | `tool` | string \| null | Tool name for `call`/`note`; null otherwise. |
 | `status` | string | `ok`, `error`, `exception`, `rejected`, `approval_denied`, `opened`, `closed`, `expired`, `step`, `started`, `stopped`, `gave_up`, `unauthorized`, `history_deleted`. |
 | `duration_ms` | number | Present for calls and steps; 0 otherwise. |
-| `via` | string | Channel that caused the event: `http`, `mcp`, `telegram`, `cli`, `gui`, `files_api`, `approval`, `trust_window`, `app-launch`, `tunnel`. |
+| `via` | string | For calls: authorization path `direct`, `trust_window`, `approval`, `files_api`, `api`. For lifecycle events: origin `gui`, `cli`, `telegram`, `app-launch`, `tunnel`. |
 | `actor` | `agent` \| `user` \| `system` | Who initiated. |
-| `source` | object | `channel`, `ip`, `host`, `client`, `alias`. IP and host are informational only. Null when unknown. |
+| `source` | object | `channel` (`http`, `mcp`, `hub`, `local`, or lifecycle origin), `ip` (from the tunnel's `Cf-Connecting-IP`), `country`, `host` (reverse DNS), `client` (User-Agent, 120 chars), `alias`. Informational only; authorization never depends on it. Null when unknown. |
 | `args` | object | Parameters after secret masking. Inline up to 64 KB. |
 | `args_truncated` | bool | True when the full value lives in the artifact named by `args_artifact`. |
 | `args_artifact` | string? | File name of the full arguments in the entry's artifact folder. |
