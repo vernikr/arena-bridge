@@ -125,7 +125,9 @@ struct PermissionGuideView: View {
                 Button("Show app in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: "/Applications/Arena Bridge.app")])
                 }
-                Button("Keep permissions after updates…") { model.openSigningGuide() }
+                if !AppModel.hasCertificate {
+                    Button("Keep permissions after updates…") { model.openSigningGuide() }
+                }
                 Spacer()
                 Button("Check again") { model.checkPermissions(force: true) }
                     .disabled(model.permissionsChecking)

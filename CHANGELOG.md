@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.16.0
+
+### Added
+- Start shows seven steps, each with a time limit; the step line shows the seconds it has run.
+- A small Cancel button stops a start in progress and leaves the bridge stopped.
+- The app's own work log keeps the start and stop steps when the bridge is not answering.
+- macOS app releases are disk images (.dmg) instead of zip archives.
+
+### Changed
+- The "Keep permissions after updates" button appears only in builds without the project certificate.
+
+### Fixed
+- A stuck launchctl command no longer freezes the start; every launchctl call has a time limit.
+- The public-address check recognises the ngrok tunnel as well as cloudflared.
+
 ## 0.15.0
 
 ### Added

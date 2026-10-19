@@ -57,8 +57,8 @@ pip install arena-bridge       # то же самое на Python
 ```
 
 Приложение macOS можно скачать и без терминала — в каждом выпуске лежат готовые сборки:
-[Apple silicon](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-arm64.zip) ·
-[Intel](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-x86_64.zip).
+[Apple silicon](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-arm64.dmg) ·
+[Intel](https://github.com/vernikr/arena-bridge/releases/latest/download/Arena-Bridge-x86_64.dmg).
 Распаковать и перетащить в «Программы».
 
 ```bash

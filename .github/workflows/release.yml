@@ -106,17 +106,18 @@ jobs:
           for arch in arm64 x86_64; do
             (cd macos/ArenaBridge && ARCH=$arch ./build.sh)
             codesign -dv "macos/ArenaBridge/dist/Arena Bridge.app" 2>&1 | grep -m1 "^Authority" || true
-            cp -R "macos/ArenaBridge/dist/Arena Bridge.app" "/tmp/Arena Bridge.app"
-            (cd /tmp && zip -qry "$RUNNER_TEMP/Arena-Bridge-$arch.zip" "Arena Bridge.app")
-            rm -rf "/tmp/Arena Bridge.app" "macos/ArenaBridge/dist"
+            rm -rf "$RUNNER_TEMP/dmg" && mkdir "$RUNNER_TEMP/dmg"
+            cp -R "macos/ArenaBridge/dist/Arena Bridge.app" "$RUNNER_TEMP/dmg/"
+            ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+            hdiutil create -quiet -volname "Arena Bridge" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$GITHUB_WORKSPACE/Arena-Bridge-$arch.dmg"
+            rm -rf "$RUNNER_TEMP/dmg" "macos/ArenaBridge/dist"
           done
-          mv "$RUNNER_TEMP"/Arena-Bridge-*.zip "$GITHUB_WORKSPACE"
       - name: generate SHA256SUMS for apps
-        run: shasum -a 256 Arena-Bridge-*.zip > SHA256SUMS-apps
+        run: shasum -a 256 Arena-Bridge-*.dmg > SHA256SUMS-apps
       - name: attach the apps and checksums to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download "$GITHUB_REF_NAME" -p SHA256SUMS -O SHA256SUMS
           cat SHA256SUMS-apps >> SHA256SUMS
-          gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.zip Arena-Bridge-x86_64.zip SHA256SUMS --clobber
+          gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.dmg Arena-Bridge-x86_64.dmg SHA256SUMS --clobber

@@ -94,16 +94,16 @@ install_app() {
   [ "$OS" = "Darwin" ] || return 0
   say "→ the macOS app"
   TAG="${VERSION:-latest}"
-  URL="https://github.com/$REPO/releases/latest/download/Arena-Bridge-$ASSET_ARCH.zip"
+  URL="https://github.com/$REPO/releases/latest/download/Arena-Bridge-$ASSET_ARCH.dmg"
   if [ -n "$VERSION" ]; then
-    URL="https://github.com/$REPO/releases/download/v$VERSION/Arena-Bridge-$ASSET_ARCH.zip"
+    URL="https://github.com/$REPO/releases/download/v$VERSION/Arena-Bridge-$ASSET_ARCH.dmg"
   fi
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --progress-bar "$URL" -o "$TMP/app.zip" || die "cannot download the app"
+    curl -fL --progress-bar "$URL" -o "$TMP/app.dmg" || die "cannot download the app"
   else
-    wget -q "$URL" -O "$TMP/app.zip" || die "cannot download the app"
+    wget -q "$URL" -O "$TMP/app.dmg" || die "cannot download the app"
   fi
   # A4: verify SHA256 if available (release publishes SHA256SUMS)
   SHA_URL="${URL%/*}/SHA256SUMS"
@@ -117,9 +117,12 @@ install_app() {
       fi
     fi
   fi
-  unzip -q "$TMP/app.zip" -d "$TMP"
-  APP="$(find "$TMP" -maxdepth 3 -name '*.app' -print -quit)"
-  [ -n "$APP" ] || die "the archive has no app inside"
+  MNT="$TMP/mnt"
+  hdiutil attach -nobrowse -readonly -quiet -mountpoint "$MNT" "$TMP/app.dmg" || die "cannot open the disk image"
+  cp -R "$MNT/Arena Bridge.app" "$TMP/" || { hdiutil detach -quiet "$MNT"; die "cannot copy the app from the disk image"; }
+  hdiutil detach -quiet "$MNT" || true
+  APP="$TMP/Arena Bridge.app"
+  [ -d "$APP" ] || die "the disk image has no app inside"
   TARGET="/Applications/Arena Bridge.app"
   if [ -w /Applications ]; then
     [ -n "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/Applications" ] || die "refusing to remove unsafe TARGET: $TARGET"

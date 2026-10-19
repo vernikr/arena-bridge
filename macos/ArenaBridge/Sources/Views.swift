@@ -171,6 +171,9 @@ struct StepIndicator: View {
             } else if let op = model.operation {
                 ProgressView().controlSize(.small)
                 Text("Step \(op.step)/\(op.total) · \(op.name)")
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text("· \(Int(context.date.timeIntervalSince(op.since))) s").foregroundStyle(.secondary)
+                }
             } else if model.running {
                 Image(systemName: "circle.fill").foregroundStyle(.green)
                 Text(model.publicReady ? "Running · public address ready" : "Running · no public address")
@@ -210,6 +213,10 @@ struct ActionsCard: View {
                 .tint(model.running ? .red : .green)
                 .disabled(model.transitioning)
                 StepIndicator()
+                if model.operation?.starting == true, model.operation?.reason == nil {
+                    Button("Cancel") { model.cancelStart() }
+                        .controlSize(.small)
+                }
                 Spacer(minLength: 8)
                 Button {
                     model.showSetup = true
@@ -240,7 +247,9 @@ struct ActionsCard: View {
                     .font(.callout)
                     .lineLimit(2)
                 Spacer()
-                Button("Keep permissions after updates…") { model.openSigningGuide() }
+                if !AppModel.hasCertificate {
+                    Button("Keep permissions after updates…") { model.openSigningGuide() }
+                }
             }
             Divider()
             HStack(spacing: 10) {

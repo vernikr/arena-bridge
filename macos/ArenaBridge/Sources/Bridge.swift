@@ -372,37 +372,24 @@ struct Bridge {
     /// Is the service installed and running?
     static func serviceState() -> (installed: Bool, running: Bool) {
         let installed = FileManager.default.fileExists(atPath: plistPath)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["print", serviceTarget]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do {
-            try process.run()
-        } catch {
-            return (installed, false)
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let text = String(data: data, encoding: .utf8) ?? ""
+        let text = launchctl(["print", serviceTarget], timeout: 5) ?? ""
         return (installed, text.contains("state = running"))
     }
 
-    static func start() {
-        load()
-        kick()
-    }
+    @discardableResult
+    static func start() -> Bool { load() && kick() }
 
-    static func load() { _ = launchctl(["bootstrap", "gui/\(getuid())", plistPath]) }
+    @discardableResult
+    static func load() -> Bool { launchctl(["bootstrap", "gui/\(getuid())", plistPath]) != nil }
 
-    static func kick() { _ = launchctl(["kickstart", "-k", serviceTarget]) }
+    @discardableResult
+    static func kick() -> Bool { launchctl(["kickstart", "-k", serviceTarget]) != nil }
 
-    /// True while a cloudflared process is alive; used to confirm the public address closed.
+    /// True while a tunnel process is alive; used to confirm the public address closed.
     static func tunnelRunning() -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-f", "cloudflared"]
+        process.arguments = ["-f", "cloudflared|ngrok"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return false }
@@ -410,21 +397,31 @@ struct Bridge {
         return process.terminationStatus == 0
     }
 
-    static func stop() {
-        _ = launchctl(["bootout", serviceTarget])
-    }
-
     @discardableResult
-    static func launchctl(_ arguments: [String]) -> String {
+    static func stop() -> Bool { launchctl(["bootout", serviceTarget]) != nil }
+
+    /// Runs launchctl with a time limit. The output goes to a file, so a stuck command cannot block the app.
+    /// Returns nil when the command did not finish in time.
+    @discardableResult
+    static func launchctl(_ arguments: [String], timeout: TimeInterval = 10) -> String? {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("launchctl-\(UUID().uuidString).txt")
+        FileManager.default.createFile(atPath: file.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard let output = try? FileHandle(forWritingTo: file) else { return nil }
+        defer { try? output.close() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try? process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(data: data, encoding: .utf8) ?? ""
+        process.standardOutput = output
+        process.standardError = output
+        guard (try? process.run()) != nil else { return nil }
+        let end = Date().addingTimeInterval(timeout)
+        while process.isRunning, Date() < end { Thread.sleep(forTimeInterval: 0.1) }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+            return nil
+        }
+        return (try? String(contentsOf: file, encoding: .utf8)) ?? ""
     }
 }

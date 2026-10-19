@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var unseen = 0
     @Published var detailEntry: LogEntry?
     @Published var operation: ServiceOp?
+    var cancelRequested = false
     @Published var publicReady = false
     @Published var trustEnabled = false
     @Published var trustRemaining = 0
@@ -295,6 +296,7 @@ final class AppModel: ObservableObject {
         var total: Int
         var name: String
         var reason: String?
+        var since = Date()
     }
 
     var transitioning: Bool { operation.map { $0.reason == nil } ?? false }
@@ -308,11 +310,12 @@ final class AppModel: ObservableObject {
         Task {
             await run(starting: true, [
                 ("Checking setup", checkSetup),
-                ("Loading service", { await Task.detached { Bridge.load() }.value; return nil }),
-                ("Starting bridge", { await Task.detached { Bridge.kick() }.value; return nil }),
+                ("Stopping old process", stopOld),
+                ("Loading service", { await self.blocking("launchctl did not answer in 10 s") { Bridge.load() } }),
+                ("Starting process", { await self.blocking("launchctl did not answer in 10 s") { Bridge.kick() } }),
                 ("Waiting for the local API", { await self.waitFor(15) { await self.flag("ok") } ? nil : "local API did not answer in 15 s" }),
-                ("Opening public address", { await self.waitFor(30) { await self.flag("has_public_url") } ? nil : "public address not ready" }),
-                ("Checking tools", { await self.waitFor(5) { await self.toolCount() > 0 } ? nil : "no tools reported" }),
+                ("Waiting for the public address", { await self.waitFor(30) { await self.flag("has_public_url") } ? nil : "public address not ready in 30 s" }),
+                ("Checking tools", { await self.waitFor(5) { await self.toolCount() > 0 } ? nil : "no tools reported in 5 s" }),
             ])
         }
     }
@@ -329,13 +332,29 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Lets the user cancel a start. Only a start can be cancelled; a stop always finishes.
+    func cancelStart() {
+        guard let op = operation, op.starting, op.reason == nil else { return }
+        cancelRequested = true
+    }
+
     private func run(starting: Bool, _ steps: [(String, () async -> String?)]) async {
+        cancelRequested = false
         operation = ServiceOp(starting: starting, step: 0, total: steps.count, name: "", reason: nil)
         for (index, step) in steps.enumerated() {
+            if cancelRequested {
+                await cancelled(at: index)
+                return
+            }
             operation?.step = index + 1
             operation?.name = step.0
+            operation?.since = Date()
             await note("\(index + 1)/\(steps.count) \(step.0)")
             if let reason = await step.1() {
+                if cancelRequested {
+                    await cancelled(at: index + 1)
+                    return
+                }
                 operation?.reason = reason
                 await note("failed at step \(index + 1)/\(steps.count): \(reason)", level: "alert")
                 await refresh(log: false, showBusy: false)
@@ -345,6 +364,26 @@ final class AppModel: ObservableObject {
         operation = nil
         notice = starting ? "The bridge is running." : "The bridge is stopped."
         await refresh()
+    }
+
+    private func cancelled(at step: Int) async {
+        cancelRequested = false
+        await Task.detached { Bridge.stop() }.value
+        operation = nil
+        notice = "Start cancelled at step \(step). The bridge is stopped."
+        await note("start cancelled by the user at step \(step)", level: "alert")
+        await refresh()
+    }
+
+    private func blocking(_ reason: String, _ work: @escaping @Sendable () -> Bool) async -> String? {
+        await Task.detached { work() }.value ? nil : reason
+    }
+
+    private func stopOld() async -> String? {
+        guard await Task.detached({ Bridge.serviceState().running }).value else { return nil }
+        await Task.detached { Bridge.stop() }.value
+        let gone = await waitFor(10) { await Task.detached { !Bridge.serviceState().running }.value }
+        return gone ? nil : "old process still running after 10 s"
     }
 
     private func checkSetup() async -> String? {
@@ -366,14 +405,17 @@ final class AppModel: ObservableObject {
         return (result.1["tools"] as? [[String: Any]])?.count ?? 0
     }
 
-    /// Writes one step line to the work log.
+    /// Writes one step line to the work log. When the bridge is down, the line stays in the app's own log.
     private func note(_ text: String, level: String = "info") async {
-        _ = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text])
+        let (code, _) = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text])
+        guard code != 200, let entry = LogEntry.parse(["id": "local-\(UUID().uuidString)", "tool": "service", "status": "step", "level": level, "args_preview": text]) else { return }
+        entries.append(entry)
+        recompute()
     }
 
     private func waitFor(_ seconds: Double, _ check: () async -> Bool) async -> Bool {
         let end = Date().addingTimeInterval(seconds)
-        while Date() < end {
+        while Date() < end, !cancelRequested {
             if await check() { return true }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
