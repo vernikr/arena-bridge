@@ -199,8 +199,7 @@ cookies и localStorage нет.
 
 Установить Peekaboo: `brew install peekaboo` (или бинарник в `/usr/local/bin/peekaboo`).
 Проверено с Peekaboo 4.9 (4.3 тоже работает, но синтаксис команд обновлён под 4.9).
-macOS спросит разрешения **Screen Recording** и **Accessibility** для терминала, из которого
-запущен мост — без них скриншоты и клики не работают; `mac_permissions` покажет, что не так.
+macOS asks for **Screen Recording** and **Accessibility** for the Arena Bridge app; without them screenshots and clicks fail. See [macOS permissions](#macos-permissions).
 
 ### Что даёт доступ Accessibility
 
@@ -219,8 +218,7 @@ macOS отдаёт приложениям два разных слоя: карт
 
 Практический вывод: с выданным Accessibility агент работает заметно точнее и тише. Разрешение
 даётся один раз в **Системные настройки → Конфиденциальность и безопасность → Универсальный
-доступ** (для терминала, из которого запущен мост). `mac_permissions` показывает текущее
-состояние разрешений.
+доступ** (for the Arena Bridge app, see [macOS permissions](#macos-permissions)). `mac_permissions` shows the current state.
 
 ---
 
@@ -317,39 +315,41 @@ Apple Silicon. Готовые сборки для обеих архитекту�
 Иконка приложения лежит в `macos/ArenaBridge/Resources/AppIcon.png`; `build.sh` сам собирает
 из неё `.icns` и кладёт в бандл. Вокруг знака прозрачно — на светлом фоне иконка не белая.
 
-### Разрешения macOS
+### macOS permissions
 
-Мосту нужны два разрешения в «Конфиденциальность и безопасность»:
+The bridge takes screenshots and clicks through **Arena Bridge.app**, so macOS needs two permissions for that app:
 
-- **Запись экрана и системного аудио** → включите **Arena Bridge**.
-- **Универсальный доступ (Accessibility)** → включите **arena-bridge-agent**.
+- **Screen Recording** (System Settings → Privacy & Security → Screen & System Audio Recording)
+- **Accessibility** (System Settings → Privacy & Security → Accessibility)
 
-Это части одного приложения. После изменения разрешений может потребоваться перезапуск службы.
-Старую запись `node` удаляйте только после проверки снимков и дерева элементов (`mac_see`).
-Успешное сохранение PNG ещё не доказывает доступ: на снимке должно быть содержимое окон,
-а не только обои. Без Accessibility снимок может работать, но дерево элементов будет пустым.
+Check them at any time with `arena-bridge permissions` (exit code 3 when something is missing) or with the `mac_permissions` tool. The app shows a warning on the **Control** card when either permission is missing. Click **Fix…** to open the step-by-step guide.
 
-После установки приложения переустановите службу (`arena-bridge service install` с прежними
-параметрами туннеля), чтобы она использовала помощник внутри бандла
-(`Contents/Helpers/arena-bridge-agent`). Без приложения CLI продолжает работать, но названия
-записей разрешений могут отличаться.
+#### Grant the permissions (about 3 minutes)
 
-Стабильный путь к интерпретатору снижает риск потери разрешений, но не гарантирует их сохранение
-после изменения подписи, пути или обновления приложения. Проверяйте разрешения для реально
-запущенной установки. В частности, обновление ad-hoc-подписанного помощника может оставить
-переключатели включёнными, но фактически лишить процесс доступа: выключите и снова включите
-**Arena Bridge** в записи экрана и **arena-bridge-agent** в Accessibility, затем перезапустите службу.
-Если это не помогло, удалите только эти две записи кнопкой «−» и добавьте заново через «+»:
-`/Applications/Arena Bridge.app` и
-`/Applications/Arena Bridge.app/Contents/Helpers/arena-bridge-agent` соответственно.
-Не храните резервные сборки с тем же bundle id как зарегистрированные `.app`:
-это затрудняет выбор нужной установки.
+1. Click **Fix…** on the Control card, or open the two panes above by hand.
+2. In **Screen & System Audio Recording**, find **Arena Bridge** and switch it on.
+   - If it is not in the list, click **+** under the list. If **+** is grey, click the lock at the bottom left and enter your Mac password first. In the file window press ⌘⇧G, paste `/Applications/Arena Bridge.app`, press Return, click **Open**, and switch it on.
+3. Do the same in **Accessibility**.
+4. Quit Arena Bridge (⌘Q), open it again, and click **Check again**. The warning disappears when both permissions are granted.
 
-Переустановка службы выполняется отдельным одноразовым системным заданием через несколько
-секунд после команды. Это позволяет переустанавливать мост через сам мост. `scheduled` означает
-только постановку задания, не успешный запуск. Результат загрузки службы — в
-`~/.arena-bridge/service-reload.status`, ошибки — в `~/.arena-bridge/logs/service-reload.err.log`.
-Проверяйте также `arena-bridge service status` и `/health`: `loaded` ещё не гарантирует работу туннеля.
+Harder cases:
+
+- **The switch is on, but the app still says "missing".** The entry is stale, which usually happens after an update. Select Arena Bridge, click **−**, then **+**, and add it again.
+- **macOS asks "Arena Bridge would like to record this computer's screen".** Click **Open System Settings** and switch it on.
+- **The app is not in `/Applications`.** Move it there first. macOS ties permissions to the exact file location.
+- **Still missing after all of the above.** Restart the Mac, open Arena Bridge, and click **Check again**.
+
+#### Keep the permissions across updates
+
+macOS identifies an app by its signature. Builds without your own certificate are *ad-hoc* signed, and macOS can reset their permissions after every rebuild. To avoid this, create a certificate once:
+
+1. Open **Keychain Access** (Spotlight → "Keychain Access").
+2. Menu **Keychain Access → Certificate Assistant → Create a Certificate…**
+3. Name: `Arena Bridge Local`. Identity Type: **Self-Signed Root**. Certificate Type: **Code Signing**. Click **Create**, then **Done**.
+4. Double-click the new certificate, expand **Trust**, set **When using this certificate** to **Always Trust**, close the window, and enter your password.
+5. Build with it: `ARENA_SIGN_IDENTITY="Arena Bridge Local" bash macos/ArenaBridge/build.sh`. Install the app and grant the permissions once more. Later builds signed the same way keep them.
+
+Release downloads are ad-hoc signed, so after installing one, follow the grant steps again. The Control card warning and `arena-bridge permissions` show the state after every update.
 
 ### Как переименовать
 
@@ -562,7 +562,7 @@ arena_bridge/  тот же функционал на Python (stdlib only)
 | туннель не поднимается | `cloudflared` по умолчанию использует QUIC и может быть заблокирован — `arena-bridge tunnel --protocol http2` (это поведение по умолчанию) |
 | агент не видит файлы | проверьте `arena-bridge doctor` и `roots` в `~/.arena-bridge/config.json`; вне `roots` всё равно `PROTECTED` |
 | `APPROVAL_PENDING` | при `timeout`/`expired` старый запрос закрыт: согласуйте новый вызов или попросите открыть `arena-bridge trust --for 1h` |
-| скриншоты не работают | `mac_permissions` — выдайте терминалу Screen Recording и Accessibility |
+| скриншоты не работают | `arena-bridge permissions` — выдайте Arena Bridge Screen Recording и Accessibility (see [macOS permissions](#macos-permissions)) |
 | `peekaboo_not_found` | поставьте Peekaboo или укажите путь: `arena-bridge init` + `peekabooPath` в конфиге |
 
 ## Лицензия

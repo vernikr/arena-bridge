@@ -35,6 +35,43 @@ final class AppModel: ObservableObject {
     @Published var trustTools: [String] = []
     @Published var shownArtifact: Artifact? = nil
     @Published var notificationsAllowed = false
+    @Published var screenAccess: Bool? = nil
+    @Published var accessibilityAccess: Bool? = nil
+    @Published var showPermissionsGuide = false
+    private var lastPermissionCheck = Date.distantPast
+
+    /// True when the app is signed with a certificate, so macOS keeps its permissions across updates.
+    static let hasCertificate: Bool = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return false }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any] else { return false }
+        return dict[kSecCodeInfoCertificates as String] != nil
+    }()
+
+    /// The missing permission in plain words, or nil when both are granted.
+    var permissionsProblem: String? {
+        switch (screenAccess, accessibilityAccess) {
+        case (false, false): return "Screen Recording and Accessibility are missing: screenshots and clicks will fail."
+        case (false, _): return "Screen Recording is missing: screenshots will fail."
+        case (_, false): return "Accessibility is missing: element trees will be empty."
+        default: return nil
+        }
+    }
+
+    /// Asks the bridge CLI which macOS permissions it has. Read-only; at most once a minute unless forced.
+    func checkPermissions(force: Bool = false) {
+        guard force || Date().timeIntervalSince(lastPermissionCheck) > 60 else { return }
+        lastPermissionCheck = Date()
+        Task {
+            let out = await Task.detached { Bridge.run(["permissions", "--json"]).output }.value
+            guard let start = out.firstIndex(of: "{"), let end = out.lastIndex(of: "}"),
+                  let json = try? JSONSerialization.jsonObject(with: Data(out[start...end].utf8)) as? [String: Any] else { return }
+            screenAccess = json["screen"] as? Bool
+            accessibilityAccess = json["accessibility"] as? Bool
+        }
+    }
 
     private let bridge = Bridge()
     private var notified: Set<String> = []
@@ -176,6 +213,7 @@ final class AppModel: ObservableObject {
     func refresh(log: Bool = true, showBusy: Bool = true) async {
         if showBusy { busy = true }
         defer { if showBusy { busy = false } }
+        checkPermissions()
         let service = Bridge.serviceState()
         serviceInstalled = service.installed
         running = service.running

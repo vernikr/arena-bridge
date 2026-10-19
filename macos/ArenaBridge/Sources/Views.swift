@@ -31,6 +31,10 @@ struct ContentView: View {
             SetupView()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showPermissionsGuide) {
+            PermissionsGuideView()
+                .environmentObject(model)
+        }
         .sheet(item: $model.shownArtifact) { artifact in
             ArtifactView(artifact: artifact)
         }
@@ -220,6 +224,15 @@ struct ActionsCard: View {
                     model.copyPrompt()
                 } label: {
                     Label("Copy the agent prompt", systemImage: "doc.on.doc")
+                }
+            }
+            if let problem = model.permissionsProblem {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(problem).font(.callout).lineLimit(2)
+                    Spacer()
+                    Button("Fix…") { model.showPermissionsGuide = true }
+                        .buttonStyle(.borderedProminent)
                 }
             }
             Divider()
@@ -698,5 +711,78 @@ struct SetupView: View {
         working = false
         dismiss()
         Task { await model.refresh() }
+    }
+}
+
+// MARK: - permissions guide
+
+/// Step-by-step guide for Screen Recording and Accessibility. The labels match System Settings in English.
+struct PermissionsGuideView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    private static let steps: [String] = [
+        "Click \"Open Screen Recording settings\" below. System Settings opens at Privacy & Security → Screen & System Audio Recording.",
+        "Look for Arena Bridge in the list. If it is there and switched on, go to step 4.",
+        "Not in the list? Click the + button under the list. If + is grey, click the lock at the bottom left and enter your Mac password first. In the file window press ⌘⇧G, paste /Applications/Arena Bridge.app, press Return, then click Open. Switch it on.",
+        "Still shows as missing here? Select Arena Bridge, click −, then + and add it again as in step 3. Switching off and on does not fix an old entry after an update.",
+        "Do the same for Accessibility: click \"Open Accessibility settings\" below, then Arena Bridge with + and switch it on.",
+        "Quit Arena Bridge (⌘Q), open it again and click \"Check again\". If it is still missing, restart the Mac and check once more.",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Give Arena Bridge access to the screen")
+                .font(.title3.weight(.semibold))
+            HStack(spacing: 18) {
+                statusRow("Screen Recording", model.screenAccess)
+                statusRow("Accessibility", model.accessibilityAccess)
+            }
+            Text(AppModel.hasCertificate
+                 ? "This build has a signing certificate. Permissions normally survive updates."
+                 : "This build is ad-hoc signed. macOS may reset these permissions after every update. Use a certificate (see README, section macOS permissions).")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(Self.steps.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: .infinity)
+            HStack(spacing: 8) {
+                Button("Open Screen Recording settings") { openSettings("Privacy_ScreenCapture") }
+                Button("Open Accessibility settings") { openSettings("Privacy_Accessibility") }
+                Button("Show app in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: "/Applications/Arena Bridge.app")])
+                }
+                Spacer()
+                Button("Check again") { model.checkPermissions(force: true) }
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 600, height: 540)
+        .onAppear { model.checkPermissions(force: true) }
+    }
+
+    private func statusRow(_ name: String, _ granted: Bool?) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: granted == true ? "checkmark.circle.fill" : granted == false ? "xmark.circle.fill" : "questionmark.circle")
+                .foregroundStyle(granted == true ? .green : granted == false ? .red : .secondary)
+            Text("\(name): \(granted == true ? "granted" : granted == false ? "missing" : "not checked yet")")
+        }
+    }
+
+    private func openSettings(_ pane: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

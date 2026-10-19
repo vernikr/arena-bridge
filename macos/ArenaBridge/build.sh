@@ -53,9 +53,13 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$BUNDLE/Contents/Info.plist"
 
+# signing: without ARENA_SIGN_IDENTITY the app is ad-hoc signed, and macOS may reset its
+# screen and accessibility permissions after every rebuild. A certificate in the keychain keeps them.
+SIGN_ID="${ARENA_SIGN_IDENTITY:--}"
+echo "signing with: $SIGN_ID"
 # the nested code is signed first, the bundle covers it afterwards
-codesign --force --sign - --identifier "$BUNDLE_ID" "$BUNDLE/Contents/Helpers/$HELPER" >/dev/null 2>&1
-codesign --force --sign - "$BUNDLE" >/dev/null 2>&1
+codesign --force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$BUNDLE/Contents/Helpers/$HELPER" || { echo "signing failed: is the certificate \"$SIGN_ID\" in the keychain?" >&2; exit 1; }
+codesign --force --sign "$SIGN_ID" "$BUNDLE" || { echo "signing failed: is the certificate \"$SIGN_ID\" in the keychain?" >&2; exit 1; }
 
 codesign --verify --deep --strict "$BUNDLE"
 lipo "$BUNDLE/Contents/Helpers/$HELPER" -verify_arch "$ARCH"

@@ -16,7 +16,7 @@ import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
 import { parseDuration, trustState, openTrust, closeTrust, reconcileTrust } from './trust.mjs';
 import { bridgeEvent, tunnelEvent } from './lifecycle.mjs';
-import { findPeekaboo } from './mac.mjs';
+import { findPeekaboo, permissionStatus } from './mac.mjs';
 import { coldStartMs, mem, uptimeSec } from './telemetry.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
 import { VERSION } from './version.mjs';
@@ -109,6 +109,7 @@ Commands:
                        inbox [-n N]      show the messages the user sent
                        poll              listen for messages in the foreground
   doctor [--fix]       Check the installation and configuration (--fix repairs perms/dirs)
+  permissions [--json] Check macOS Screen Recording and Accessibility for the bridge (exit 3 if missing)
   status [--json]      One-line runtime status (config, url, trust, approvals, service)
   url                  Print the public URL the agent should use
   open                 Open the public URL in the browser
@@ -587,6 +588,22 @@ function cmdOpen() {
   } catch (e) {
     console.log(url);
   }
+}
+
+async function cmdPermissions(args) {
+  const st = await permissionStatus(loadConfig());
+  if (args.flags.json) {
+    console.log(JSON.stringify(st));
+  } else if (!st.ok && st.error) {
+    console.log(`permissions: ${st.error}`);
+  } else {
+    const label = (v) => (v === true ? 'granted' : v === false ? 'MISSING' : 'unknown');
+    console.log(`Screen Recording: ${label(st.screen)}`);
+    console.log(`Accessibility:    ${label(st.accessibility)}`);
+    if (st.source) console.log(`checked by:       ${st.source}`);
+    if (!st.ok) console.log('Fix: System Settings → Privacy & Security → Screen Recording and Accessibility → add Arena Bridge (see README "macOS permissions").');
+  }
+  process.exitCode = st.ok ? 0 : 3;
 }
 
 function cmdStatus(args) {
@@ -1118,6 +1135,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdTrust(args);
     case 'doctor':
       return cmdDoctor(args);
+    case 'permissions':
+      return cmdPermissions(args);
     case 'status':
       return cmdStatus(args);
     case 'url':

@@ -94,7 +94,7 @@ ${toolsLine}
 2. Then \`mac_click\` (by id, by visible text or by coordinates) → \`mac_type\` → \`mac_key\` → \`mac_scroll\`.
 3. \`mac_apps\` and \`mac_windows\` show what is running; \`mac_app_launch\`/\`mac_app_focus\` open and switch.
 4. If a capture or a click fails, run \`mac_permissions\` — macOS needs Screen Recording and
-   Accessibility permissions for the terminal that runs the bridge.
+   Accessibility permissions for the Arena Bridge app.
 5. Screenshots are saved as PNG inside the authorized roots; read them back with \`file_get\`.
 6. Stay out of the user's way: do not pass \`foreground\`, do not focus windows and do not move the
    pointer unless the user asks for it. Background actions are delivered to the target window only.

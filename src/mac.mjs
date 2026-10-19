@@ -886,11 +886,30 @@ export function macTools(cfg = {}) {
           ok: res.exit_code === 0,
           permissions: res.stdout.slice(0, 4000) || undefined,
           error: res.exit_code === 0 ? undefined : (res.stderr || '').trim().slice(0, 600),
-          hint: 'System Settings → Privacy & Security → Screen Recording / Accessibility → enable the terminal that runs the bridge.',
+          hint: 'System Settings → Privacy & Security → Screen Recording / Accessibility → enable Arena Bridge (see README, macOS permissions).',
         };
       },
     },
   ];
+}
+
+/**
+ * Screen Recording and Accessibility as the bridge's screen runtime reports them.
+ * Read-only: it asks Peekaboo for its permission lines and never changes anything.
+ */
+export async function permissionStatus(cfg = {}) {
+  const p = checkPeek(findPeekaboo(cfg));
+  if (!p.ok) return { ok: false, error: 'peekaboo_not_found' };
+  const res = await runVariants(p.bin, [['permissions']], { timeout: 30 });
+  const text = res.stdout || '';
+  const grant = (label) => {
+    const m = text.match(new RegExp(label + '[^:\\n]*:\\s*(Not Granted|Granted)'));
+    return m ? m[1] === 'Granted' : null;
+  };
+  const screen = grant('Screen Recording');
+  const accessibility = grant('Accessibility');
+  const source = (text.match(/Source:\s*(.+)/) || [])[1]?.trim() || null;
+  return { ok: screen === true && accessibility === true, screen, accessibility, source };
 }
 
 /** The Peekaboo envelope reports a host that lost its macOS permissions. */

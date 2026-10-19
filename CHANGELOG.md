@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- `arena-bridge permissions` checks Screen Recording and Accessibility (exit code 3 when one is missing).
+- The Control card warns when a macOS permission is missing and opens a step-by-step guide.
+- `build.sh` signs with `ARENA_SIGN_IDENTITY`; a certificate keeps the macOS permissions across rebuilds.
+
+### Changed
+- The README and the agent prompt name the Arena Bridge app, not the terminal, as the holder of the permissions.
+
+### Fixed
+- The source of a log entry is its own column.
+
 ## 0.14.1
 
 ### Fixed
