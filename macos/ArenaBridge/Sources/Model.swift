@@ -21,7 +21,13 @@ final class AppModel: ObservableObject {
     @Published var notice: String? = nil
     @Published var failure: String? = nil
     @Published var showSetup = false
-    @Published var filter = ""
+    @Published var filter = "" { didSet { recompute() } }
+    @Published var levelFloor = "info" { didSet { recompute() } }
+    @Published private(set) var visibleEntries: [LogEntry] = []
+    @Published private(set) var cleared = false
+    @Published var atBottom = true
+    @Published var unseen = 0
+    @Published var detailEntry: LogEntry?
     @Published var trustEnabled = false
     @Published var trustRemaining = 0
     @Published var trustTools: [String] = []
@@ -33,6 +39,10 @@ final class AppModel: ObservableObject {
     private var timer: AnyCancellable?
     private var eventTask: Task<Void, Never>?
     private var tick = 0
+    private var knownIds = Set<String>()
+    private var headCursor: String?
+    private var clearMark: String?
+    static let windowSize = 5000
 
     init() {
         timer = Timer.publish(every: 4, on: .main, in: .common)
@@ -103,14 +113,53 @@ final class AppModel: ObservableObject {
         await refresh(log: tick % 8 == 0, showBusy: false)
     }
 
-    var visibleEntries: [LogEntry] {
-        let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return entries }
-        return entries.filter {
-            $0.tool.lowercased().contains(needle)
-                || $0.detail.lowercased().contains(needle)
-                || $0.summary.lowercased().contains(needle)
+    /// Reads only the records written since the last read. Starts over when the bridge says the cursor is gone.
+    private func loadAudit() async {
+        var query = ["limit": "500"]
+        if let cursor = headCursor { query["after"] = cursor }
+        let (code, body) = await bridge.call("audit", query: query)
+        guard code == 200 else { return }
+        if body["reset"] as? Bool == true {
+            entries = []
+            knownIds = []
         }
+        let fresh = ((body["entries"] as? [[String: Any]]) ?? [])
+            .compactMap(LogEntry.parse)
+            .filter { knownIds.insert($0.id).inserted }
+        headCursor = body["head"] as? String ?? headCursor
+        guard !fresh.isEmpty else { return }
+        entries.append(contentsOf: fresh)
+        if entries.count > Self.windowSize {
+            entries.removeFirst(entries.count - Self.windowSize)
+            knownIds = Set(entries.map(\.id))
+        }
+        if !atBottom { unseen += fresh.count }
+        recompute()
+    }
+
+    /// Rebuilds the visible rows when the data, the level or the text filter changes.
+    private func recompute() {
+        var rows = entries[...]
+        if clearMark != nil, let index = entries.lastIndex(where: { $0.id == clearMark }) {
+            rows = entries[(index + 1)...]
+        }
+        let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        let floor = LogEntry.rank(levelFloor)
+        visibleEntries = rows.filter {
+            LogEntry.rank($0.level) >= floor && (needle.isEmpty || $0.search.contains(needle))
+        }
+        cleared = clearMark != nil
+    }
+
+    /// Hides the rows shown so far. Only the view changes; the records stay in the audit log.
+    func clearView() {
+        clearMark = entries.last?.id
+        recompute()
+    }
+
+    func showAll() {
+        clearMark = nil
+        recompute()
     }
 
     var pendingCount: Int { approvals.count }
@@ -155,8 +204,7 @@ final class AppModel: ObservableObject {
         announceApprovals()
 
         if log {
-            let audit = await bridge.call("audit", query: ["limit": "120"])
-            entries = Array(((audit.1["entries"] as? [[String: Any]]) ?? []).compactMap(LogEntry.parse).reversed())
+            await loadAudit()
         }
 
         notificationsAllowed = await Notifier.shared.allowed()

@@ -129,37 +129,81 @@ struct AxElement: Identifiable {
 struct LogEntry: Identifiable {
     let id: String
     let time: Date
+    let clock: String
+    let level: String
     let tool: String
     let status: String
     let duration: String
     let detail: String
     let summary: String
+    let source: String
     let artifacts: [Artifact]
+    let search: String
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso = ISO8601DateFormatter()
+    private static let clockFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .medium
+        return f
+    }()
+
+    static func parseDate(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        return isoFractional.date(from: text) ?? iso.date(from: text)
+    }
+
+    static func rank(_ level: String) -> Int {
+        switch level {
+        case "notice": return 1
+        case "warning": return 2
+        case "alert": return 3
+        default: return 0
+        }
+    }
 
     static func parse(_ raw: [String: Any]) -> LogEntry? {
         guard let id = raw["id"] as? String else { return nil }
-        let formatter = ISO8601DateFormatter()
-        let time = (raw["ts"] as? String).flatMap { formatter.date(from: $0) } ?? Date()
-        let tool = raw["tool"] as? String ?? "?"
+        let time = parseDate(raw["ts"] as? String) ?? Date()
+        clockFormat.timeZone = .current
+        let tool = raw["tool"] as? String ?? raw["kind"] as? String ?? "?"
         let status = raw["status"] as? String ?? ""
         let ms = raw["duration_ms"] as? Int
-        let duration = ms.map { "\($0) ms" } ?? ""
         var detail = raw["error"] as? String ?? ""
         let artifacts = (raw["artifacts"] as? [[String: Any]] ?? []).compactMap { Artifact.parse($0, entry: id) }
         if detail.isEmpty, !artifacts.isEmpty {
             detail = artifacts.map(\.name).joined(separator: ", ")
         }
-        let args = raw["args"] as? [String: Any] ?? [:]
+        let summary = summarize(raw["args"] as? [String: Any] ?? [:])
         return LogEntry(
             id: id,
             time: time,
+            clock: clockFormat.string(from: time),
+            level: raw["level"] as? String ?? "info",
             tool: tool,
             status: status,
-            duration: duration,
+            duration: ms.map { "\($0) ms" } ?? "",
             detail: detail,
-            summary: summarize(args),
-            artifacts: artifacts
+            summary: summary,
+            source: sourceText(raw["source"] as? [String: Any]),
+            artifacts: artifacts,
+            search: [tool, detail, summary].joined(separator: " ").lowercased()
         )
+    }
+
+    /// The reverse-DNS name when known, otherwise the address, otherwise the channel.
+    static func sourceText(_ source: [String: Any]?) -> String {
+        guard let source else { return "" }
+        let host = source["host"] as? String ?? ""
+        let ip = source["ip"] as? String ?? ""
+        if !host.isEmpty { return host }
+        if !ip.isEmpty { return ip }
+        return source["channel"] as? String ?? ""
     }
 
     /// A one line description of what the call actually asked for.

@@ -32,6 +32,9 @@ struct ContentView: View {
         .sheet(item: $model.shownArtifact) { artifact in
             ArtifactView(artifact: artifact)
         }
+        .sheet(item: $model.detailEntry) { entry in
+            EntryDetail(entry: entry)
+        }
     }
 }
 
@@ -269,12 +272,14 @@ struct ApprovalsCard: View {
 struct LogCard: View {
     @EnvironmentObject var model: AppModel
 
+    private static let levels = [("info", "All levels"), ("notice", "Notice and up"), ("warning", "Warning and up"), ("alert", "Alerts only")]
+
     var body: some View {
         Card(title: "Work log", symbol: "list.bullet.rectangle") {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Filter by tool", text: $model.filter)
+                TextField("Filter by tool or text", text: $model.filter)
                     .textFieldStyle(.plain)
                 if !model.filter.isEmpty {
                     Button {
@@ -285,6 +290,18 @@ struct LogCard: View {
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                 }
+                Picker("Level", selection: $model.levelFloor) {
+                    ForEach(Self.levels, id: \.0) { Text($0.1).tag($0.0) }
+                }
+                .labelsHidden()
+                .frame(width: 140)
+                Button("Clear view") { model.clearView() }
+                    .buttonStyle(.bordered)
+                    .disabled(model.visibleEntries.isEmpty)
+                if model.cleared {
+                    Button("Show all") { model.showAll() }
+                        .buttonStyle(.borderless)
+                }
                 Button {
                     model.saveLog()
                 } label: {
@@ -292,21 +309,50 @@ struct LogCard: View {
                 }
                 .buttonStyle(.bordered)
             }
-            if model.visibleEntries.isEmpty {
-                Text("The log is empty.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else {
+            ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 3) {
                         ForEach(model.visibleEntries) { entry in
                             LogLine(entry: entry) { artifact in
                                 model.shownArtifact = artifact
                             }
+                            .id(entry.id)
+                            .onTapGesture { model.detailEntry = entry }
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .frame(height: 150)
+                .overlay {
+                    if model.visibleEntries.isEmpty {
+                        Text("The log is empty.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .onScrollGeometryChange(for: Bool.self) { geo in
+                    geo.contentSize.height - geo.containerSize.height - geo.contentOffset.y < 24
+                } action: { _, atBottom in
+                    model.atBottom = atBottom
+                    if atBottom { model.unseen = 0 }
+                }
+                .overlay(alignment: .bottom) {
+                    if model.unseen > 0 && !model.atBottom {
+                        Button {
+                            if let last = model.visibleEntries.last {
+                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                            }
+                        } label: {
+                            Label("New entries", systemImage: "arrow.down")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .padding(.bottom, 8)
+                    }
+                }
+                .frame(height: 360)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }
@@ -321,13 +367,24 @@ struct LogLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.time.formatted(date: .omitted, time: .standard))
+                Text(entry.clock)
                     .foregroundStyle(.secondary)
+                    .frame(width: 74, alignment: .leading)
+                Circle()
+                    .fill(Self.levelColor(entry.level))
+                    .frame(width: 7, height: 7)
                 Text(entry.tool)
+                    .lineLimit(1)
                     .frame(width: 120, alignment: .leading)
                 Text(entry.status)
-                    .foregroundStyle(entry.status == "ok" ? Color.green : Color.orange)
+                    .foregroundStyle(Self.statusColor(entry.status))
+                    .lineLimit(1)
                     .frame(width: 90, alignment: .leading)
+                Text(entry.source)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(width: 150, alignment: .leading)
                 Text(entry.detail)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -349,11 +406,67 @@ struct LogLine: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .padding(.leading, 18)
+                    .padding(.leading, 82)
             }
         }
         .font(.system(size: 11, design: .monospaced))
         .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+    }
+
+    static func levelColor(_ level: String) -> Color {
+        switch level {
+        case "alert": return .red
+        case "warning": return .orange
+        case "notice": return .blue
+        default: return .secondary.opacity(0.5)
+        }
+    }
+
+    static func statusColor(_ status: String) -> Color {
+        switch status {
+        case "ok", "opened", "started", "up", "step": return .green
+        case "error", "exception", "unauthorized", "gave_up", "down": return .red
+        default: return .orange
+        }
+    }
+}
+
+/// The full record of one entry, read from the bridge when the row is opened.
+struct EntryDetail: View {
+    let entry: LogEntry
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = "Loading…"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("\(entry.tool) · \(entry.status)")
+                    .font(.headline)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            ScrollView([.horizontal, .vertical]) {
+                Text(text)
+                    .font(.system(size: 11, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .padding(16)
+        .frame(width: 640, height: 480)
+        .task {
+            let (code, body) = await Bridge().call("audit/entry", query: ["id": entry.id])
+            if code == 200, let data = try? JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys]) {
+                text = String(decoding: data, as: UTF8.self)
+            } else {
+                text = "Could not load the record (\(code))."
+            }
+        }
     }
 }
 

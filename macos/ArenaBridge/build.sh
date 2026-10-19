@@ -17,14 +17,14 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources" "$BUNDLE/Contents
 
 echo "building for ${ARCH}..."
 swiftc -O -swift-version 5 -parse-as-library \
-  -target "$ARCH-apple-macosx13.0" \
+  -target "$ARCH-apple-macosx15.0" \
   -o "$BUNDLE/Contents/MacOS/$EXECUTABLE" \
   Sources/*.swift
 
 # the helper starts the bridge. It lives inside the bundle, so macOS gives the screen
 # and the accessibility permissions to the app and not to the node binary.
 swiftc -O -swift-version 5 \
-  -target "$ARCH-apple-macosx13.0" \
+  -target "$ARCH-apple-macosx15.0" \
   -o "$BUNDLE/Contents/Helpers/$HELPER" \
   Helper/main.swift
 
