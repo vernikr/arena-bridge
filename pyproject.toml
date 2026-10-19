@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arena-bridge"
-version = "0.14.1"
+version = "0.15.0"
 description = "Give a cloud AI agent controlled access to your own machine — Python bridge is deprecated, use npm/brew (Node) for new features (0.8.x security-only, 0.9 shim)."
 readme = "README.md"
 requires-python = ">=3.9"
