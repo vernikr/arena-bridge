@@ -340,6 +340,17 @@ def cmd_setup(args):
     cmd_tunnel(args)
 
 
+def cmd_open(args):
+    import webbrowser
+    cfg = load_config()
+    url = cfg.get("publicUrl")
+    if not url:
+        print('no public URL yet — run "arena-bridge tunnel" or "arena-bridge service install"', file=sys.stderr)
+        sys.exit(1)
+    print(f"opening {url} ...")
+    try: webbrowser.open(url)
+    except: print(url)
+
 def cmd_url(args):
     cfg = load_config()
     if not cfg.get("publicUrl"):
@@ -836,6 +847,9 @@ def build_parser():
 
     url = sub.add_parser("url", help="print the public URL the agent should use")
     url.set_defaults(func=cmd_url)
+
+    open_p = sub.add_parser("open", help="open the public URL in the browser")
+    open_p.set_defaults(func=cmd_open)
 
     version = sub.add_parser("version", help="show the installed and the latest version")
     version.set_defaults(func=cmd_version)

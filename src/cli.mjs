@@ -102,6 +102,7 @@ Commands:
                        poll              listen for messages in the foreground
   doctor               Check the installation and configuration
   url                  Print the public URL the agent should use
+  open                 Open the public URL in the browser
   version              Show the installed version and the latest one on npm
   update               Update this package from npm (--check to only look)
   service              Run the bridge as a macOS background service
@@ -487,6 +488,23 @@ async function cmdSetup(args) {
   cmdDoctor();
   console.log('\n3/3  starting the API and the tunnel');
   await cmdTunnel(args);
+}
+
+function cmdOpen() {
+  const cfg = loadConfig();
+  const url = cfg.publicUrl;
+  if (!url) {
+    console.error('no public URL yet — run "arena-bridge tunnel" or "arena-bridge service install"');
+    process.exit(1);
+  }
+  console.log(`opening ${url} ...`);
+  try {
+    const { execSync } = require('node:child_process');
+    const cmd = process.platform === 'darwin' ? `open "${url}"` : process.platform === 'win32' ? `start "" "${url}"` : `xdg-open "${url}"`;
+    execSync(cmd);
+  } catch (e) {
+    console.log(url);
+  }
 }
 
 function cmdUrl() {
@@ -911,6 +929,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdDoctor(args);
     case 'url':
       return cmdUrl();
+    case 'open':
+      return cmdOpen();
     case 'version':
       return cmdVersion();
     case 'update':
