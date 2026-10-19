@@ -380,7 +380,7 @@ final class AppModel: ObservableObject {
     }
 
     private func stopOld() async -> String? {
-        guard await Task.detached({ Bridge.serviceState().running }).value else { return nil }
+        guard await Task.detached { Bridge.serviceState().running }.value else { return nil }
         await Task.detached { Bridge.stop() }.value
         let gone = await waitFor(10) { await Task.detached { !Bridge.serviceState().running }.value }
         return gone ? nil : "old process still running after 10 s"
