@@ -343,6 +343,8 @@ Harder cases:
 
 #### Keep the permissions across updates
 
+The **Keep permissions after updates…** button in each permission guide opens the same steps inside the app.
+
 macOS identifies an app by its signature. Builds without your own certificate are *ad-hoc* signed, and macOS can reset their permissions after every rebuild. To avoid this, create a certificate once:
 
 1. Open **Keychain Access** (Spotlight → "Keychain Access").

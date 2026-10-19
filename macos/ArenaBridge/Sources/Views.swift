@@ -716,12 +716,42 @@ struct SetupView: View {
 
 // MARK: - permissions guide
 
+/// A line that copies itself to the clipboard when clicked.
+struct CopyRow: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                copied = true
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    copied = false
+                }
+            } label: {
+                Text(text)
+                    .font(.system(size: 12, design: .monospaced))
+                    .underline()
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(.plain)
+            .help("Click to copy")
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .foregroundStyle(copied ? Color.green : Color.secondary)
+        }
+    }
+}
+
 /// Guide for one macOS permission. The path is the helper that runs the screen runtime.
 struct PermissionGuideView: View {
     let kind: PermissionKind
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var copied = false
+    @State private var showSigning = false
 
     static let helperPath = "/Applications/Arena Bridge.app/Contents/Helpers/arena-bridge-agent"
 
@@ -752,19 +782,7 @@ struct PermissionGuideView: View {
             .font(.callout)
             Text("Path to add in System Settings (click to copy):")
                 .font(.callout)
-            HStack(spacing: 8) {
-                Button(action: copyPath) {
-                    Text(Self.helperPath)
-                        .font(.system(size: 12, design: .monospaced))
-                        .underline()
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .buttonStyle(.plain)
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .foregroundStyle(copied ? Color.green : Color.secondary)
-                    .help("Copy the path")
-            }
+            CopyRow(text: Self.helperPath)
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(kind.steps.enumerated()), id: \.offset) { index, step in
@@ -779,7 +797,7 @@ struct PermissionGuideView: View {
             .frame(maxHeight: .infinity)
             Text(AppModel.hasCertificate
                  ? "This build is signed with a certificate. Permissions normally survive updates."
-                 : "This build is ad-hoc signed. macOS may reset the permissions after an update. See README, macOS permissions.")
+                 : "This build is ad-hoc signed. macOS may reset the permissions after an update.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -788,6 +806,7 @@ struct PermissionGuideView: View {
                 Button("Show app in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: "/Applications/Arena Bridge.app")])
                 }
+                Button("Keep permissions after updates…") { showSigning = true }
                 Spacer()
                 Button("Check again") { model.checkPermissions(force: true) }
                     .disabled(model.permissionsChecking)
@@ -798,15 +817,9 @@ struct PermissionGuideView: View {
         .padding(20)
         .frame(width: 620, height: 560)
         .onAppear { model.checkPermissions(force: true) }
-    }
-
-    private func copyPath() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(Self.helperPath, forType: .string)
-        copied = true
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            copied = false
+        .sheet(isPresented: $showSigning) {
+            SigningGuideView()
+                .environmentObject(model)
         }
     }
 
@@ -814,5 +827,88 @@ struct PermissionGuideView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(kind.pane)") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+// MARK: - certificate guide
+
+/// One-time setup of a signing certificate, and the sequence that keeps the permissions after each build.
+struct SigningGuideView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    static let identity = "Arena Bridge Local"
+    static let command = "ARENA_SIGN_IDENTITY=\"Arena Bridge Local\" bash macos/ArenaBridge/build.sh"
+
+    private static let setup: [String] = [
+        "Open Keychain Access: press ⌘Space, type Keychain Access, press Return.",
+        "In the menu bar choose Keychain Access → Certificate Assistant → Create a Certificate…",
+        "Name: paste the name from the line below. Identity Type: Self Signed Root. Certificate Type: Code Signing. Leave the other options off. Click Create, then Done.",
+        "In the login keychain, double-click Arena Bridge Local. Open the Trust section. Set When using this certificate to Always Trust. Close the window and enter your Mac password.",
+    ]
+
+    private static let sequence: [String] = [
+        "Build with the certificate. In Terminal, in the repository folder, run the command from the line below.",
+        "Replace the app in /Applications with dist/Arena Bridge.app from that build.",
+        "Grant Screen Recording and Accessibility once more with the Fix buttons. Then quit with ⌘Q and open the app again.",
+        "Every later build with the same command keeps the permissions. Do not change the certificate name.",
+    ]
+
+    private static let trouble: [String] = [
+        "The build says \"signing failed\": the name must match exactly, and the certificate must show Always Trust.",
+        "The certificate is not in the list: look under My Certificates in the login keychain. If it is missing, create it again.",
+        "Release downloads from GitHub are not signed with this certificate. Their permissions still reset after an update.",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Keep permissions after updates")
+                .font(.title3.weight(.semibold))
+            Text(AppModel.hasCertificate
+                 ? "This build is signed with a certificate."
+                 : "This build is ad-hoc signed. Its permissions reset after each new build until the steps below are done.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("1. Create the certificate (once)")
+                        .font(.headline)
+                    ForEach(Array(Self.setup.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    CopyRow(text: Self.identity)
+                    Text("2. If you do not want to grant the permissions again after each build, do this sequence:")
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(Array(Self.sequence.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    CopyRow(text: Self.command)
+                    Text("If something fails")
+                        .font(.headline)
+                    ForEach(Array(Self.trouble.enumerated()), id: \.offset) { _, line in
+                        Text("• \(line)")
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: .infinity)
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 640, height: 640)
     }
 }
