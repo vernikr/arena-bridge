@@ -186,6 +186,10 @@ def _h_list_dir(args, ctx):
                 return
             if not show_hidden and it.name.startswith("."):
                 continue
+            # enforce policy on every element
+            ok_e, _, _, _ = check_path(it, ctx.cfg, ctx.base)
+            if not ok_e:
+                continue
             size = None
             mtime = None
             try:
@@ -258,6 +262,10 @@ def _h_search_files(args, ctx):
         for it in items:
             if len(results) >= max_results:
                 return
+            # enforce policy on every element (including files inside protected)
+            ok_e, _, _, _ = check_path(it, ctx.cfg, ctx.base)
+            if not ok_e:
+                continue
             if it.is_dir():
                 if it.name not in skip:
                     walk(it)

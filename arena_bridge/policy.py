@@ -5,7 +5,7 @@ from .config import expand_home
 
 
 def resolve_target(p, base=None) -> Path:
-    """Resolve a user supplied path, following symlinks on the existing prefix."""
+    """Resolve a user supplied path, following symlinks on the existing prefix (including dangling links)."""
     raw = expand_home(str(p).strip())
     if not raw:
         raise ValueError("path is required")
@@ -15,20 +15,67 @@ def resolve_target(p, base=None) -> Path:
         candidate = Path(base) / candidate
     candidate = Path(os.path.normpath(str(candidate)))
 
-    # find the deepest existing ancestor and realpath it
-    probe = candidate
-    tail = []
-    while not probe.exists():
-        parent = probe.parent
-        if parent == probe:
+    # Use lstat to detect dangling symlinks (B1 fix): exists() follows symlink and returns False for dangling,
+    # but lstat returns True. We walk components and resolve symlinks via readlink.
+    cur = candidate
+    seen = set()
+    for _ in range(20):
+        # Find deepest existing via lstat (includes dangling symlinks)
+        probe = cur
+        tail = []
+        while True:
+            try:
+                st = probe.lstat()
+                # if probe is symlink, resolve it
+                if probe.is_symlink():
+                    try:
+                        link = probe.readlink()
+                    except OSError:
+                        break
+                    # resolve link relative to its parent
+                    target = (probe.parent / link).resolve(strict=False) if not Path(link).is_absolute() else Path(link).resolve(strict=False)
+                    rest = cur.relative_to(probe) if cur != probe else Path(".")
+                    if str(target) in seen:
+                        break
+                    seen.add(str(target))
+                    cur = target / rest if str(rest) != "." else target
+                    probe = cur
+                    tail = []
+                    continue
+                break
+            except FileNotFoundError:
+                parent = probe.parent
+                if parent == probe:
+                    break
+                tail.insert(0, probe.name)
+                probe = parent
+            except OSError:
+                break
+        try:
+            real = probe.resolve(strict=False)
+        except OSError:
+            real = probe
+        cur = real.joinpath(*tail) if tail else real
+        # Check if cur itself is symlink not yet resolved
+        try:
+            if cur.lstat().is_symlink():
+                continue
+        except FileNotFoundError:
+            pass
+        # Check tail for symlink that was missed
+        has_symlink = False
+        check = real
+        for part in tail:
+            check = check / part
+            try:
+                if check.lstat().is_symlink():
+                    has_symlink = True
+                    break
+            except FileNotFoundError:
+                pass
+        if not has_symlink:
             break
-        tail.insert(0, probe.name)
-        probe = parent
-    try:
-        real = probe.resolve(strict=False)
-    except OSError:
-        real = probe
-    return Path(os.path.normpath(str(real.joinpath(*tail))))
+    return Path(os.path.normpath(str(cur)))
 
 
 def _resolve_configured(p, base=None) -> Path:
