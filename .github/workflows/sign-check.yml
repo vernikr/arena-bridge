@@ -1,0 +1,29 @@
+name: sign-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - name: import the signing certificate
+        env:
+          P12_B64: ${{ secrets.ARENA_SIGN_P12 }}
+          P12_PASS: ${{ secrets.ARENA_SIGN_P12_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"; KCPW=$(openssl rand -hex 16)
+          printf '%s' "$P12_B64" | tr -d ' \r\n\t' | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d ' "')
+          rm -f "$RUNNER_TEMP/sign.p12"
+          security find-identity -p codesigning "$KC"
+      - name: sign a test copy
+        run: |
+          cp /bin/ls "$RUNNER_TEMP/test-app"
+          codesign --force --sign "Arena Bridge Local" "$RUNNER_TEMP/test-app"
+          codesign -dv "$RUNNER_TEMP/test-app" 2>&1 | grep -E "^Authority|^Signature"
