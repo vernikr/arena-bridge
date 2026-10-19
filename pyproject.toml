@@ -5,13 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "arena-bridge"
 version = "0.8.1"
-description = "Give a cloud AI agent (Arena.ai Agent Mode, Claude, Cursor, ...) controlled access to your own machine over HTTP/MCP: files, shell, Chrome and the macOS desktop, with an approval gate, trust windows and an audit log."
+description = "Give a cloud AI agent controlled access to your own machine — Python bridge is deprecated, use npm/brew (Node) for new features (0.8.x security-only, 0.9 shim)."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 keywords = ["mcp", "arena", "agent", "agent-mode", "remote-control", "macos", "chrome", "cdp", "peekaboo", "automation", "sandbox", "mcp-server"]
 classifiers = [
   "Development Status :: 4 - Beta",
+  "Development Status :: 7 - Inactive"  # Python bridge deprecated in 0.8, use npm/brew,
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS :: MacOS X",

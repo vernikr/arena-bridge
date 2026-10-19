@@ -761,6 +761,9 @@ def build_parser():
 
 
 def main(argv=None):
+    try:
+        import warnings as _w; _w.warn("arena-bridge Python CLI is deprecated, use `npx arena-bridge` or brew. See AGENTS.md.", DeprecationWarning, stacklevel=2)
+    except: pass
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
