@@ -63,11 +63,17 @@ def _h_bash(args, ctx):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
+            start_new_session=True,
         )
         try:
             outs, errs = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            try:
+                import os as _os, signal as _sig
+                _os.killpg(proc.pid, _sig.SIGKILL)
+            except Exception:
+                try: proc.kill()
+                except Exception: pass
             try:
                 outs, errs = proc.communicate(timeout=5)
             except Exception:
@@ -182,7 +188,14 @@ def _h_edit_file(args, ctx):
         return {"ok": False, "error": "old_text is required"}
     if not abs_path.exists():
         return {"ok": False, "error": f"not found: {abs_path}"}
-    text = abs_path.read_text(errors="replace")
+    # R3: read as bytes to preserve non-UTF8; fail if file is not valid UTF-8 rather than corrupting
+    try:
+        raw = abs_path.read_bytes()
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {"ok": False, "error": "file is not valid UTF-8, use write_file to overwrite"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
     count = text.count(old)
     if count == 0:
         return {"ok": False, "error": "old_text not found in file"}
@@ -190,7 +203,21 @@ def _h_edit_file(args, ctx):
         return {"ok": False, "error": f"old_text appears {count} times, pass replace_all=true"}
     new = str(args.get("new_text", ""))
     text = text.replace(old, new) if args.get("replace_all") else text.replace(old, new, 1)
-    abs_path.write_text(text)
+    # R4 atomic: write via tmp+rename
+    import tempfile, os as _os
+    new_raw = text.encode("utf-8")
+    fd, tmp = tempfile.mkstemp(dir=str(abs_path.parent))
+    try:
+        _os.write(fd, new_raw)
+        _os.close(fd)
+        fd = None
+        _os.replace(tmp, str(abs_path))
+    finally:
+        if fd is not None:
+            try: _os.close(fd)
+            except: pass
+        try: _os.unlink(tmp)
+        except: pass
     return {"ok": True, "path": str(abs_path), "replacements": count if args.get("replace_all") else 1}
 
 
@@ -815,9 +842,10 @@ class Engine:
         if need_approval:
             trust = trust_state()
             if trust_allows(trust, name, args, self.cfg):
+                res = tool["handler"](args, ctx)
                 if self.cfg.get("audit", True):
-                    audit({"id": entry_id, "tool": name, "args": args, "status": "ok", "via": "trust_window"})
-                return tool["handler"](args, ctx)
+                    audit({"id": entry_id, "tool": name, "args": args, "status": "ok" if res.get("ok") else "error", "duration_ms": int((time.time() - started)*1000), "via": "trust_window", "exit_code": res.get("exit_code"), "error": None if res.get("ok") else res.get("error")})
+                return res
             decision = request_approval(name, args, self.cfg)
             if not decision["approved"]:
                 status = decision["rec"].get("status", "denied")

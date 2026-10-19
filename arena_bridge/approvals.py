@@ -10,7 +10,7 @@ from .config import approvals_dir, ensure_dirs
 from .telegram import approval_keyboard, send_telegram
 from .trust import save_trust
 
-_SECRET_RE = re.compile(r"token|secret|password|key", re.IGNORECASE)
+_SECRET_RE = re.compile(r"token|secret|password|authorization", re.IGNORECASE)
 
 
 def _file(approval_id: str) -> Path:
@@ -76,6 +76,18 @@ def settle(approval_id: str, decision: str, by: str = "cli", trust_sec: int = 0)
 
 
 def _redact(args: dict) -> dict:
+    def _scrub(v):
+        if isinstance(v, dict):
+            out2 = {}
+            for kk, vv in v.items():
+                if _SECRET_RE.search(kk):
+                    out2[kk] = "***"
+                else:
+                    out2[kk] = _scrub(vv)
+            return out2
+        if isinstance(v, list):
+            return [_scrub(x) for x in v]
+        return v
     out = {}
     for k, v in (args or {}).items():
         if _SECRET_RE.search(k):
@@ -83,7 +95,7 @@ def _redact(args: dict) -> dict:
         elif k == "command" and isinstance(v, str) and len(v) > 4000:
             out[k] = v[:4000] + "…"
         else:
-            out[k] = v
+            out[k] = _scrub(v) if isinstance(v, (dict, list)) else v
     return out
 
 

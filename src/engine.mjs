@@ -29,6 +29,7 @@ function runShell(command, { cwd, timeout, env, cap }) {
         cwd,
         env: { ...process.env, ...(env || {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
     } catch (e) {
       resolve({ stdout: '', stderr: String(e.message), exit_code: -1, error: e.message });
@@ -44,9 +45,9 @@ function runShell(command, { cwd, timeout, env, cap }) {
     const timer = setTimeout(() => {
       timedOut = true;
       try {
-        child.kill('SIGKILL');
+        if (child.pid) process.kill(-child.pid, 'SIGKILL');
       } catch {
-        /* ignore */
+        try { child.kill('SIGKILL'); } catch {}
       }
     }, Math.max(1, timeout) * 1000);
 
@@ -221,7 +222,7 @@ export function toolCatalog() {
         }
         const next = args.replace_all
           ? buf.split(oldText).join(String(args.new_text ?? ''))
-          : buf.replace(oldText, String(args.new_text ?? ''));
+          : (() => { const idx = buf.indexOf(oldText); return buf.slice(0, idx) + String(args.new_text ?? '') + buf.slice(idx + oldText.length); })();
         {
           const dir = path.dirname(chk.abs);
           const tmp = path.join(dir, `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -694,10 +695,10 @@ export class Engine {
     if (needApproval) {
       const trust = trustState();
       if (trustAllows(trust, tool.name, args, this.cfg)) {
-        if (this.cfg.audit !== false) {
-          audit({ id: entryId, tool: tool.name, args, status: 'ok', via: 'trust_window' });
-        }
         const res = await tool.handler(args, ctx);
+        if (this.cfg.audit !== false) {
+          audit({ id: entryId, tool: tool.name, args, status: res.ok ? 'ok' : 'error', duration_ms: Date.now() - started, via: 'trust_window', exit_code: res.exit_code, error: res.ok ? undefined : res.error, artifacts: ctx.artifacts.length ? ctx.artifacts : undefined });
+        }
         return res;
       }
       approval = await requestApproval(tool.name, args, this.cfg);

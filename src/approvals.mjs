@@ -76,10 +76,19 @@ export function settle(id, decision, by = 'cli', { trustSec = 0 } = {}) {
 }
 
 function redact(args) {
-  const clone = { ...args };
-  for (const k of Object.keys(clone)) {
-    if (/token|secret|password|key/i.test(k)) clone[k] = '***';
+  function scrub(v) {
+    if (Array.isArray(v)) return v.map(scrub);
+    if (v && typeof v === 'object') {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) {
+        if (/token|secret|password|authorization/i.test(k)) out[k] = '***';
+        else out[k] = scrub(val);
+      }
+      return out;
+    }
+    return v;
   }
+  const clone = scrub({ ...args });
   if (typeof clone.command === 'string' && clone.command.length > 4000) {
     clone.command = clone.command.slice(0, 4000) + '…';
   }
