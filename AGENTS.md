@@ -13,11 +13,11 @@ Keep it short; details go to `docs/reference/`.
 | `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()` | JSON-lines, reverse-read, 5–10MB rotation, no large bodies. |
 | `src/approvals.mjs` `arena_bridge/approvals.py` | `requestApproval()` file-based | 400ms poll, TTL vs wait, `trust.json` blanket window. |
 | `src/trust.mjs` `arena_bridge/trust.py` | `trustState()`/`trustAllows()` | Blanket `tools:[]` = all tools. |
-| `src/direct.mjs` `arena_bridge/server.py` | HTTP API (`/call`, `/files`, `/health`) | `PUT/DELETE /files` via gate + audit. 202 for pending. |
+| `src/direct.mjs` `arena_bridge/server.py` | HTTP API (`/call`, `/files`, `/health`) | `PUT/DELETE /files` via gate + audit. 202 for pending. `/health` → `pending_approvals`, `trust_active`. |
 | `src/browser.mjs` `arena_bridge/browser.py` | `BrowserManager` + CDP | Plain launch for login, DevTools keepalive, `chrome_activate`. |
 | `src/mac.mjs` `arena_bridge/mac.py` | Peekaboo desktop control | Screen, mouse, keyboard, app control. |
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
-| `src/cli.mjs` `arena_bridge/cli.py` | CLI commands (`init`, `setup`, `tunnel`, `doctor`) | `parseArgs` handles `-n`/`--n`, `doctor --json`. |
+| `src/cli.mjs` `arena_bridge/cli.py` | CLI commands (`init`, `setup`, `tunnel`, `doctor`) | `parseArgs` handles `-n`/`--n`, `doctor --json`, `config get/set/edit`, `completion bash/zsh/fish`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
 | `macos/ArenaBridge/` | SwiftUI app + `Bridge.swift` | One poll cycle, async `Bridge.run()`, `Info.plist` version from `package.json`. |
 
