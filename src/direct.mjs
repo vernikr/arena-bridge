@@ -212,29 +212,17 @@ export function createDirectServer(cfg, engine) {
         // PUT/DELETE must go through the approval gate and audit, like the tools
         if (req.method !== 'GET') {
           const toolName = req.method === 'DELETE' ? 'delete_path' : 'file_put';
-          const { trustState, trustAllows } = await import('./trust.mjs');
-          const { requestApproval } = await import('./approvals.mjs');
-          const { audit } = await import('./audit.mjs');
-          const trust = trustState();
-          let needApproval = true;
-          if (trustAllows(trust, toolName, { path: target }, cfgNow)) {
-            needApproval = false;
-          } else if (cfgNow.requireApproval === false) {
-            needApproval = false;
-          }
-          if (needApproval) {
-            const approval = await requestApproval(toolName, { path: target }, cfgNow);
-            if (!approval.approved) {
-              const status = approval.rec?.status || 'denied';
-              audit({ tool: toolName, args: { path: target }, status: 'approval_denied', approval_status: status });
-              const pending = status === 'pending' || status === 'timeout' || status === 'expired';
-              return sendJson(res, pending ? 202 : 403, {
-                ok: false,
-                error: pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED',
-                status,
-                approval_id: approval.rec?.id || null,
-              });
-            }
+          const { authorize } = await import('./gate.mjs');
+          const resAuth = await authorize(toolName, { path: target }, cfgNow);
+          if (!resAuth.ok) {
+            const status = resAuth.status || 'denied';
+            const pending = resAuth.pending;
+            return sendJson(res, pending ? 202 : 403, {
+              ok: false,
+              error: pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED',
+              status,
+              approval_id: resAuth.approval_id || null,
+            });
           }
         }
         try {

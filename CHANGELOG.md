@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.9.0
+
+### Added
+- `src/catalog.mjs` is now the single source for `toolCatalog()` (core tools: `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `search_files`, `delete_path`, `file_get`, `file_put`, `audit_log`, `audit_artifact`, `sysinfo`, process tools) — `src/engine.mjs` imports from it instead of defining it. Browser/desktop/telegram tools joined via `engine.catalog()` (`browser.mjs`/`mac.mjs`/`telegram.mjs`) as before, now documented in `docs/reference/tools.md` as one set.
+- `src/engine_helpers.mjs` (`clip`, `runShell`) extracted from `engine.mjs` so `catalog.mjs` and `engine.mjs` share them without a circular dependency.
+- `src/gate.mjs` `authorize(tool,args,cfg)` is now used by `src/direct.mjs` `PUT/DELETE /files` (trust → `requireApproval` → `requestApproval` → `approval_denied` audit, `202` for pending vs `403` for denied), single source with `Engine.call()` pipeline (wave 0 S3 + wave 1 R1 fix).
+- `src/cli/browser.mjs` extracted from `src/cli.mjs` (`browser list/login/clean/close`) — plain Chrome launch for `browser login` (no `--remote-debugging-port`, no automation flags) so Google login works, `profile` lifecycle (`profile_busy` check via `profilePids()`), `chrome_activate` without OS focus; `src/cli.mjs` now delegates to it (1139 lines vs 1231, `browser login` string kept for `browser.test.mjs` audit).
+
+### Changed
+- **Breaking:** `publicUrl` is runtime state (`~/.arena-bridge/state.json`, atomic `tmp+rename`) not user intent — `src/config.mjs` `loadConfig()` merges `state.publicUrl` if `config.json` lacks it, `saveConfig()` moves `publicUrl` to `state.json` (B7/B12 fix); `src/state.mjs` `loadState`/`saveState`/`STATE_PATH` is the single writer.
+- `src/browser.mjs` DevTools keepalive: `BrowserManager._wireCdp` + `_reconnect` (60 attempts, 1s interval) keeps session/tabs/observations after an idle socket drop; `profile` busy guard, `chrome_profiles` with `running` flag, `chrome_activate` without touching cursor/focus — verified in `test/browser.test.mjs` (fake-chrome, socket destroy → reconnect).
+- `AGENTS.md` module map updated: `catalog.mjs`/`gate.mjs`/`engine_helpers.mjs`/`state.mjs`/`cli/browser.mjs` documented.
+
+### Fixed
+- `sysinfo` `os is not defined` after catalog extraction — added `import os from 'node:os'` to `src/catalog.mjs` (MCP `tools/call` `sysinfo` now returns 2025-06-18 `protocolVersion` + `hostname`).
+- `audit_log` `tailAudit is not defined` after catalog extraction — added `import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs'` to `src/catalog.mjs` (mac `audit_artifact` with `bytes` now listed).
+- `test` suite now single-source: `npm test` `24/39/18/15` (smoke/browser/mac/service + `test_security.mjs` 7 + `test_security.py` 6) all green.
+
 ## 0.8.13
 
 ### Added

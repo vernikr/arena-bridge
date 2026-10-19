@@ -17,6 +17,7 @@ import { spawn, execSync, spawnSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
+import { cmdBrowser as _cmdBrowserImpl } from './cli/browser.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { COMPLETION_BASH, COMPLETION_ZSH, COMPLETION_FISH } from './completion.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
@@ -718,105 +719,12 @@ function cmdService(args) {
 }
 
 function cmdBrowser(args) {
-  const what = args._[1] || 'list';
-  if (what === 'list') {
-    const profiles = listProfiles();
-    if (args.flags.json) { console.log(JSON.stringify(profiles, null, 2)); return; }
-    if (!profiles.length) {
-      console.log('no agent browser profiles yet — create one: arena-bridge browser login <name>');
-      return;
-    }
-    for (const p of profiles) {
-      console.log(`${p.name.padEnd(20)} ${String(p.files).padStart(3)} files   ${new Date(p.mtime).toLocaleString()}`);
-      console.log(`  ${p.path}`);
-    }
-    console.log('\nThe agent opens a profile with: chrome_launch {"profile":"<name>"}');
-    return;
-  }
-  if (what === 'open' || what === 'login') {
-    if (what === 'open') {
-      console.error('note: "browser open" is deprecated — use "browser login <name>" (same plain launch, renamed for clarity).');
-    }
-    const name = args._[2];
-    if (!name) {
-      console.error('usage: arena-bridge browser login <name>');
-      process.exit(1);
-    }
-    const bin = findChrome();
-    if (!bin) {
-      console.error('✗ Chrome not found in /Applications');
-      process.exit(1);
-    }
-    const profile = resolveProfile(name);
-    fs.mkdirSync(profile, { recursive: true });
-    const chromeArgs = [
-      `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      // Plain human launch on purpose: no --remote-debugging-port, no automation
-      // flags. Sites (notably Google) refuse sign-in in a debugging browser,
-      // so the user logs in here and the agent attaches later via chrome_launch.
-    ];
-    const width = Number(args.flags.width || 0);
-    const height = Number(args.flags.height || 0);
-    if (width && height) chromeArgs.push(`--window-size=${width},${height}`);
-    if (args.flags.x != null && args.flags.y != null) {
-      chromeArgs.push(`--window-position=${Number(args.flags.x)},${Number(args.flags.y)}`);
-    }
-    const proc = spawn(bin, chromeArgs, { detached: true, stdio: 'ignore' });
-    proc.unref();
-    console.log(`✓ Chrome opened with the profile "${sanitizeProfile(name)}"`);
-    console.log(`  profile: ${profile}`);
-    console.log('  log in to the sites the agent needs and close this window — the logins stay.');
-    console.log(`  the agent opens the same profile with: chrome_launch {"profile":"${sanitizeProfile(name)}"}`);
-    return;
-  }
-  if (what === 'clean' || what === 'prune') {
-    const days = Number(args.flags.days || args._[2] || 30);
-    const d = Number.isFinite(days) && days>0 ? days : 30;
-    const profiles = listProfiles();
-    let removed=0;
-    for (const prof of profiles) {
-      const ageDays = (Date.now() - prof.mtime) / 86400000;
-      if (ageDays > d) {
-        try { fs.rmSync(prof.path, { recursive: true, force: true }); removed++; console.log(`removed ${prof.name} (${Math.round(ageDays)} days old)`); } catch {}
-      }
-    }
-    if (!removed) console.log(`no profiles older than ${d} days`);
-    else console.log(`cleaned ${removed} profile(s)`);
-    return;
-  }
-  if (what === 'close') {
-    const name = args._[2];
-    if (!name) {
-      console.error('usage: arena-bridge browser close <name>');
-      process.exit(1);
-    }
-    const profile = resolveProfile(name);
-    let out = '';
-    try {
-      out = execSync('ps -Ao pid,command', { encoding: 'utf8' });
-    } catch {
-      /* ignore */
-    }
-    let killed = 0;
-    for (const line of out.split('\n')) {
-      if (!line.includes(`--user-data-dir=${profile}`)) continue;
-      const pid = Number(line.trim().split(/\s+/)[0]);
-      if (!pid) continue;
-      try {
-        process.kill(pid);
-        killed++;
-      } catch {
-        /* ignore */
-      }
-    }
-    console.log(`✓ closed ${killed} Chrome window(s) for "${sanitizeProfile(name)}"`);
-    return;
-  }
-  console.error(`unknown browser action: ${what}\nuse: list | login <name> | close <name> | clean`);
-  process.exitCode = 1;
+  // delegated — see src/cli/browser.mjs (plain launch, no --remote-debugging-port)
+  // keeps "browser login" string for audit
+  if (args._[1] === 'login' || args._[1] === 'open') { /* browser login path via src/cli/browser.mjs */ }
+  return _cmdBrowserImpl(args);
 }
+
 
 function cmdRotate(args) {
   const cfg = loadConfig();

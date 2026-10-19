@@ -7,9 +7,11 @@ Keep it short; details go to `docs/reference/`.
 
 | Path | Purpose | Notes |
 |------|---------|-------|
-| `src/engine.mjs` `arena_bridge/engine.py` | Tool catalog + `Engine.call()` gate | Approval, trust, audit pipeline. Node is canonical, Python is shim. |
+| `src/catalog.mjs` `src/engine_helpers.mjs` `arena_bridge/catalog.py` | `toolCatalog()` single source + `clip`/`runShell` shared helpers | Core tools (bash/read_file/write_file/edit_file/list_dir/search_files/delete_path/file_get/file_put/audit_log/audit_artifact/sysinfo/process) — engine imports from `catalog.mjs`. Browser/desktop/telegram joined via `engine.catalog()`. |
+| `src/engine.mjs` `arena_bridge/engine.py` | `Engine.call()` gate + `catalog()` join | Imports `toolCatalog` from `catalog.mjs`, `clip`/`runShell` from `engine_helpers.mjs`; approval/trust/audit pipeline, `mcpTools()`. |
+| `src/gate.mjs` `arena_bridge/gate.py` | `authorize(tool,args,cfg)` | Single source for `PUT/DELETE /files` + `POST /call` gate: trust → requireApproval → requestApproval, 202 vs 403. |
 | `src/policy.mjs` `arena_bridge/policy.py` | `resolveTarget`/`checkPath` + `isInside` | lstat-based symlink handling (B1). Single source for path policy. |
-| `src/config.mjs` `arena_bridge/config.py` | `loadConfig`/`saveConfig` + `DEFAULTS` | `config.json` = user intent, `state.json` = runtime. Atomic tmp+rename. |
+| `src/config.mjs` `arena_bridge/config.py` `src/state.mjs` | `loadConfig`/`saveConfig` + `DEFAULTS` + `loadState`/`saveState` (`STATE_PATH`) | `config.json` = user intent, `state.json` = runtime (`publicUrl`). Atomic tmp+rename. |
 | `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()` | JSON-lines, reverse-read, 5–10MB rotation, no large bodies. |
 | `src/approvals.mjs` `arena_bridge/approvals.py` | `requestApproval()` file-based | 400ms poll, TTL vs wait, `trust.json` blanket window. |
 | `src/trust.mjs` `arena_bridge/trust.py` | `trustState()`/`trustAllows()` + `pruneExpiredTrust()` | Blanket `tools:[]` = all tools, auto-prune expired on status. |
@@ -17,7 +19,7 @@ Keep it short; details go to `docs/reference/`.
 | `src/browser.mjs` `arena_bridge/browser.py` | `BrowserManager` + CDP | Plain launch for login, DevTools keepalive, `chrome_activate`. |
 | `src/mac.mjs` `arena_bridge/mac.py` | Peekaboo desktop control | Screen, mouse, keyboard, app control. |
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
-| `src/cli.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
+| `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
 | `macos/ArenaBridge/` | SwiftUI app + `Bridge.swift` | One poll cycle, async `Bridge.run()`, `Info.plist` version from `package.json`. |
 
