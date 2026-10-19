@@ -239,7 +239,10 @@ export function createDirectServer(cfg, engine) {
         return sendJson(res, 405, { ok: false, error: 'method not allowed' });
       }
 
-      if (req.method === 'POST' && p === '/mcp') {
+      if (p === '/mcp') {
+        if (req.method !== 'POST') {
+          return sendJson(res, 405, { ok: false, error: 'method not allowed', hint: 'use POST /mcp' });
+        }
         return handleMcp(req, res, mcpCtx);
       }
 

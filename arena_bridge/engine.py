@@ -469,6 +469,15 @@ def _h_start_process(args, ctx):
         t.start()
         session["threads"].append(t)
 
+    # R6: limit bash sessions to 20
+    if len(ctx.sessions) >= 20:
+        try:
+            first = next(iter(ctx.sessions))
+            old = ctx.sessions.pop(first, None)
+            if old:
+                try: old["proc"].kill()
+                except: pass
+        except: pass
     ctx.sessions[session_id] = session
     return {"ok": True, "session_id": session_id, "pid": proc.pid, "command": command, "cwd": str(abs_path)}
 

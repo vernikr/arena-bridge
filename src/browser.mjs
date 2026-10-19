@@ -221,6 +221,25 @@ export class BrowserManager {
       reconnecting: false,
       reconnects: 0,
     };
+    // H1/R6: limit Chrome sessions to 10, clean oldest and TTL 24h
+    if (this.sessions.size >= 10) {
+      let oldest = null;
+      for (const s of this.sessions.values()) {
+        if (!oldest || (s.startedAt || 0) < (oldest.startedAt || 0)) oldest = s;
+      }
+      if (oldest) {
+        try { oldest.proc?.kill(); } catch {}
+        this.sessions.delete(oldest.id || oldest.session_id);
+      }
+    }
+    // cleanup expired (>24h)
+    const now = Date.now();
+    for (const [k, s] of this.sessions) {
+      if (now - (s.startedAt || now) > 24*3600*1000) {
+        try { s.proc?.kill(); } catch {}
+        this.sessions.delete(k);
+      }
+    }
     this.sessions.set(id, session);
     this._wireCdp(session);
     return session;

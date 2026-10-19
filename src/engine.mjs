@@ -564,6 +564,15 @@ export function toolCatalog() {
           session.exited = true;
           session.exitCode = code;
         });
+        // R6: limit bash sessions to 20, cleanup oldest
+        if (ctx.sessions.size >= 20) {
+          const first = ctx.sessions.keys().next().value;
+          if (first) {
+            const old = ctx.sessions.get(first);
+            try { old.child?.kill('SIGKILL'); } catch {}
+            ctx.sessions.delete(first);
+          }
+        }
         ctx.sessions.set(sessionId, session);
         return { ok: true, session_id: sessionId, pid: child.pid, command, cwd: chk.abs };
       },

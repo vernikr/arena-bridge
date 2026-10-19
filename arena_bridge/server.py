@@ -184,6 +184,8 @@ def make_handler(cfg, engine):
                     status = 200 if result.get("ok") else (202 if result.get("error") == "APPROVAL_PENDING" else 400)
                 return self._send(status, result)
                 if path == "/mcp":
+                    if self.command != "POST":
+                        return self._send(405, {"ok": False, "error": "method not allowed", "hint": "use POST /mcp"})
                     body = self._json_body()
                     responses = handle_mcp_payload(
                         body,
