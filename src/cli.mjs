@@ -89,6 +89,8 @@ Commands:
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status
   audit [-n N]         Show the audit log
+  config               Manage configuration (get/set/edit)
+                       get <key> | set <key> <value> | edit | list
   telegram             Talk to the user in Telegram
                        setup --token <bot token> --chat-id <id>
                        test              send a test message
@@ -650,6 +652,70 @@ function cmdRotate(args) {
   );
 }
 
+function cmdConfig(args) {
+  const sub = args._[1] || 'list';
+  const cfg = loadConfig();
+  if (sub === 'list' || sub === 'show') {
+    const out = { ...cfg };
+    delete out.configPath;
+    if (args.flags.json) {
+      console.log(JSON.stringify(out, null, 2));
+    } else {
+      for (const [k, v] of Object.entries(out)) {
+        if (k === '_state') continue;
+        console.log(`${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
+      }
+    }
+    return;
+  }
+  if (sub === 'get') {
+    const key = args._[2];
+    if (!key) { console.error('usage: arena-bridge config get <key>'); process.exit(1); }
+    const val = key.split('.').reduce((o, k) => o?.[k], cfg);
+    if (val === undefined) { console.error(`no such key: ${key}`); process.exit(1); }
+    if (args.flags.json) console.log(JSON.stringify({ key, value: val }, null, 2));
+    else console.log(typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val));
+    return;
+  }
+  if (sub === 'set') {
+    const key = args._[2];
+    const value = args._[3];
+    if (!key || value === undefined) { console.error('usage: arena-bridge config set <key> <value>'); process.exit(1); }
+    // validate key against known config keys
+    const allowed = Object.keys(DEFAULTS);
+    const topKey = key.split('.')[0];
+    if (!allowed.includes(topKey) && !['exposeDeviceInHealth','telegram'].includes(topKey)) {
+      console.error(`unknown config key: ${topKey} (allowed: ${allowed.join(', ')})`);
+      process.exit(1);
+    }
+    let parsed = value;
+    try { parsed = JSON.parse(value); } catch { /* keep as string */ }
+    if (key.includes('.')) {
+      const parts = key.split('.');
+      let cur = cfg;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length - 1]] = parsed;
+    } else {
+      cfg[key] = parsed;
+    }
+    saveConfig(cfg);
+    console.log(`✓ config ${key} = ${JSON.stringify(parsed)}`);
+    return;
+  }
+  if (sub === 'edit') {
+    const editor = process.env.EDITOR || process.env.VISUAL || 'nano';
+    const { spawnSync } = require('node:child_process');
+    const res = spawnSync(editor, [cfg.configPath || require('./config.mjs').CONFIG_PATH], { stdio: 'inherit' });
+    if (res.error) console.error(`cannot open editor: ${res.error.message}`);
+    return;
+  }
+  console.error(`unknown config action: ${sub}\nuse: get <key> | set <key> <value> | edit | list`);
+  process.exit(1);
+}
+
 async function cmdTelegram(args) {
   const cfg = loadConfig();
   const sub = args._[1] || 'status';
@@ -789,6 +855,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdApprove(args);
     case 'audit':
       return cmdAudit(args);
+    case 'config':
+      return cmdConfig(args);
     case 'telegram':
       return cmdTelegram(args);
     case 'rotate':

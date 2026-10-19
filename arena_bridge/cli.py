@@ -524,6 +524,65 @@ def cmd_audit(args):
         )
 
 
+def cmd_config(args):
+    cfg = load_config()
+    action = getattr(args, "action", "list")
+    if action in ("list", "show"):
+        out = {k:v for k,v in cfg.items() if k != "configPath"}
+        if getattr(args, "json", False):
+            print(json.dumps(out, indent=2))
+        else:
+            for k,v in out.items():
+                if k == "_state": continue
+                print(f"{k}: {v if not isinstance(v, dict) else json.dumps(v)}")
+        return
+    if action == "get":
+        key = getattr(args, "key", None)
+        if not key:
+            print("usage: arena-bridge config get <key>", file=sys.stderr); sys.exit(1)
+        parts = key.split(".")
+        cur = cfg
+        for p in parts:
+            cur = cur.get(p) if isinstance(cur, dict) else None
+            if cur is None: break
+        if cur is None:
+            print(f"no such key: {key}", file=sys.stderr); sys.exit(1)
+        if getattr(args, "json", False):
+            print(json.dumps({"key": key, "value": cur}, indent=2))
+        else:
+            print(json.dumps(cur, indent=2) if isinstance(cur, dict) else str(cur))
+        return
+    if action == "set":
+        key = getattr(args, "key", None)
+        value = getattr(args, "value", None)
+        if not key or value is None:
+            print("usage: arena-bridge config set <key> <value>", file=sys.stderr); sys.exit(1)
+        allowed = list(defaults().keys()) + ["exposeDeviceInHealth"]
+        if key.split(".")[0] not in allowed:
+            print(f"unknown config key: {key.split('.')[0]} (allowed: {', '.join(allowed)})", file=sys.stderr); sys.exit(1)
+        try: parsed = json.loads(value)
+        except: parsed = value
+        if "." in key:
+            parts = key.split(".")
+            cur = cfg
+            for p in parts[:-1]:
+                if p not in cur or not isinstance(cur[p], dict): cur[p] = {}
+                cur = cur[p]
+            cur[parts[-1]] = parsed
+        else:
+            cfg[key] = parsed
+        save_config(cfg)
+        print(f"✓ config {key} = {json.dumps(parsed)}")
+        return
+    if action == "edit":
+        import subprocess as _sp
+        editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+        path = cfg.get("configPath") or str(config_path())
+        try: _sp.run([editor, path])
+        except Exception as e: print(f"cannot open editor: {e}", file=sys.stderr)
+        return
+    print(f"unknown config action: {action}", file=sys.stderr); sys.exit(1)
+
 def cmd_telegram(args):
     cfg = load_config()
     action = getattr(args, "action", "status") or "status"
@@ -712,6 +771,13 @@ def build_parser():
     telegram.add_argument("--api-hash", help="optional MTProto app hash (not used by the bot)")
     telegram.add_argument("--no-poll", action="store_true", help="do not listen for incoming messages")
     telegram.add_argument("-n", type=int, default=20)
+    config = sub.add_parser("config", help="manage configuration")
+    config.add_argument("action", nargs="?", default="list", help="get/set/edit/list")
+    config.add_argument("key", nargs="?", help="config key")
+    config.add_argument("value", nargs="?", help="config value")
+    config.add_argument("--json", action="store_true", help="json output")
+    config.set_defaults(func=cmd_config)
+
     telegram.set_defaults(func=cmd_telegram)
 
     doctor = sub.add_parser("doctor", help="check the installation")
