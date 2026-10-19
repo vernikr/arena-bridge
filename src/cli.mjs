@@ -14,6 +14,7 @@ import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
+import { tailLog, logPathForCli } from './log.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { COMPLETION_BASH, COMPLETION_ZSH, COMPLETION_FISH } from './completion.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
@@ -90,6 +91,7 @@ Commands:
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status
   audit [-n N]         Show the audit log
+  logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
                        get <key> | set <key> <value> | edit | list
   telegram             Talk to the user in Telegram
@@ -812,6 +814,29 @@ function cmdCompletion(args) {
   }
 }
 
+function cmdLogs(args) {
+  const isJson = !!(args.flags.json || args.flags['output-json']);
+  let n = 30;
+  if (args.flags.n != null) n = Number(args.flags.n);
+  else if (args._[1] && /^\d+$/.test(String(args._[1]))) n = Number(args._[1]);
+  if (!Number.isFinite(n) || n <= 0) n = 30;
+  n = Math.min(n, 500);
+  const entries = tailLog(n);
+  if (!entries.length) {
+    console.log(`no log entries yet (${logPathForCli()})`);
+    return;
+  }
+  if (isJson) {
+    console.log(JSON.stringify(entries, null, 2));
+  } else {
+    for (const e of entries) {
+      if (e.raw) console.log(e.raw);
+      else console.log(`${e.ts} ${String(e.level||'').padEnd(5)} ${e.msg||''} ${e.tool? '['+e.tool+']':''} ${e.error||''}`.trim());
+    }
+    console.log(`\n-- ${entries.length} entries from ${logPathForCli()} --`);
+  }
+}
+
 function cmdDoctor(args) {
   const isJson = !!(args?.flags?.json || args?.flags?.['output-json']);
   const cfg = loadConfig();
@@ -872,6 +897,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdApprove(args);
     case 'audit':
       return cmdAudit(args);
+    case 'logs':
+      return cmdLogs(args);
     case 'config':
       return cmdConfig(args);
     case 'telegram':

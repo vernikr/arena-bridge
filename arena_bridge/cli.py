@@ -510,6 +510,25 @@ def cmd_completion(args):
         print(f"unknown shell: {shell} (use bash|zsh|fish)", file=sys.stderr)
         sys.exit(1)
 
+def cmd_logs(args):
+    from .log import tail_log, log_path_for_cli
+    n = getattr(args, 'n', 30) or 30
+    try: n = int(n)
+    except: n = 30
+    if n <= 0: n = 30
+    n = min(n, 500)
+    entries = tail_log(n)
+    if not entries:
+        print(f"no log entries yet ({log_path_for_cli()})")
+        return
+    if getattr(args, 'json', False):
+        print(json.dumps(entries, indent=2, default=str))
+    else:
+        for e in entries:
+            if e.get("raw"): print(e["raw"])
+            else: print(f"{e.get('ts','')} {str(e.get('level','')).ljust(5)} {e.get('msg','')} {('['+e['tool']+']') if e.get('tool') else ''} {e.get('error','')}".strip())
+        print(f"\n-- {len(entries)} entries from {log_path_for_cli()} --")
+
 def cmd_audit(args):
     action = getattr(args, "action", None)
     if action == "dir":
@@ -795,6 +814,11 @@ def build_parser():
 
     doctor = sub.add_parser("doctor", help="check the installation")
     doctor.set_defaults(func=cmd_doctor)
+
+    logs = sub.add_parser("logs", help="show bridge.log (structured logs)")
+    logs.add_argument("-n", type=int, default=30, help="number of entries")
+    logs.add_argument("--json", action="store_true", help="json output")
+    logs.set_defaults(func=cmd_logs)
 
     setup = sub.add_parser("setup", help="one-shot: config, machine check, API + tunnel")
     setup.add_argument("--root", action="append", help="authorized root (repeatable)")

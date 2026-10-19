@@ -38,3 +38,16 @@ def log_info(msg, fields=None): log("info", msg, fields)
 def log_warn(msg, fields=None): log("warn", msg, fields)
 def log_error(msg, fields=None): log("error", msg, fields)
 def log_debug(msg, fields=None): log("debug", msg, fields)
+def tail_log(n=50):
+    try:
+        p=_log_path()
+        if not p.exists(): return []
+        lines=p.read_text(errors="replace").strip().splitlines()
+        out=[]
+        for l in lines[-min(n,500):]:
+            try: out.append(json.loads(l))
+            except: out.append({"raw": l})
+        return out
+    except: return []
+def log_path_for_cli(): return _log_path()
+

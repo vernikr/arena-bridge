@@ -45,3 +45,13 @@ export function logInfo(msg, fields) { log('info', msg, fields); }
 export function logWarn(msg, fields) { log('warn', msg, fields); }
 export function logError(msg, fields) { log('error', msg, fields); }
 export function logDebug(msg, fields) { log('debug', msg, fields); }
+export function tailLog(n = 50) {
+  try {
+    const p = logPath();
+    if (!fs.existsSync(p)) return [];
+    const lines = fs.readFileSync(p, 'utf8').trim().split('\n').filter(Boolean);
+    return lines.slice(-Math.min(n, 500)).map(l => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+  } catch { return []; }
+}
+export function logPathForCli() { return logPath(); }
+
