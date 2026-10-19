@@ -1,0 +1,39 @@
+{
+  "description": "Contract fixtures for path policy (PROTECTED) \u2014 same for Node and Python",
+  "roots": [
+    "/tmp/roots/a",
+    "/tmp/roots/b"
+  ],
+  "protected": [
+    "/tmp/roots/a/.ssh",
+    "/home/user/.arena-bridge"
+  ],
+  "cases": [
+    {
+      "path": "/tmp/roots/a/file.txt",
+      "write": false,
+      "expect": "ok"
+    },
+    {
+      "path": "/tmp/roots/a/.ssh/id_rsa",
+      "write": false,
+      "expect": "PROTECTED"
+    },
+    {
+      "path": "/etc/passwd",
+      "write": false,
+      "expect": "PROTECTED"
+    },
+    {
+      "path": "/tmp/roots/a/link -> /etc/passwd (symlink)",
+      "write": false,
+      "expect": "PROTECTED",
+      "note": "dangling symlink to outside must be PROTECTED via lstat+readlink"
+    },
+    {
+      "path": "../..//audit.log traversal via audit_artifact basename",
+      "expect": "artifact_not_found",
+      "note": "S1: audit_artifact must use basename + isInside audit dir"
+    }
+  ]
+}

@@ -43,6 +43,11 @@ if [ -f Resources/AppIcon.png ]; then
 fi
 
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
+# version single source: package.json → Info.plist
+PKG_VER=$(node -p "require('../..'+'/package.json').version" 2>/dev/null || echo "0.0.0")
+if [ -n "$PKG_VER" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $PKG_VER" "$BUNDLE/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $PKG_VER" "$BUNDLE/Contents/Info.plist"
+fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $NAME" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $NAME" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BUNDLE/Contents/Info.plist"

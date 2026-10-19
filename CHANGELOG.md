@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.8
+
+### Changed
+- Version is now single-source from `package.json`: `src/version.mjs` fallback synced to `0.8.8`, `pyproject.toml` and `arena_bridge/__init__.py` auto-synced, `Info.plist` `CFBundleShortVersionString` is set from `package.json` at `build.sh` time (was hardcoded `0.8.1`). CI `version-check` now passes for npm/py/macos.
+
+### Added
+- Contract fixtures `test/fixtures/policy.json` for path policy (PROTECTED) — same inputs for Node and Python, covers `roots`, `protected`, dangling symlink to outside, and `audit_artifact` traversal (`basename`+`isInside`).
+
+## 0.8.7
+
+### Added
+- `GET /v1/events` — Server-Sent Events stream for live approvals/audit/health deltas (Node + Python, bearer auth, heartbeat every 3s). `arena-bridge events [--json]` CLI consumes it.
+- MCP protocol negotiation now supports both `2025-06-18` and `2026-07-28` — `initialize` returns the client's requested version when known, otherwise `2025-06-18`.
+
+## 0.8.6
+
+### Fixed
+- Audit log now auto-rotates at 10 MB (keeps last 50% of entries) instead of growing unbounded; both Node and Python call `rotateAuditIfNeeded()` inside `audit()` with a cheap `stat` check.
+
+## 0.8.5
+
+### Added
+- Engine suggests closest tool on `UNKNOWN_TOOL` (Levenshtein ≤3 `did you mean 'X'?`, else `available: ...`); fixed `Invalid array length`/`KeyError` on object tool names.
+- `telegram pruneInbox(days)` / `prune_inbox(days)` — drops expired `inbox.jsonl` entries by `date` (Unix seconds) plus legacy `.json` files; `cleanup --days` now also purges telegram files.
+
+## 0.8.4
+
+### Added
+- `doctor` now integrates `config validate` (missing roots/token/port) and `service health` checks; `--json` includes `publicUrl`/`node`/`checks` with stable `code`s.
+- `GET /health` now returns `audit_count` and `log_size` (in addition to `pending_approvals`/`trust_active`/`has_public_url`/`device` optional via `exposeDeviceInHealth`).
+- `trust` auto-prunes expired entries on `trustState()` via `pruneExpiredTrust()`.
+
+### Fixed
+- `restart` now uses `launchctl kickstart -k gui/<uid>/ai.arena.bridge` instead of `bootout`/`bootstrap` for reliable restart.
+
+## 0.8.3
+
+### Added
+- `--json` everywhere: `approvals`, `trust --history`, `audit`, `browser list`, `config validate/diff`, `doctor`, `status`, `logs`.
+- `approvals prune --days 14` and `browser clean --days 30` — prune old approvals/profiles by `mtime`; `browser list --json` for automation.
+- `audit --json` / `--from DATE` / `--to DATE` — date range filtering (ISO); `trust --history --json` (Node + Python).
+- `feature-tree.md` and `AGENTS.md` docs updated.
+
+### Fixed
+- ESM `require is not defined` in `cmdTrust --history` and `cmdRestart`/`service logs`/`browser clean`/`config edit` — replaced with `import fs/path/CONFIG_DIR/spawnSync`.
+
+## 0.8.2
+
+### Added
+- `arena-bridge doctor --fix` — repairs `~/.arena-bridge` perms/dirs; `arena-bridge status [--json]` — runtime snapshot (config, url, trust, approvals, service).
+- `arena-bridge logs [-n N] [--json]` — tail `bridge.log`; `arena-bridge cleanup [--days N]` — prune artifacts/approvals; `arena-bridge open` — open `publicUrl`.
+- `GET /health` now includes `pending_approvals`, `trust_active`, `has_public_url`.
+
+### Fixed
+- `audit --tool`, `--since`, `--from/--to`, `trust --extend`, `config validate|diff`, `service logs` — new filters and validators for DX/ops.
+
+
 ## 0.8.1
 
 ### Fixed
