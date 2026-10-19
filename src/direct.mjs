@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { VERSION } from './version.mjs';
 import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
