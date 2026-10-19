@@ -34,7 +34,24 @@ def scrub(value):
 def audit(entry: dict) -> None:
     try:
         config_dir().mkdir(parents=True, exist_ok=True)
-        rec = {"ts": datetime.now(timezone.utc).isoformat(), **scrub(entry)}
+        def _trunc(v, depth=0):
+            if depth > 6:
+                return "[max depth]"
+            if isinstance(v, str) and len(v) > 4000:
+                return f"[{len(v)} chars truncated]"
+            if isinstance(v, dict):
+                out = {}
+                for kk, vv in v.items():
+                    if kk in ("content", "data_base64", "data", "text") and isinstance(vv, str) and len(vv) > 1000:
+                        out[kk] = f"[{len(vv)} chars truncated]"
+                        out[kk + "_bytes"] = len(vv.encode())
+                    else:
+                        out[kk] = _trunc(vv, depth+1)
+                return out
+            if isinstance(v, list):
+                return [_trunc(x, depth+1) for x in v]
+            return v
+        rec = {"ts": datetime.now(timezone.utc).isoformat(), **_trunc(scrub(entry))}
         with open(audit_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
     except Exception:

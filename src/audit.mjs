@@ -39,7 +39,28 @@ export function audit(entry) {
   try {
     const dir = configDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const rec = { ts: new Date().toISOString(), ...scrub(entry) };
+    // R2 fix: don't store huge bodies in audit log — store size instead
+    function trunc(v, depth=0) {
+      if (depth > 6) return '[max depth]';
+      if (typeof v === 'string' && v.length > 4000) {
+        return `[${v.length} chars truncated]`;
+      }
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v)) return v.map(x => trunc(x, depth+1));
+        const out = {};
+        for (const [k, val] of Object.entries(v)) {
+          if ((k === 'content' || k === 'data_base64' || k === 'data' || k === 'text') && typeof val === 'string' && val.length > 1000) {
+            out[k] = `[${val.length} chars truncated]`;
+            out[k + '_bytes'] = Buffer.byteLength(val);
+          } else {
+            out[k] = trunc(val, depth+1);
+          }
+        }
+        return out;
+      }
+      return v;
+    }
+    const rec = { ts: new Date().toISOString(), ...trunc(scrub(entry)) };
     fs.appendFileSync(auditPath(), JSON.stringify(rec) + '\n', { mode: 0o600 });
   } catch {
     /* auditing must never break the request */

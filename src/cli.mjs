@@ -49,6 +49,14 @@ export function parseArgs(argv) {
       } else {
         set(key, true);
       }
+    } else if (a.startsWith('-') && a.length === 2 && /^[a-zA-Z]$/.test(a[1])) {
+      // B8 fix: handle single-dash flags like -n 50, -h
+      const key = a.slice(1);
+      if (argv[i + 1] && !argv[i + 1].startsWith('-')) {
+        set(key, argv[++i]);
+      } else {
+        set(key, true);
+      }
     } else {
       out._.push(a);
     }
@@ -445,7 +453,13 @@ function cmdAudit(args) {
     console.log(rec ? JSON.stringify(rec, null, 2) : `no entry with id ${what}`);
     return;
   }
-  const n = Number(args.flags.n || 30);
+  // B8 fix: handle -n, --n, and positional number
+  let n = 30;
+  if (args.flags.n != null) n = Number(args.flags.n);
+  else if (args.flags.N != null) n = Number(args.flags.N);
+  else if (args._[1] && /^\d+$/.test(String(args._[1]))) n = Number(args._[1]);
+  if (!Number.isFinite(n) || n <= 0) n = 30;
+  n = Math.min(n, 200);
   for (const rec of tailAudit(n)) {
     const arts = (rec.artifacts || []).map((a) => a.name).join(' ');
     console.log(
