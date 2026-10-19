@@ -19,6 +19,7 @@ from .telegram import telegram_tools
 from .audit import audit, tail_audit, save_artifact, read_artifact, audit_dir
 from .browser import BrowserManager
 from .config import config_path, load_config
+from .errors import error_response
 from .policy import check_path, is_inside, resolve_target
 from .trust import trust_allows, trust_state
 
@@ -858,7 +859,7 @@ class Engine:
                 cfg_now = self.cfg
         tool = next((t for t in self.catalog() if t["name"] == name), None)
         if not tool:
-            return {"ok": False, "error": f"unknown tool: {name}"}
+            return error_response("UNKNOWN_TOOL", message=f"unknown tool: {name}", tool=name)
         started = time.time()
         entry_id = "{}-{}-{}".format(
             datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "-"),

@@ -10,6 +10,7 @@ import { loadConfig, CONFIG_PATH } from './config.mjs';
 import { BrowserManager, cleanupOrphanChromes } from './browser.mjs';
 import { macTools } from './mac.mjs';
 import { trustState, trustAllows } from './trust.mjs';
+import { errorResponse } from './errors.mjs';
 import { telegramTools } from './telegram.mjs';
 
 /* ------------------------------------------------------------------ *
@@ -706,7 +707,7 @@ export class Engine {
     }
     this.cfg = cfgNow;
     const tool = this.catalog().find((t) => t.name === name);
-    if (!tool) return { ok: false, error: `unknown tool: ${name}` };
+    if (!tool) return errorResponse('UNKNOWN_TOOL', { message: `unknown tool: ${name}`, tool: name });
     const started = Date.now();
     let approval = null;
     const entryId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(name).replace(/[^\w.-]/g, '_')}-${Math.random()
