@@ -12,7 +12,7 @@ license = { text = "MIT" }
 keywords = ["mcp", "arena", "agent", "agent-mode", "remote-control", "macos", "chrome", "cdp", "peekaboo", "automation", "sandbox", "mcp-server"]
 classifiers = [
   "Development Status :: 4 - Beta",
-  "Development Status :: 7 - Inactive"  # Python bridge deprecated in 0.8, use npm/brew,
+  "Development Status :: 7 - Inactive",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS :: MacOS X",
