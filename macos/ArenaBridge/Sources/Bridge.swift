@@ -153,7 +153,8 @@ struct LogEntry: Identifiable {
     private static let clockFormat: DateFormatter = {
         let f = DateFormatter()
         f.locale = .current
-        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jjmmss", options: 0, locale: .current) ?? "HH:mm:ss"
+        let hour12 = (DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? "").contains("a")
+        f.dateFormat = hour12 ? "hh:mm:ss a" : "HH:mm:ss"
         return f
     }()
 
@@ -161,6 +162,13 @@ struct LogEntry: Identifiable {
         guard let text else { return nil }
         return isoFractional.date(from: text) ?? iso.date(from: text)
     }
+
+    private static let grouping: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = .current
+        return f
+    }()
 
     static func rank(_ level: String) -> Int {
         switch level {
@@ -178,12 +186,13 @@ struct LogEntry: Identifiable {
         let tool = raw["tool"] as? String ?? raw["kind"] as? String ?? "?"
         let status = raw["status"] as? String ?? ""
         let ms = raw["duration_ms"] as? Int
+        let duration = ms.map { (grouping.string(from: NSNumber(value: $0)) ?? "\($0)") + " ms" } ?? ""
         var detail = raw["error"] as? String ?? ""
         let artifacts = (raw["artifacts"] as? [[String: Any]] ?? []).compactMap { Artifact.parse($0, entry: id) }
         if detail.isEmpty, !artifacts.isEmpty {
             detail = artifacts.map(\.name).joined(separator: ", ")
         }
-        let summary = summarize(raw["args"] as? [String: Any] ?? [:])
+        let summary = (raw["args"] as? [String: Any]).map(summarize) ?? previewText(raw["args_preview"] as? String ?? "")
         return LogEntry(
             id: id,
             time: time,
@@ -191,7 +200,7 @@ struct LogEntry: Identifiable {
             level: raw["level"] as? String ?? "info",
             tool: tool,
             status: status,
-            duration: ms.map { "\($0) ms" } ?? "",
+            duration: duration,
             detail: detail,
             summary: summary,
             source: sourceText(raw["source"] as? [String: Any]),
@@ -208,6 +217,15 @@ struct LogEntry: Identifiable {
         if !host.isEmpty { return host }
         if !ip.isEmpty { return ip }
         return source["channel"] as? String ?? ""
+    }
+
+    /// The list sends the start of the parameters as text; show the command without the JSON around it.
+    static func previewText(_ preview: String) -> String {
+        var text = preview
+        if text.hasPrefix("{\"command\":\"") { text = String(text.dropFirst(12)) }
+        if text.hasSuffix("\"}") { text = String(text.dropLast(2)) }
+        text = text.replacingOccurrences(of: "\\n", with: " ")
+        return text.count > 160 ? String(text.prefix(160)) + "…" : text
     }
 
     /// A one line description of what the call actually asked for.

@@ -351,6 +351,7 @@ struct LogCard: View {
                             .onTapGesture { model.detailEntry = entry }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
                 }
                 .overlay {
@@ -399,15 +400,18 @@ struct LogLine: View {
         HStack(spacing: 8) {
             Text(entry.clock)
                 .foregroundStyle(.secondary)
-                .frame(width: 92, alignment: .leading)
+                .fixedSize()
             Circle()
                 .fill(Self.levelColor(entry.level))
                 .frame(width: 7, height: 7)
             Text(entry.tool)
-                .frame(width: 160, alignment: .leading)
+                .frame(width: 150, alignment: .leading)
             Text(entry.status)
                 .foregroundStyle(Self.statusColor(entry.status))
                 .frame(width: 72, alignment: .leading)
+            Text(entry.duration)
+                .foregroundStyle(.secondary)
+                .frame(width: 84, alignment: .trailing)
             Text(entry.source)
                 .foregroundStyle(.tertiary)
                 .fixedSize()
