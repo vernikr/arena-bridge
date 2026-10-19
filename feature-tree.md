@@ -125,7 +125,7 @@
   - Запрос в Telegram с кнопками: Approve once, Approve for 3h, Deny; после нажатия сообщение
     переписывается на итог
 - Окно доверия
-  - `arena-bridge trust --for 2h [--tools a,b] [--paths p1,p2]`, `--status`, `--status --json`, `--off`
+  - `arena-bridge trust --for 2h [--tools a,b] [--paths p1,p2]`, `--status [--json]`, `--off`, `--history [--json]`, `--extend [--for DUR]`
   - Снимает только требование подтверждения; политика путей остаётся
   - `--paths` не покрывает `bash` — для команд нужно указать `--tools bash`
   - «Approve for 3h» открывает окно на 3 часа для того же инструмента
@@ -142,7 +142,7 @@
   - Запись: `ctx.artifact` на вызовах `mac_see`
   - Чтение: `GET /audit/artifact?entry=&file=`, инструменты `audit_log`, `audit_artifact`
   - Хранение 14 дней; `arena-bridge audit prune|dir|artifacts`
-- Команды: `arena-bridge audit [-n N]`, `arena-bridge audit <id>`
+- Команды: `arena-bridge audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json]`, `arena-bridge audit <id>`, `arena-bridge logs [-n N] [--json]`, `arena-bridge cleanup [--days N]`
 
 ## Связь с Telegram
 
@@ -157,9 +157,10 @@
 ## Интерфейсы управления
 
 - Командная строка
-  - Жизненный цикл: `init`, `setup`, `start`, `tunnel`, `hub`, `connect`, `service install|uninstall|status`
-  - Наблюдение: `approvals`, `approve <id>`, `audit`, `doctor`, `url`, `version`, `tools`, `prompt`
-  - Доверие: `trust`; связь: `telegram`; браузер: `browser list|open <name>|close <name>`
+  - Жизненный цикл: `init`, `setup`, `start`, `tunnel`, `hub`, `connect`, `service install|uninstall|status|logs|restart`, `restart` (alias)
+  - Наблюдение: `approvals [--json] [prune]`, `approve <id>`, `audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json]`, `doctor [--fix] [--json]`, `status [--json]`, `url`/`open`, `version`, `tools`, `prompt`, `logs [-n N] [--json]`, `cleanup [--days N]`, `completion bash|zsh|fish`
+  - Конфиг: `config get|set|edit|list|validate|diff [--json]`
+  - Доверие: `trust [--for DUR] [--tools a,b] [--paths p1,p2] [--off|--status|--history|--extend] [--json]`; связь: `telegram`; браузер: `browser list|login <name>|close <name>|clean [--days N] [--json]`
   - Общие флаги: `--mode`, `--device`, `--root` (повторяемый), `--port`, `--host`, `--hub`,
     `--public-url`, `--protocol`, `--bin`, `--authtoken`, `--domain`, `--no-approval`, `--no-shell`
 - Нативное приложение macOS
@@ -178,7 +179,7 @@
 - Отдельные «кабинеты» браузера: именованные профили, один вход пользователя, `browser login <name>`
 - Не мешает работе: агент по умолчанию в фоне, окно можно уменьшить и прижать в угол,
   рабочий стол агента — отдельный Space macOS; виртуальная машина не используется
-- Диагностика: `arena-bridge doctor`, `mac_permissions`, логи туннеля и службы
+- Диагностика: `arena-bridge doctor [--fix] [--json]`, `arena-bridge status [--json]`, `arena-bridge config validate|diff`, `arena-bridge service logs/status`, `mac_permissions`, логи туннеля и службы
 
 ## Ограничения
 

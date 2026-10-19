@@ -257,7 +257,24 @@ def cmd_tools(args):
 
 
 def cmd_approvals(args):
+    act = str(getattr(args, 'action', '') or '').lower() if getattr(args, 'action', None) else (str(getattr(args, 'args', '') or '') if hasattr(args, 'args') else '')
+    # handle positional action from parse
+    extra = getattr(args, 'extra', None) or (args.action if hasattr(args,'action') else None)
+    # Actually check raw action string: if it's prune/clean, do prune
+    raw = str(getattr(args, 'action', '') or '') if hasattr(args,'action') else ''
+    if raw in ('prune','clean'):
+        days = getattr(args, 'days', 14) or 14
+        try: days=int(days)
+        except: days=14
+        if days<=0: days=14
+        from .approvals import prune_approvals
+        res = prune_approvals(days)
+        print(f"pruned {res.get('removed',0)} approval(s) older than {days} days")
+        return
     items = list_approvals()
+    if getattr(args, 'json', False):
+        print(__import__('json').dumps(items, indent=2, default=str))
+        return
     if not items:
         print("no approval requests")
         return
@@ -293,6 +310,18 @@ def cmd_trust(args):
         saved = save_trust({**st, "until": st["until"] + ms, "enabled": True})
         when = __import__('datetime').datetime.fromtimestamp(saved["until"]/1000).strftime("%Y-%m-%d %H:%M:%S")
         print(f"✓ trust window extended: until {when} (+{round(ms/60000)} min)")
+        return
+    if getattr(args, 'history', False):
+        from pathlib import Path as _P
+        from .config import config_dir
+        hist = config_dir() / "trust.history.json"
+        if not hist.exists(): print("no trust history yet"); return
+        try:
+            data = __import__('json').loads(hist.read_text())
+            if getattr(args, 'json', False): print(__import__('json').dumps(data, indent=2, default=str))
+            else:
+                for h in data[-20:]: print(f"{h.get('until')} {','.join(h.get('tools') or []) or 'all'} {','.join(h.get('paths') or [])} {h.get('by','')}")
+        except Exception as e: print(f"cannot read history: {e}", file=sys.stderr)
         return
     if args.off:
         clear_trust()
@@ -471,6 +500,9 @@ def cmd_browser(args):
     action = args.action
     if action == "list":
         profiles = list_profiles()
+        if getattr(args, 'json', False):
+            print(__import__('json').dumps(profiles, indent=2, default=str))
+            return
         if not profiles:
             print("no agent browser profiles yet - create one: arena-bridge browser login <name>")
             return
@@ -509,6 +541,22 @@ def cmd_browser(args):
         print(f"  profile: {profile}")
         print("  log in to the sites the agent needs and close this window - the logins stay.")
         print(f'  the agent opens the same profile with: chrome_launch {{"profile":"{sanitize_profile(args.name)}"}}')
+        return
+    if action in ("clean", "prune"):
+        days = getattr(args, 'days', 30) or 30
+        try: days=int(days)
+        except: days=30
+        if days<=0: days=30
+        import time as _t, shutil as _sh
+        profiles = list_profiles()
+        removed=0
+        for prof in profiles:
+            age = (_t.time()*1000 - prof.get('mtime',0)) / 86400000
+            if age > days:
+                try: _sh.rmtree(prof['path'], ignore_errors=True); print(f"removed {prof['name']} ({round(age)} days old)"); removed+=1
+                except: pass
+        if not removed: print(f"no profiles older than {days} days")
+        else: print(f"cleaned {removed} profile(s)")
         return
     if action == "close":
         profile = resolve_profile(args.name)
@@ -960,6 +1008,8 @@ def build_parser():
     tools.set_defaults(func=cmd_tools)
 
     approvals = sub.add_parser("approvals", help="list pending approval requests")
+    approvals.add_argument("--days", type=int, default=14, help="days for prune")
+    approvals.add_argument("--json", action="store_true", help="json output")
     approvals.set_defaults(func=cmd_approvals)
 
     approve = sub.add_parser("approve", help="approve a pending request")
@@ -973,6 +1023,7 @@ def build_parser():
     trust.add_argument("--paths", help="comma separated list of paths to trust (bash is not covered)")
     trust.add_argument("--off", action="store_true", help="close the trust window")
     trust.add_argument("--extend", nargs="?", const="1h", help="extend current trust window (--for 1h)")
+    trust.add_argument("--history", action="store_true", help="show past trust windows")
     trust.add_argument("--status", action="store_true", help="show the current trust window")
     trust.add_argument("--json", action="store_true", help="print the trust window as JSON")
     trust.set_defaults(func=cmd_trust)
@@ -985,6 +1036,7 @@ def build_parser():
     audit.add_argument("action", nargs="?", default="list", help="list, dir, artifacts, prune or an entry id")
     audit.add_argument("-n", type=int, default=30)
     audit.add_argument("--tool", help="filter by tool name")
+    audit.add_argument("--json", action="store_true", help="json output")
     audit.add_argument("--since", help="only entries since duration (e.g. 2h, 1d, 30m)")
     audit.add_argument("--from", dest="from", help="only entries from date (ISO, e.g. 2024-10-19)")
     audit.add_argument("--to", help="only entries to date (ISO)")
@@ -1054,12 +1106,14 @@ def build_parser():
     update.set_defaults(func=cmd_update)
 
     browser = sub.add_parser("browser", help="the agent's own browser profiles")
-    browser.add_argument("action", nargs="?", default="list", choices=["list", "login", "open", "close"])
+    browser.add_argument("action", nargs="?", default="list", choices=["list", "login", "open", "close", "clean", "prune"])
     browser.add_argument("name", nargs="?", help="profile name")
     browser.add_argument("--width", type=int)
     browser.add_argument("--height", type=int)
     browser.add_argument("--x", type=int)
     browser.add_argument("--y", type=int)
+    browser.add_argument("--json", action="store_true", help="json output for list")
+    browser.add_argument("--days", type=int, default=30, help="days for clean")
     browser.set_defaults(func=cmd_browser)
 
     restart = sub.add_parser("restart", help="restart the service if installed")

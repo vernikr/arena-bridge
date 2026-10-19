@@ -12,7 +12,7 @@ import { listApprovals, decide } from './approvals.mjs';
 import { tailAudit, auditDir, listArtifacts, pruneArtifacts } from './audit.mjs';
 import { pruneApprovals } from './approvals.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, spawnSync } from 'node:child_process';
 import { parseDuration, trustState, saveTrust, clearTrust } from './trust.mjs';
 import { findPeekaboo } from './mac.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
@@ -83,15 +83,15 @@ Commands:
   connect              Connect this machine to a hub as a device
   prompt               Print the ready-to-paste agent instructions
   tools                Print the tool catalog as JSON
-  approvals            List pending approval requests
+  approvals [--json]    List approval requests (or: approvals prune [--days 14])
   approve <id>         Approve a pending request (--deny to refuse)
   rotate               Generate a new agent token (--device for the device token)
-  trust                Open a trust window so the agent needs no approvals
+  trust                Open a trust window (use --history to see past windows)
                        --for 2h        how long (30m, 2h, 1d)
                        --tools a,b     only these tools (default: all)
                        --paths p1,p2   only these paths (bash is not covered)
                        --off | --status | --extend --for 1h
-  audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] Show the audit log
+  audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json] Show the audit log
   cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
   logs [-n N] [--json] Show bridge.log (structured logs)
   config               Manage configuration (get/set/edit)
@@ -111,8 +111,8 @@ Commands:
   service              Run the bridge as a macOS background service
                        install | uninstall | status | logs [-n N]
   restart              Restart the service if installed, else show how (alias)
-  browser              The agent's own browser profiles
-                       list | login <name> | close <name>   (open = deprecated alias of login)
+  browser [--json]      The agent's own browser profiles (list --json for automation)
+                       list | login <name> | close <name> | clean [--days 30]   (open = deprecated alias of login)
 
 Common options:
   --mode direct|hub    mode for "init"
@@ -363,8 +363,18 @@ function cmdTools() {
   console.log(JSON.stringify(engine.mcpTools(), null, 2));
 }
 
-function cmdApprovals() {
+function cmdApprovals(args) {
+  const act = String(args._[1] || '').toLowerCase();
+  if (act === 'prune' || act === 'clean') {
+    const days = Number(args.flags.days || args._[2] || 14);
+    const d = Number.isFinite(days) && days>0 ? days : 14;
+    const res = pruneApprovals(d);
+    console.log(`pruned ${res.removed} approval(s) older than ${d} days`);
+    return;
+  }
+  const isJson = !!(args?.flags?.json);
   const list = listApprovals();
+  if (isJson) { console.log(JSON.stringify(list, null, 2)); return; }
   if (!list.length) {
     console.log('no approval requests');
     return;
@@ -402,6 +412,16 @@ function cmdTrust(args) {
     const ms = parseDuration(args.flags.for || args.flags.extend || '1h');
     const saved = saveTrust({ ...cur, until: cur.until + ms, enabled: true, createdAt: cur.createdAt || Date.now() });
     console.log(`✓ trust window extended: until ${new Date(saved.until).toLocaleString()} (+${Math.round(ms/60000)} min)`);
+    return;
+  }
+  if (args.flags.history) {
+    try {
+      const hist = path.join(CONFIG_DIR, 'trust.history.json');
+      if (!fs.existsSync(hist)) { console.log('no trust history yet'); return; }
+      const data = JSON.parse(fs.readFileSync(hist,'utf8'));
+      if (args.flags.json) console.log(JSON.stringify(data, null, 2));
+      else { for (const h of data.slice(-20)) console.log(`${new Date(h.until).toLocaleString()} ${h.tools.length? h.tools.join(','):'all'} ${h.paths.length? h.paths.join(','):''} ${h.by||''}`); }
+    } catch (e) { console.error(e.message); }
     return;
   }
   if (args.flags.off) {
@@ -519,6 +539,10 @@ function cmdAudit(args) {
   } else {
     entries = entries.slice(-n);
   }
+  if (args.flags.json) {
+    console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
   for (const rec of entries) {
     const arts = (rec.artifacts || []).map((a) => a.name).join(' ');
     console.log(
@@ -547,7 +571,7 @@ function cmdOpen() {
   }
   console.log(`opening ${url} ...`);
   try {
-    const { execSync } = require('node:child_process');
+    // execSync already imported
     const cmd = process.platform === 'darwin' ? `open "${url}"` : process.platform === 'win32' ? `start "" "${url}"` : `xdg-open "${url}"`;
     execSync(cmd);
   } catch (e) {
@@ -630,12 +654,11 @@ function cmdRestart(args) {
   const cfg = loadConfig();
   // if service installed, use it; else just hint
   try {
-    const { serviceStatus, serviceInstall } = require('./service.mjs');
     const st = serviceStatus();
     if (st.installed) {
       console.log('restarting service...');
       // reinstall triggers reload
-      const { serviceUninstall } = require('./service.mjs');
+      // serviceUninstall already imported
       // simple: uninstall+install with same args (best effort)
       console.log('service is installed — run: arena-bridge service uninstall && arena-bridge service install');
       console.log('then: arena-bridge service status');
@@ -668,11 +691,11 @@ function cmdService(args) {
     return;
   }
   if (what === 'logs') {
-    const logs = ["service-reload.err.log", "service-reload.out.log", "bridge.log"].map(f => require('path').join(require('./config.mjs').CONFIG_DIR, 'logs', f));
+    const logs = ["service-reload.err.log", "service-reload.out.log", "bridge.log"].map(f => path.join(CONFIG_DIR, 'logs', f));
     let n = Number(args.flags.n || 50); if (!Number.isFinite(n) || n<=0) n=50; n=Math.min(n,200);
     for (const f of logs) {
       try {
-        const fs2=require('node:fs');
+        const fs2=fs;
         if (!fs2.existsSync(f)) continue;
         console.log(`\n=== ${f} (last ${n} lines) ===`);
         const lines=fs2.readFileSync(f,'utf8').trim().split('\n').slice(-n);
@@ -694,6 +717,7 @@ function cmdBrowser(args) {
   const what = args._[1] || 'list';
   if (what === 'list') {
     const profiles = listProfiles();
+    if (args.flags.json) { console.log(JSON.stringify(profiles, null, 2)); return; }
     if (!profiles.length) {
       console.log('no agent browser profiles yet — create one: arena-bridge browser login <name>');
       return;
@@ -743,6 +767,21 @@ function cmdBrowser(args) {
     console.log(`  the agent opens the same profile with: chrome_launch {"profile":"${sanitizeProfile(name)}"}`);
     return;
   }
+  if (what === 'clean' || what === 'prune') {
+    const days = Number(args.flags.days || args._[2] || 30);
+    const d = Number.isFinite(days) && days>0 ? days : 30;
+    const profiles = listProfiles();
+    let removed=0;
+    for (const prof of profiles) {
+      const ageDays = (Date.now() - prof.mtime) / 86400000;
+      if (ageDays > d) {
+        try { fs.rmSync(prof.path, { recursive: true, force: true }); removed++; console.log(`removed ${prof.name} (${Math.round(ageDays)} days old)`); } catch {}
+      }
+    }
+    if (!removed) console.log(`no profiles older than ${d} days`);
+    else console.log(`cleaned ${removed} profile(s)`);
+    return;
+  }
   if (what === 'close') {
     const name = args._[2];
     if (!name) {
@@ -771,7 +810,7 @@ function cmdBrowser(args) {
     console.log(`✓ closed ${killed} Chrome window(s) for "${sanitizeProfile(name)}"`);
     return;
   }
-  console.error(`unknown browser action: ${what}\nuse: list | login <name> | close <name>`);
+  console.error(`unknown browser action: ${what}\nuse: list | login <name> | close <name> | clean`);
   process.exitCode = 1;
 }
 
@@ -881,8 +920,8 @@ function cmdConfig(args) {
   }
   if (sub === 'edit') {
     const editor = process.env.EDITOR || process.env.VISUAL || 'nano';
-    const { spawnSync } = require('node:child_process');
-    const res = spawnSync(editor, [cfg.configPath || require('./config.mjs').CONFIG_PATH], { stdio: 'inherit' });
+    // spawnSync already imported
+    const res = spawnSync(editor, [cfg.configPath || path.join(CONFIG_DIR, 'config.json')], { stdio: 'inherit' });
     if (res.error) console.error(`cannot open editor: ${res.error.message}`);
     return;
   }

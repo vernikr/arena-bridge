@@ -17,7 +17,7 @@ Keep it short; details go to `docs/reference/`.
 | `src/browser.mjs` `arena_bridge/browser.py` | `BrowserManager` + CDP | Plain launch for login, DevTools keepalive, `chrome_activate`. |
 | `src/mac.mjs` `arena_bridge/mac.py` | Peekaboo desktop control | Screen, mouse, keyboard, app control. |
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
-| `src/cli.mjs` `arena_bridge/cli.py` | CLI commands (`init`, `setup`, `tunnel`, `doctor`) | `parseArgs` handles `-n`/`--n`, `doctor --json`, `config get/set/edit`, `completion bash/zsh/fish`. |
+| `src/cli.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
 | `macos/ArenaBridge/` | SwiftUI app + `Bridge.swift` | One poll cycle, async `Bridge.run()`, `Info.plist` version from `package.json`. |
 
