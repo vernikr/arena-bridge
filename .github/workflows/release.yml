@@ -89,7 +89,7 @@ jobs:
           P12_PASS: ${{ secrets.ARENA_SIGN_P12_PASSWORD }}
         run: |
           KC="$RUNNER_TEMP/sign.keychain-db"; KCPW=$(openssl rand -hex 16)
-          echo "$P12_B64" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          printf '%s' "$P12_B64" | tr -d ' \r\n\t' | base64 --decode > "$RUNNER_TEMP/sign.p12"
           security create-keychain -p "$KCPW" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KCPW" "$KC"
@@ -105,6 +105,7 @@ jobs:
           chmod +x macos/ArenaBridge/build.sh
           for arch in arm64 x86_64; do
             (cd macos/ArenaBridge && ARCH=$arch ./build.sh)
+            codesign -dv "macos/ArenaBridge/dist/Arena Bridge.app" 2>&1 | grep -m1 "^Authority" || true
             cp -R "macos/ArenaBridge/dist/Arena Bridge.app" "/tmp/Arena Bridge.app"
             (cd /tmp && zip -qry "$RUNNER_TEMP/Arena-Bridge-$arch.zip" "Arena Bridge.app")
             rm -rf "/tmp/Arena Bridge.app" "macos/ArenaBridge/dist"
