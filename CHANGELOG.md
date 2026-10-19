@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.14.1
+
+### Fixed
+- Each log entry takes one line; the list scrolls sideways when an entry is wider than the window.
+- The log row shows the command and the source; the duration is right-aligned with the digit grouping of the system locale.
+- The time follows the system 12- or 24-hour setting; in 12-hour form the hour has two digits.
+- The address shows the tunnel address of the running bridge.
+- The Approvals card is hidden when there is nothing to decide.
+
 ## 0.14.0
 
 ### Added
