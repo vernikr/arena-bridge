@@ -82,8 +82,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: test helper signals
         run: python3 test/helper_signals.py
-      - name: build the app for both architectures
+      - name: import the signing certificate
+        if: ${{ secrets.ARENA_SIGN_P12 != '' }}
+        env:
+          P12_B64: ${{ secrets.ARENA_SIGN_P12 }}
+          P12_PASS: ${{ secrets.ARENA_SIGN_P12_PASSWORD }}
         run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"; KCPW=$(openssl rand -hex 16)
+          echo "$P12_B64" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$P12_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d ' "')
+          rm -f "$RUNNER_TEMP/sign.p12"
+      - name: build the app for both architectures
+        env:
+          ARENA_SIGN_IDENTITY: ${{ secrets.ARENA_SIGN_P12 != '' && 'Arena Bridge Local' || '' }}
+        run: |
+          [ -n "$ARENA_SIGN_IDENTITY" ] || echo "::warning::no signing certificate: the apps are ad-hoc signed and permissions reset after updates"
           chmod +x macos/ArenaBridge/build.sh
           for arch in arm64 x86_64; do
             (cd macos/ArenaBridge && ARCH=$arch ./build.sh)
