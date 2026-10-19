@@ -710,6 +710,16 @@ def cmd_telegram(args):
 
 
 def cmd_doctor(args):
+    if getattr(args, 'fix', False):
+        try:
+            from .config import ensure_dirs, config_dir
+            ensure_dirs()
+            print(f"✓ ensured {config_dir()} exists with 0700")
+            try: 
+                import os
+                os.chmod(str(config_dir()), 0o700)
+            except: pass
+        except Exception as e: print(f"fix failed: {e}", file=sys.stderr)
     is_json = bool(getattr(args, 'json', False) or getattr(args, 'output_json', False))
     cfg = load_config()
     checks = [
@@ -869,6 +879,8 @@ def build_parser():
     telegram.set_defaults(func=cmd_telegram)
 
     doctor = sub.add_parser("doctor", help="check the installation")
+    doctor.add_argument("--fix", action="store_true", help="repair permissions and create missing dirs")
+    doctor.add_argument("--json", action="store_true", help="json output")
     doctor.set_defaults(func=cmd_doctor)
 
     status = sub.add_parser("status", help="one-line runtime status")

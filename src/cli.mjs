@@ -102,7 +102,7 @@ Commands:
                        status            show the bot, the chats, the unread count
                        inbox [-n N]      show the messages the user sent
                        poll              listen for messages in the foreground
-  doctor               Check the installation and configuration
+  doctor [--fix]       Check the installation and configuration (--fix repairs perms/dirs)
   status [--json]      One-line runtime status (config, url, trust, approvals, service)
   url                  Print the public URL the agent should use
   open                 Open the public URL in the browser
@@ -898,6 +898,14 @@ function cmdLogs(args) {
 
 function cmdDoctor(args) {
   const isJson = !!(args?.flags?.json || args?.flags?.['output-json']);
+  const doFix = !!(args?.flags?.fix || args?.flags?.['fix']);
+  if (doFix) {
+    try {
+      ensureDirs();
+      console.log(`✓ ensured ${CONFIG_DIR} exists with 0700`);
+      try { fs.chmodSync(CONFIG_DIR, 0o700); } catch {}
+    } catch (e) { console.error(`fix failed: ${e.message}`); }
+  }
   const cfg = loadConfig();
   const checks = [];
   checks.push({ name: 'config file', code: 'config_file', passed: fs.existsSync(path.join(CONFIG_DIR, 'config.json')), detail: CONFIG_DIR, hint: 'run arena-bridge init --root <path>' });
