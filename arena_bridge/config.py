@@ -72,6 +72,7 @@ def defaults() -> dict:
         "maxOutputBytes": 8 * 1024 * 1024,
         "maxUploadBytes": 16 * 1024 * 1024,
         "commandTimeoutSec": 120,
+        "exposeDeviceInHealth": True,
         "audit": True,
         "telegram": {
             "enabled": False,
@@ -115,13 +116,39 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> None:
     ensure_dirs()
-    out = {k: v for k, v in cfg.items() if k != "configPath"}
     p = config_path()
-    p.write_text(json.dumps(out, indent=2) + "\n")
+    # B12 fix: don't write all defaults; merge with existing file
+    existing = {}
+    if p.exists():
+        try:
+            existing = json.loads(p.read_text())
+        except Exception:
+            existing = {}
+    out = dict(existing)
+    defs = defaults()
+    for k, v in cfg.items():
+        if k == "configPath":
+            continue
+        already = k in existing
+        # persist if already in file, or differs from defaults, or is identity-critical
+        if already or json.dumps(v, sort_keys=True) != json.dumps(defs.get(k), sort_keys=True) or k in ("token","publicUrl","deviceToken","localToken","hub","device","port","host","mode"):
+            out[k] = v
+    # atomic write via tmp+rename
+    import tempfile, os as _os
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent))
     try:
-        os.chmod(p, 0o600)
-    except OSError:
-        pass
+        _os.write(fd, json.dumps(out, indent=2).encode() + b"\n")
+        _os.close(fd)
+        fd = None
+        _os.replace(tmp, str(p))
+        try: _os.chmod(str(p), 0o600)
+        except: pass
+    finally:
+        if fd is not None:
+            try: _os.close(fd)
+            except: pass
+        try: _os.unlink(tmp)
+        except: pass
 
 
 def random_token(n: int = 32) -> str:

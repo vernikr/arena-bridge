@@ -47,6 +47,7 @@ export const DEFAULTS = {
   maxOutputBytes: 8 * 1024 * 1024,
   maxUploadBytes: 16 * 1024 * 1024,
   commandTimeoutSec: 120,
+  exposeDeviceInHealth: true, // set false to hide hostname from unauthenticated /health
   audit: true,
   telegram: {
     enabled: false, // notify the user in Telegram
@@ -87,13 +88,29 @@ export function loadConfig() {
 
 export function saveConfig(cfg) {
   ensureDirs();
-  const out = { ...cfg };
-  delete out.configPath;
-  fs.writeFileSync(
-    CONFIG_PATH,
-    JSON.stringify(out, null, 2) + '\n',
-    { mode: 0o600 },
-  );
+  // B12 fix: don't write all DEFAULTS to disk; only persist keys that were set in file or changed
+  // Read existing file to preserve minimal writes and avoid overwriting with defaults (B7)
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
+  const out = { ...existing };
+  // Merge in explicitly set keys from cfg (excluding runtime-only ones)
+  for (const [k, v] of Object.entries(cfg)) {
+    if (k === 'configPath') continue;
+    // For B7: only persist publicUrl if it was intentionally set; but tunnel case should persist
+    // We persist any key that differs from DEFAULTS or already existed
+    const def = DEFAULTS[k];
+    const already = k in existing;
+    // Always persist if already in file or if value differs from defaults or is non-default like token/publicUrl
+    if (already || JSON.stringify(v) !== JSON.stringify(def) || ['token','publicUrl','deviceToken','localToken','hub','device','port','host','mode'].includes(k)) {
+      out[k] = v;
+    } else if (v !== undefined && v !== null && JSON.stringify(v) !== JSON.stringify(def)) {
+      out[k] = v;
+    }
+  }
+  // Use atomic write
+  const tmp = CONFIG_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n', { mode: 0o600 });
+  fs.renameSync(tmp, CONFIG_PATH);
 }
 
 export function randomToken(bytes = 32) {

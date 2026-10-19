@@ -81,7 +81,11 @@ def make_handler(cfg, engine):
             path, query = self._route()
             if path == "/health":
                 current = load_config()
-                return self._send(200, {"ok": True, "mode": "direct", "device": current.get("device"), "version": VERSION})
+                expose = current.get("exposeDeviceInHealth", True) is not False
+                payload = {"ok": True, "mode": "direct", "version": VERSION}
+                if expose:
+                    payload["device"] = current.get("device")
+                return self._send(200, payload)
             if not self._auth_ok():
                 return self._send(401, {"ok": False, "error": "unauthorized"})
             cfg_now = self._cfg_now()

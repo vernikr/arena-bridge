@@ -70,10 +70,11 @@ export function createDirectServer(cfg, engine) {
 
     try {
       if (p === '/health') {
+        const expose = cfg.exposeDeviceInHealth !== false;
         return sendJson(res, 200, {
           ok: true,
           mode: 'direct',
-          device: cfg.device,
+          ...(expose ? { device: cfg.device } : {}),
           version: VERSION,
           uptime_sec: Math.round(process.uptime()),
         });

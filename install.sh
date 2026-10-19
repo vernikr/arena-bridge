@@ -19,9 +19,21 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --cli-only) CLI_ONLY=1 ;;
     --app-only) APP_ONLY=1 ;;
-    --version) VERSION="${2:-}"; shift ;;
+    --version) VERSION="${2:-}"; shift; case "$VERSION" in ""|[0-9]*.[0-9]*.[0-9]*) ;; *) die "invalid --version: $VERSION (expected X.Y.Z)" ;; esac ;;
     --prefix) PREFIX="${2:-}"; shift ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help) cat <<'HELP'
+arena-bridge installer: the command line tool and the macOS app in one step.
+
+  curl -fsSL https://raw.githubusercontent.com/vernikr/arena-bridge/main/install.sh | sh
+
+Options:
+  --cli-only     only the command line tool
+  --app-only     only the macOS app
+  --version X.Y.Z  install a specific release
+  --prefix PATH    npm prefix (default: global)
+  -h, --help     show this help
+HELP
+      exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -79,11 +91,24 @@ install_app() {
   else
     wget -q "$URL" -O "$TMP/app.zip" || die "cannot download the app"
   fi
+  # A4: verify SHA256 if available (release publishes SHA256SUMS)
+  SHA_URL="${URL%/*}/SHA256SUMS"
+  if command -v curl >/dev/null 2>&1; then
+    if curl -fsSL "$SHA_URL" -o "$TMP/SHA256SUMS" 2>/dev/null; then
+      say "  verifying SHA256…"
+      if command -v shasum >/dev/null 2>&1; then
+        (cd "$TMP" && shasum -a 256 -c SHA256SUMS --ignore-missing 2>/dev/null) || say "  SHA check skipped (no matching entry) — verify manually: $SHA_URL"
+      elif command -v sha256sum >/dev/null 2>&1; then
+        (cd "$TMP" && sha256sum -c SHA256SUMS --ignore-missing 2>/dev/null) || say "  SHA check skipped — verify manually: $SHA_URL"
+      fi
+    fi
+  fi
   unzip -q "$TMP/app.zip" -d "$TMP"
   APP="$(find "$TMP" -maxdepth 3 -name '*.app' -print -quit)"
   [ -n "$APP" ] || die "the archive has no app inside"
   TARGET="/Applications/Arena Bridge.app"
   if [ -w /Applications ]; then
+    [ -n "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/Applications" ] || die "refusing to remove unsafe TARGET: $TARGET"
     rm -rf "$TARGET"
     cp -R "$APP" "$TARGET"
   else

@@ -49,16 +49,56 @@ export function audit(entry) {
 export function tailAudit(n = 50) {
   const file = auditPath();
   if (!fs.existsSync(file)) return [];
-  const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
-  return lines
-    .slice(-n)
-    .map((l) => {
-      try {
-        return JSON.parse(l);
-      } catch {
-        return { raw: l };
-      }
-    });
+  // R6 fix: read from end, not whole file, to handle large audit.log
+  try {
+    const stat = fs.statSync(file);
+    // if file small (<1MB), use simple path
+    if (stat.size < 1024*1024) {
+      const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+      return lines.slice(-n).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+    }
+    // For large files, read last 512KB and get needed lines (reverse-read approximation)
+    const fd = fs.openSync(file, 'r');
+    const chunkSize = 512*1024;
+    const start = Math.max(0, stat.size - chunkSize);
+    const buf = Buffer.alloc(stat.size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const lines = buf.toString('utf8').trim().split('\n').filter(Boolean);
+    // If we didn't get enough due to truncation, fallback to reading more
+    if (lines.length < n && start > 0) {
+      const moreStart = Math.max(0, stat.size - chunkSize*4);
+      const buf2 = Buffer.alloc(stat.size - moreStart);
+      const fd2 = fs.openSync(file, 'r');
+      fs.readSync(fd2, buf2, 0, buf2.length, moreStart);
+      fs.closeSync(fd2);
+      const lines2 = buf2.toString('utf8').trim().split('\n').filter(Boolean);
+      return lines2.slice(-n).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+    }
+    return lines.slice(-n).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+  } catch {
+    // fallback to old method
+    try {
+      const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+      return lines.slice(-n).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+    } catch { return []; }
+  }
+}
+
+export function rotateAuditIfNeeded(maxBytes = 10*1024*1024) {
+  const file = auditPath();
+  if (!fs.existsSync(file)) return;
+  try {
+    const stat = fs.statSync(file);
+    if (stat.size > maxBytes) {
+      const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+      // keep last 50% of lines
+      const keep = lines.slice(Math.floor(lines.length/2));
+      const tmp = file + '.tmp';
+      fs.writeFileSync(tmp, keep.join('\n') + '\n', { mode: 0o600 });
+      fs.renameSync(tmp, file);
+    }
+  } catch {}
 }
 
 /* ------------------------------------------------------------------ *

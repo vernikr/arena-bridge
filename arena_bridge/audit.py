@@ -45,14 +45,61 @@ def tail_audit(n: int = 50):
     p = audit_path()
     if not p.exists():
         return []
-    lines = [l for l in p.read_text(errors="replace").splitlines() if l.strip()]
-    out = []
-    for line in lines[-n:]:
+    try:
+        size = p.stat().st_size
+        if size > 1024*1024:
+            # R6 fix: read from end for large files
+            with open(p, "rb") as fh:
+                chunk = 512*1024
+                start = max(0, size - chunk)
+                fh.seek(start)
+                data = fh.read().decode("utf-8", errors="replace")
+                lines = [l for l in data.splitlines() if l.strip()]
+                if len(lines) < n and start > 0:
+                    fh.seek(max(0, size - chunk*4))
+                    data = fh.read().decode("utf-8", errors="replace")
+                    lines = [l for l in data.splitlines() if l.strip()]
+                out = []
+                for line in lines[-n:]:
+                    try:
+                        out.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        out.append({"raw": line})
+                return out
+        lines = [l for l in p.read_text(errors="replace").splitlines() if l.strip()]
+        out = []
+        for line in lines[-n:]:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                out.append({"raw": line})
+        return out
+    except Exception:
         try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            out.append({"raw": line})
-    return out
+            lines = [l for l in p.read_text(errors="replace").splitlines() if l.strip()]
+            out = []
+            for line in lines[-n:]:
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    out.append({"raw": line})
+            return out
+        except:
+            return []
+
+def rotate_audit_if_needed(max_bytes: int = 10*1024*1024):
+    p = audit_path()
+    if not p.exists():
+        return
+    try:
+        if p.stat().st_size > max_bytes:
+            lines = [l for l in p.read_text(errors="replace").splitlines() if l.strip()]
+            keep = lines[len(lines)//2:]
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text("\n".join(keep) + "\n")
+            tmp.replace(p)
+    except:
+        pass
 
 
 # --------------------------------------------------------------------------- #
