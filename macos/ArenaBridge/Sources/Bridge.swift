@@ -32,6 +32,10 @@ struct BridgeConfig {
         cfg.host = raw["host"] as? String ?? cfg.host
         cfg.port = raw["port"] as? Int ?? cfg.port
         cfg.publicUrl = raw["publicUrl"] as? String
+        if cfg.publicUrl == nil, let state = try? Data(contentsOf: home.appendingPathComponent("state.json")),
+           let stateRaw = try? JSONSerialization.jsonObject(with: state) as? [String: Any] {
+            cfg.publicUrl = stateRaw["publicUrl"] as? String
+        }
         cfg.token = raw["token"] as? String
         cfg.localToken = raw["localToken"] as? String
         cfg.device = raw["device"] as? String
@@ -148,8 +152,8 @@ struct LogEntry: Identifiable {
     private static let iso = ISO8601DateFormatter()
     private static let clockFormat: DateFormatter = {
         let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .medium
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm:ss"
         return f
     }()
 

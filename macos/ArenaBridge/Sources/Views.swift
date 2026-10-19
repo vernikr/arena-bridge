@@ -14,7 +14,9 @@ struct ContentView: View {
                 VStack(spacing: 14) {
                     StatusCard()
                     ActionsCard()
-                    ApprovalsCard()
+                    if !model.approvals.isEmpty {
+                        ApprovalsCard()
+                    }
                     LogCard()
                 }
                 .padding(16)
@@ -394,30 +396,27 @@ struct LogLine: View {
     let show: (Artifact) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(entry.clock)
                     .foregroundStyle(.secondary)
-                    .frame(width: 74, alignment: .leading)
+                    .lineLimit(1)
+                    .frame(width: 78, alignment: .leading)
                 Circle()
                     .fill(Self.levelColor(entry.level))
                     .frame(width: 7, height: 7)
                 Text(entry.tool)
                     .lineLimit(1)
-                    .frame(width: 120, alignment: .leading)
+                    .frame(width: 110, alignment: .leading)
                 Text(entry.status)
                     .foregroundStyle(Self.statusColor(entry.status))
                     .lineLimit(1)
-                    .frame(width: 90, alignment: .leading)
-                Text(entry.source)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(width: 150, alignment: .leading)
-                Text(entry.detail)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .frame(width: 70, alignment: .leading)
+                if !entry.duration.isEmpty {
+                    Text(entry.duration)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 ForEach(entry.artifacts) { artifact in
                     Button {
@@ -430,13 +429,21 @@ struct LogLine: View {
                     .help("Open \(artifact.name)")
                 }
             }
-            if !entry.summary.isEmpty {
-                Text(entry.summary)
+            HStack(spacing: 8) {
+                Text([entry.summary, entry.detail].filter { !$0.isEmpty }.joined(separator: "  — "))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .padding(.leading, 82)
+                Spacer(minLength: 8)
+                if !entry.source.isEmpty {
+                    Text(entry.source)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                }
             }
+            .padding(.leading, 101)
         }
         .font(.system(size: 11, design: .monospaced))
         .padding(.horizontal, 6)
