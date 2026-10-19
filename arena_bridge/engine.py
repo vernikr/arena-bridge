@@ -859,7 +859,22 @@ class Engine:
                 cfg_now = self.cfg
         tool = next((t for t in self.catalog() if t["name"] == name), None)
         if not tool:
-            return error_response("UNKNOWN_TOOL", message=f"unknown tool: {name}", tool=name)
+            all_names=[t["name"] for t in self.catalog()]
+            def lev(a,b):
+                a=str(a); b=str(b)
+                m,n=len(a),len(b)
+                dp=[[0]*(n+1) for _ in range(m+1)]
+                for i in range(m+1): dp[i][0]=i
+                for j in range(n+1): dp[0][j]=j
+                for i in range(1,m+1):
+                    for j in range(1,n+1): dp[i][j]=min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(0 if a[i-1]==b[j-1] else 1))
+                return dp[m][n]
+            best=None; bestD=99
+            for n in all_names:
+                d=lev(name,n)
+                if d<bestD: bestD=d; best=n
+            hint=f"did you mean '{best}'?" if best and bestD<=3 else f"available: {', '.join(all_names[:10])}"
+            return error_response("UNKNOWN_TOOL", message=f"unknown tool: {name}", tool=name, hint=hint)
         started = time.time()
         entry_id = "{}-{}-{}".format(
             datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "-"),

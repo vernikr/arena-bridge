@@ -1,6 +1,6 @@
 {
   "name": "arena-bridge",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "Give a cloud AI agent (Arena.ai Agent Mode, Claude, Cursor, ...) controlled access to your own machine over HTTP/MCP: files, shell, Chrome and the macOS desktop, with an approval gate, trust windows and an audit log.",
   "type": "module",
   "bin": {

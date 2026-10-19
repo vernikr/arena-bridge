@@ -10,6 +10,7 @@ import { runDevice } from './device.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide } from './approvals.mjs';
 import { tailAudit, auditDir, listArtifacts, pruneArtifacts } from './audit.mjs';
+import { pruneInbox } from './telegram.mjs';
 import { pruneApprovals } from './approvals.mjs';
 import { startTunnel, isPortOpen } from './tunnel.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
@@ -1026,7 +1027,9 @@ function cmdCleanup(args) {
   const d = Number.isFinite(days) && days > 0 ? days : 14;
   const a1 = pruneArtifacts(d);
   const a2 = pruneApprovals(d);
-  console.log(`cleanup: removed ${a1.removed} artifact folder(s) (${a1.freed_bytes||0} bytes), ${a2.removed} old approval(s) older than ${d} days`);
+  let a3 = { removed: 0 };
+  try { a3 = pruneInbox(d); } catch {}
+  console.log(`cleanup: removed ${a1.removed} artifact folder(s) (${a1.freed_bytes||0} bytes), ${a2.removed} old approval(s), ${a3.removed||0} telegram file(s) older than ${d} days`);
 }
 
 function cmdLogs(args) {

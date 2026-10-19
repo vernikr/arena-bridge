@@ -247,6 +247,23 @@ export function markInboxRead(ids) {
   return state.read.length;
 }
 
+export function pruneInbox(days=30) {
+  try {
+    const dir = path.join(CONFIG_DIR, 'telegram');
+    const cutoff = Date.now() - days*86400000;
+    let removed=0;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      const fp = path.join(dir,f);
+      try {
+        const d = JSON.parse(fs.readFileSync(fp,'utf8'));
+        const ts = d.ts || d.createdAt || 0;
+        if (ts && ts < cutoff) { fs.unlinkSync(fp); removed++; }
+      } catch {}
+    }
+    return { removed };
+  } catch { return { removed: 0 }; }
+}
 export function inboxState() {
   const state = readState();
   let total = 0;

@@ -628,7 +628,11 @@ def cmd_cleanup(args):
     if days <= 0: days = 14
     a1 = prune_artifacts(days)
     a2 = prune_approvals(days)
-    print(f"cleanup: removed {a1.get('removed',0)} artifact folder(s) ({a1.get('freed_bytes',0)} bytes), {a2.get('removed',0)} old approval(s) older than {days} days")
+    try:
+        from .telegram import prune_inbox
+        a3 = prune_inbox(days)
+    except: a3 = {"removed":0}
+    print(f"cleanup: removed {a1.get('removed',0)} artifact folder(s) ({a1.get('freed_bytes',0)} bytes), {a2.get('removed',0)} old approval(s), {a3.get('removed',0)} telegram file(s) older than {days} days")
 
 def cmd_logs(args):
     from .log import tail_log, log_path_for_cli

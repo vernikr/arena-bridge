@@ -261,6 +261,39 @@ def mark_inbox_read(ids) -> int:
     return len(state["read"])
 
 
+def prune_inbox(days=30):
+    from pathlib import Path as _P
+    from .config import config_dir
+    import time as _t, json as _j
+    d=config_dir() / "telegram"
+    if not d.exists(): return {"removed":0}
+    cutoff=int(_t.time()*1000)-days*86400000
+    removed=0
+    for f in d.glob("*.json"):
+        try:
+            rec=_j.loads(f.read_text())
+            ts=rec.get("ts") or rec.get("createdAt") or 0
+            if ts and ts < cutoff: f.unlink(); removed+=1
+        except: pass
+    # also prune inbox.jsonl by age: read and keep recent
+    try:
+        p = d / "inbox.jsonl"
+        if p.exists():
+            lines = p.read_text(errors="replace").splitlines()
+            kept=[]
+            for l in lines:
+                try:
+                    rec=_j.loads(l)
+                    ts=rec.get("date",0)
+                    # date is unix seconds, convert to ms
+                    if ts and ts*1000 < cutoff: continue
+                except: pass
+                kept.append(l)
+            if len(kept) < len(lines):
+                p.write_text("\n".join(kept) + ("\n" if kept else ""))
+                removed += len(lines)-len(kept)
+    except: pass
+    return {"removed":removed}
 def inbox_state() -> dict:
     state = _read_state()
     try:

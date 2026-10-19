@@ -707,7 +707,14 @@ export class Engine {
     }
     this.cfg = cfgNow;
     const tool = this.catalog().find((t) => t.name === name);
-    if (!tool) return errorResponse('UNKNOWN_TOOL', { message: `unknown tool: ${name}`, tool: name });
+    if (!tool) {
+      const all = this.catalog().map(t=>t.name);
+      let best=null, bestD=99;
+      const lev=(a,b)=>{ a=String(a); b=String(b); const m=a.length,n=b.length; const dp=Array(m+1).fill(null).map(()=>Array(n+1).fill(0)); for(let i=0;i<=m;i++) dp[i][0]=i; for(let j=0;j<=n;j++) dp[0][j]=j; for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return dp[m][n]; };
+      for (const n of all) { const d=lev(name,n); if(d<bestD){bestD=d; best=n;} }
+      const hint = best && bestD <= 3 ? `did you mean '${best}'?` : `available: ${all.slice(0,10).join(', ')}`;
+      return errorResponse('UNKNOWN_TOOL', { message: `unknown tool: ${name}`, tool: name, hint });
+    }
     const started = Date.now();
     let approval = null;
     const entryId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(name).replace(/[^\w.-]/g, '_')}-${Math.random()
