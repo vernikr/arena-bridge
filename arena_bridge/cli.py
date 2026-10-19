@@ -569,7 +569,14 @@ def cmd_audit(args):
         rec = next((e for e in tail_audit(500) if e.get("id") == action), None)
         print(json.dumps(rec, indent=2, default=str) if rec else f"no entry with id {action}")
         return
-    for rec in tail_audit(args.n):
+    entries = tail_audit(min(args.n*5, 500))
+    if getattr(args, 'tool', None):
+        want = str(args.tool).lower()
+        entries = [e for e in entries if str(e.get('tool','')).lower()==want]
+        entries = entries[-args.n:]
+    else:
+        entries = entries[-args.n:]
+    for rec in entries:
         arts = " ".join(a.get("name", "") for a in (rec.get("artifacts") or []))
         print(
             f"{rec.get('ts')} {str(rec.get('tool')):18} {str(rec.get('status')):16} "
@@ -858,6 +865,7 @@ def build_parser():
     audit = sub.add_parser("audit", help="show the audit log")
     audit.add_argument("action", nargs="?", default="list", help="list, dir, artifacts, prune or an entry id")
     audit.add_argument("-n", type=int, default=30)
+    audit.add_argument("--tool", help="filter by tool name")
     audit.add_argument("--days", type=int, default=14)
     audit.set_defaults(func=cmd_audit)
 
