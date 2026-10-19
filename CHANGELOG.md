@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.10
+
+### Added
+- macOS app now streams live events via `GET /v1/events` SSE — `AppModel.startEventStream()` keeps a long-lived `URLSession.bytes` connection with `Bearer` token, reconnects on drop, and triggers `refresh()` on `approvals`/`audit`/`heartbeat` events; falls back to 4s polling if SSE unavailable. Fixes AppModel double-timer freeze: `Bridge.run()` is async and polling is rate-limited.
+
 ## 0.8.9
 
 ### Added

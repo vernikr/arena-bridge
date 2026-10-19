@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     private let bridge = Bridge()
     private var notified: Set<String> = []
     private var timer: AnyCancellable?
+    private var eventTask: Task<Void, Never>?
     private var tick = 0
 
     init() {
@@ -39,6 +40,52 @@ final class AppModel: ObservableObject {
             .sink { [weak self] _ in Task { await self?.step() } }
         // Auto-open blanket trust window for 3h on launch per user request
         Task { await self.ensureTrustOnLaunch() }
+        // Live events via SSE — falls back to polling if unavailable
+        startEventStream()
+    }
+
+    /// SSE live stream from /v1/events ( approvals/audit delta ). Reconnects on drop.
+    private func startEventStream() {
+        eventTask?.cancel()
+        eventTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let cfg = BridgeConfig.load()
+                let urlStr = "http://\(cfg.host):\(cfg.port)/v1/events"
+                guard let url = URL(string: urlStr) else {
+                    try? await Task.sleep(nanoseconds: 8_000_000_000); continue
+                }
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 0 // keep open
+                if let tok = cfg.token, !tok.isEmpty {
+                    req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                } else if let lt = cfg.localToken, !lt.isEmpty {
+                    req.setValue("Bearer \(lt)", forHTTPHeaderField: "Authorization")
+                }
+                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    if (response as? HTTPURLResponse)?.statusCode != 200 {
+                        try? await Task.sleep(nanoseconds: 8_000_000_000); continue
+                    }
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { return }
+                        let s = line.trimmingCharacters(in: .whitespaces)
+                        if s.isEmpty || s.hasPrefix(":") { continue }
+                        if s.hasPrefix("event:") {
+                            // on approvals/audit/heartbeat → refresh lightweight
+                            let ev = s.replacingOccurrences(of: "event:", with: "").trimmingCharacters(in: .whitespaces)
+                            if ev == "approvals" || ev == "audit" || ev == "heartbeat" {
+                                await self.refresh(log: ev == "audit", showBusy: false)
+                            }
+                        }
+                    }
+                } catch {
+                    // reconnect after delay
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                }
+            }
+        }
     }
 
     /// Ensure a blanket 3h trust window exists on app launch (runs once).
@@ -290,4 +337,6 @@ final class AppModel: ObservableObject {
         NSPasteboard.general.setString(url, forType: .string)
         notice = "The address is copied."
     }
+
+    deinit { eventTask?.cancel() }
 }
