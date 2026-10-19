@@ -133,7 +133,12 @@ export async function requestApproval(tool, args, cfg) {
     decidedAt: null,
     decidedBy: null,
   };
-  fs.writeFileSync(fileOf(id), JSON.stringify(rec, null, 2), { mode: 0o600 });
+  // B8 atomic
+  {
+    const fp = fileOf(id); const tmp = fp + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(rec, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, fp);
+  }
 
   // tell the user about it right away, so a pending request is not a dead end
   if (cfg.telegram?.enabled && cfg.telegram?.botToken) {
@@ -168,7 +173,7 @@ export async function requestApproval(tool, args, cfg) {
     timedOut.status = 'timeout';
     timedOut.decidedAt = Date.now();
     timedOut.decidedBy = 'system';
-    fs.writeFileSync(fileOf(id), JSON.stringify(timedOut, null, 2), { mode: 0o600 });
+    { const fp=fileOf(id); const tmp=fp+'.tmp'; fs.writeFileSync(tmp, JSON.stringify(timedOut, null, 2), {mode:0o600}); fs.renameSync(tmp, fp); }
   }
   return { approved: timedOut.status === 'approved', rec: timedOut };
 }

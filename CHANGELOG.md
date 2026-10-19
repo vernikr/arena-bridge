@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.11
+
+### Fixed
+- Wave 0 closure: `GET /audit?limit=abc` now returns `400 invalid limit` in both Node and Python (was `500` in Python, silent `30` in Node); `PUT/DELETE /files` gate and audit already via `authorize()`+audit, `allowedChat` before inbox, `compare_digest`/`timingSafeEqual` verified.
+- `S8-T` pipeline: trust path and normal path both audit after execution with `duration_ms`/`exit_code` via single pipeline in `Engine.call()` — no `ok` before execute.
+- `B1` shell `killpg` + streaming cap with tail semantics: `clip()` now keeps last `cap` bytes (most recent output) instead of head; `start_process` session uses ring buffer — oldest chunks dropped when over `cap`, single oversized chunk truncated to tail.
+
+### Added
+- `R5` async `202` — `GET /approvals/:id` now polls single approval (idempotent, no body) in Node (`direct.mjs`) and Python (`server.py`), alongside existing `GET /approvals` list; `POST /call`/`/exec`/`PUT/DELETE /files` return `202` with `approval_id` for pending.
+- `B4/B8` atomic writes: `requestApproval`/`decide`/`timeout` now use `tmp+rename` (0600) in `src/approvals.mjs` and `arena_bridge/approvals.py` — no truncated JSON on parallel approve/poll/prune; `pruneApprovals`/`pruneArtifacts`/`pruneInbox` integrated in `cleanup`.
+
 ## 0.8.10
 
 ### Added

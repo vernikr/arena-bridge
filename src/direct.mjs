@@ -126,10 +126,13 @@ export function createDirectServer(cfg, engine) {
       }
 
       if (req.method === 'GET' && p === '/audit') {
-        let limit = Number(url.searchParams.get('limit'));
-        if (!Number.isFinite(limit) || limit <= 0) limit = 30;
-        else limit = Math.min(200, Math.floor(limit));
-        if (Number.isNaN(limit)) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
+        const raw = url.searchParams.get('limit');
+        let limit = 30;
+        if (raw !== null && raw !== '') {
+          const parsed = Number(raw);
+          if (!Number.isFinite(parsed) || parsed <= 0) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
+          limit = Math.min(200, Math.floor(parsed));
+        }
         return sendJson(res, 200, { ok: true, entries: tailAudit(limit), artifacts_dir: auditDir() });
       }
 
@@ -153,6 +156,13 @@ export function createDirectServer(cfg, engine) {
 
       if (req.method === 'GET' && p === '/approvals') {
         return sendJson(res, 200, { ok: true, approvals: listApprovals() });
+      }
+      // R5: poll single approval — GET /approvals/:id (idempotent, no body)
+      const getApproveMatch = /^\/approvals\/([\w-]+)$/.exec(p);
+      if (req.method === 'GET' && getApproveMatch) {
+        const found = listApprovals().find(a => a.id === getApproveMatch[1]);
+        if (!found) return sendJson(res, 404, { ok: false, error: 'approval_not_found' });
+        return sendJson(res, 200, { ok: true, approval: found });
       }
 
       const approveMatch = /^\/approvals\/([\w-]+)$/.exec(p);

@@ -23,7 +23,11 @@ def _expire_if_needed(path: Path, rec: dict, now: int | None = None) -> dict:
         rec["status"] = "expired"
         rec["decidedAt"] = now
         rec["decidedBy"] = "system"
-        path.write_text(json.dumps(rec, indent=2))
+        tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(rec, indent=2))
+    try: tmp.chmod(0o600)
+    except: pass
+    tmp.replace(path)
     return rec
 
 
@@ -131,7 +135,11 @@ def request_approval(tool: str, args: dict, cfg: dict) -> dict:
         "decidedAt": None,
         "decidedBy": None,
     }
-    _file(approval_id).write_text(json.dumps(rec, indent=2))
+    _tmp = _file(approval_id).with_suffix(".tmp")
+    _tmp.write_text(json.dumps(rec, indent=2))
+    try: _tmp.chmod(0o600)
+    except: pass
+    _tmp.replace(_file(approval_id))
 
     # tell the user about it right away, so a pending request is not a dead end
     if (cfg.get("telegram") or {}).get("enabled") and (cfg.get("telegram") or {}).get("botToken"):

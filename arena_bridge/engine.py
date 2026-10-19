@@ -83,9 +83,9 @@ def _h_bash(args, ctx):
             err_str = errs.decode("utf-8", "replace")
             truncated = len(out_str) >= cap or len(err_str) >= cap
             if len(out_str) > cap:
-                out_str = out_str[:cap]
+                out_str = out_str[-cap:]
             if len(err_str) > cap:
-                err_str = err_str[:cap]
+                err_str = err_str[-cap:]
             return {
                 "ok": True,
                 "command": command,
@@ -104,9 +104,9 @@ def _h_bash(args, ctx):
     err_str = errs.decode("utf-8", "replace")
     truncated = False
     if len(out_str) > cap:
-        out_str, truncated = out_str[:cap], True
+        out_str, truncated = out_str[-cap:], True
     if len(err_str) > cap:
-        err_str, truncated = err_str[:cap], True
+        err_str, truncated = err_str[-cap:], True
 
     return {
         "ok": True,

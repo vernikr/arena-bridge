@@ -151,7 +151,16 @@ def make_handler(cfg, engine):
                     },
                 )
             if path == "/audit":
-                limit = min(200, int(self._query_one(query, "limit") or 30))
+                raw_limit = self._query_one(query, "limit")
+                if raw_limit is not None:
+                    try:
+                        limit = int(raw_limit)
+                    except ValueError:
+                        return self._send(400, {"ok": False, "error": "invalid limit"})
+                    if not (1 <= limit <= 200):
+                        limit = min(200, max(1, limit))
+                else:
+                    limit = 30
                 return self._send(200, {"ok": True, "entries": tail_audit(limit), "artifacts_dir": str(audit_dir())})
             if path == "/audit/artifact":
                 entry = self._query_one(query, "entry")
@@ -174,6 +183,12 @@ def make_handler(cfg, engine):
                 return self._send(200, art["data"], content_type=ctype)
             if path == "/approvals":
                 return self._send(200, {"ok": True, "approvals": list_approvals()})
+            if path.startswith("/approvals/") and self.command == "GET":
+                aid = path.rsplit("/", 1)[-1]
+                found = next((a for a in list_approvals() if a.get("id") == aid), None)
+                if not found:
+                    return self._send(404, {"ok": False, "error": "approval_not_found"})
+                return self._send(200, {"ok": True, "approval": found})
             if path == "/v1/events":
                 # SSE stream
                 self.send_response(200)
