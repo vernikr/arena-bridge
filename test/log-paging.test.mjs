@@ -44,6 +44,7 @@ test('trust window: open, extend, close, expire and external change each log exa
 });
 
 test('bridge and tunnel lifecycle events are recorded with their origin', () => {
+  delete process.env.XPC_SERVICE_NAME;
   bridgeEvent('start', { port: 8787 });
   tunnelEvent('up', { url: 'example.trycloudflare.com' });
   tunnelEvent('down', { code: 1 });
