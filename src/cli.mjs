@@ -90,7 +90,7 @@ Commands:
                        --for 2h        how long (30m, 2h, 1d)
                        --tools a,b     only these tools (default: all)
                        --paths p1,p2   only these paths (bash is not covered)
-                       --off | --status
+                       --off | --status | --extend --for 1h
   audit [-n N] [--tool NAME] [--since DUR] Show the audit log (e.g. --since 2h, --tool bash)
   cleanup [--days N]   Remove old artifacts + approvals (default 14 days)
   logs [-n N] [--json] Show bridge.log (structured logs)
@@ -396,6 +396,14 @@ function cmdApprove(args) {
 
 function cmdTrust(args) {
   const state = trustState();
+  if (args.flags.extend || args.flags.extend) {
+    const cur = trustState();
+    if (!cur.active) { console.error('no active trust window to extend — use arena-bridge trust --for 2h'); process.exit(1); }
+    const ms = parseDuration(args.flags.for || args.flags.extend || '1h');
+    const saved = saveTrust({ ...cur, until: cur.until + ms, enabled: true, createdAt: cur.createdAt || Date.now() });
+    console.log(`✓ trust window extended: until ${new Date(saved.until).toLocaleString()} (+${Math.round(ms/60000)} min)`);
+    return;
+  }
   if (args.flags.off) {
     clearTrust();
     console.log('✓ trust window cleared — every side-effecting action needs approval again');

@@ -284,6 +284,16 @@ def cmd_trust(args):
     from .trust import clear_trust, parse_duration, save_trust, trust_state
 
     state = trust_state()
+    if getattr(args, 'extend', False):
+        st = trust_state()
+        if not st.get("active"):
+            print("no active trust window to extend — use arena-bridge trust --for 2h", file=sys.stderr); sys.exit(1)
+        try: ms = parse_duration(getattr(args, 'for_', None) or getattr(args, 'extend', '1h') or '1h')
+        except: ms = 3600000
+        saved = save_trust({**st, "until": st["until"] + ms, "enabled": True})
+        when = __import__('datetime').datetime.fromtimestamp(saved["until"]/1000).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"✓ trust window extended: until {when} (+{round(ms/60000)} min)")
+        return
     if args.off:
         clear_trust()
         print("✓ trust window cleared — every side-effecting action needs approval again")
@@ -882,6 +892,7 @@ def build_parser():
     trust.add_argument("--tools", help="comma separated list of tools to trust (default: all)")
     trust.add_argument("--paths", help="comma separated list of paths to trust (bash is not covered)")
     trust.add_argument("--off", action="store_true", help="close the trust window")
+    trust.add_argument("--extend", nargs="?", const="1h", help="extend current trust window (--for 1h)")
     trust.add_argument("--status", action="store_true", help="show the current trust window")
     trust.add_argument("--json", action="store_true", help="print the trust window as JSON")
     trust.set_defaults(func=cmd_trust)
