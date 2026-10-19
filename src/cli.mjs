@@ -109,7 +109,7 @@ Commands:
   version              Show the installed version and the latest one on npm
   update               Update this package from npm (--check to only look)
   service              Run the bridge as a macOS background service
-                       install | uninstall | status
+                       install | uninstall | status | logs [-n N]
   restart              Restart the service if installed, else show how (alias)
   browser              The agent's own browser profiles
                        list | login <name> | close <name>   (open = deprecated alias of login)
@@ -647,6 +647,20 @@ function cmdService(args) {
   if (what === 'uninstall') {
     const res = serviceUninstall();
     console.log(`\u2713 service removed: ${res.removed}`);
+    return;
+  }
+  if (what === 'logs') {
+    const logs = ["service-reload.err.log", "service-reload.out.log", "bridge.log"].map(f => require('path').join(require('./config.mjs').CONFIG_DIR, 'logs', f));
+    let n = Number(args.flags.n || 50); if (!Number.isFinite(n) || n<=0) n=50; n=Math.min(n,200);
+    for (const f of logs) {
+      try {
+        const fs2=require('node:fs');
+        if (!fs2.existsSync(f)) continue;
+        console.log(`\n=== ${f} (last ${n} lines) ===`);
+        const lines=fs2.readFileSync(f,'utf8').trim().split('\n').slice(-n);
+        for (const l of lines) console.log(l.slice(0,1000));
+      } catch {}
+    }
     return;
   }
   const st = serviceStatus();

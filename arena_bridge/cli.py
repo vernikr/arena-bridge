@@ -432,6 +432,23 @@ def cmd_service(args):
         print("  the bridge now starts with the system and keeps a public URL alive")
         print("  current URL: arena-bridge url")
         return
+    if args.action == "logs":
+        from pathlib import Path as _P
+        from .config import config_dir
+        n = getattr(args, 'n', 50) or 50
+        try: n=int(n)
+        except: n=50
+        if n<=0: n=50
+        n=min(n,200)
+        for name in ("service-reload.err.log","service-reload.out.log","bridge.log"):
+            f=config_dir()/"logs"/name
+            if not f.exists(): continue
+            print(f"\n=== {f} (last {n} lines) ===")
+            try:
+                lines=f.read_text(errors="replace").strip().splitlines()[-n:]
+                for l in lines: print(l[:1000])
+            except Exception as e: print(f"cannot read {f}: {e}")
+        return
     if args.action == "uninstall":
         res = service_uninstall()
         print(f"\u2713 service removed: {res['removed']}")
@@ -1005,7 +1022,8 @@ def build_parser():
     restart.set_defaults(func=cmd_restart)
 
     service = sub.add_parser("service", help="run the bridge as a macOS background service")
-    service.add_argument("action", nargs="?", default="status", choices=["install", "uninstall", "status"])
+    service.add_argument("action", nargs="?", default="status", choices=["install", "uninstall", "status", "logs"])
+    service.add_argument("-n", type=int, default=50, help="lines for logs")
     service.add_argument("--bin", help="tunnel binary for the service (cloudflared or ngrok)")
     service.add_argument("--domain", help="ngrok reserved domain for a stable public URL")
     service.add_argument("--authtoken", help="ngrok authtoken")
