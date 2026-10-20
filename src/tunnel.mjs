@@ -96,7 +96,7 @@ export function startTunnel(
         rejectUrl(new Error(`cannot start ${bin}: ${e.message}`));
       }
     });
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       onExit?.(code);
       if (!settled) {
         if (isNgrok && attempt++ < restarts) {
