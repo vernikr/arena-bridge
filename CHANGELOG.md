@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.2
+
+### Fixed
+- The app's self-update refused releases signed with the same certificate: the signature check compared the whole signature report, which includes the path of the app. Only the requirement line is compared now.
+
 ## 0.18.1
 
 ### Changed
