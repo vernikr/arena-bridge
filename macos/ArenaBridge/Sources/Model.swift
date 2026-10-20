@@ -113,6 +113,7 @@ final class AppModel: ObservableObject {
         Task { await self.ensureTrustOnLaunch() }
         // Live events via SSE — falls back to polling if unavailable
         startEventStream()
+        Updater.shared.start()
         // Permissions are checked again whenever the window comes back to the front
         focusObserver = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in self?.checkPermissions(force: true) }

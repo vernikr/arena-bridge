@@ -187,6 +187,33 @@ struct StepIndicator: View {
     }
 }
 
+struct UpdateRow: View {
+    @ObservedObject var updater = Updater.shared
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.secondary)
+            Text(updater.status.isEmpty ? "Version \(Updater.installedVersion)" : updater.status)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Toggle("Install updates automatically", isOn: $updater.automatic)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+            if let release = updater.pending, !updater.automatic, !updater.busy {
+                Button("Install \(release.version)") { Task { await updater.install(release) } }
+                    .controlSize(.small)
+            }
+            Button("Check now") { Task { await updater.check() } }
+                .controlSize(.small)
+                .disabled(updater.busy)
+        }
+        .font(.callout)
+    }
+}
+
 struct ActionsCard: View {
     @EnvironmentObject var model: AppModel
 
@@ -251,6 +278,8 @@ struct ActionsCard: View {
                     Button("Keep permissions after updates…") { model.openSigningGuide() }
                 }
             }
+            Divider()
+            UpdateRow()
             Divider()
             HStack(spacing: 10) {
                 Image(systemName: "timer")
