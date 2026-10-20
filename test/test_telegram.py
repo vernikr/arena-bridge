@@ -281,6 +281,7 @@ def _():
 
     audit(
         {
+            "actor": "agent",
             "tool": "bash",
             "args": {
                 "command": "curl https://api.telegram.org/bot8605407779:AAHsu4ZpVVrkpzjKD7Em1I-U55Zcd9ndVPY/getMe"

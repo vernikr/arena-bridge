@@ -129,7 +129,7 @@ struct PermissionGuideView: View {
                     Button("Keep permissions after updates…") { model.openSigningGuide() }
                 }
                 Spacer()
-                Button("Check again") { model.checkPermissions(force: true) }
+                Button("Check again") { model.checkPermissions(force: true, userInitiated: true) }
                     .disabled(model.permissionsChecking)
                 Button("Done") { NSApp.keyWindow?.close() }
                     .keyboardShortcut(.defaultAction)
@@ -137,7 +137,7 @@ struct PermissionGuideView: View {
         }
         .padding(20)
         .frame(minWidth: 480, minHeight: 380)
-        .onAppear { model.checkPermissions(force: true) }
+        .onAppear { model.checkPermissions(force: true, userInitiated: true) }
     }
 
     private func openPane() {

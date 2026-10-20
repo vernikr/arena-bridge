@@ -43,7 +43,7 @@ export class Engine {
     return [...toolCatalog(), ...this.browser.tools(), ...macTools(this.cfg), ...telegramTools(this.cfg)];
   }
 
-  async call(name, args = {}, { requireApproval, cfg, source } = {}) {
+  async call(name, args = {}, { requireApproval, cfg, source, actor } = {}) {
     let cfgNow;
     if (cfg) {
       cfgNow = cfg;
@@ -56,9 +56,11 @@ export class Engine {
       }
     }
     this.cfg = cfgNow;
-    const src = source || { channel: 'local', ip: null, country: null, host: null, client: null };
+    const src = source ? { ...source } : { channel: 'local', ip: null, country: null, host: null, client: null };
+    const initiator = actor || src.actor || 'agent';
+    delete src.actor;
     const record = (fields) => {
-      if (this.cfg.audit !== false) audit({ tool: name, args, source: src, kind: name === 'log_note' ? 'note' : 'call', ...fields });
+      if (this.cfg.audit !== false) audit({ tool: name, args, source: src, actor: initiator, kind: name === 'log_note' ? 'note' : 'call', ...fields });
     };
     const tool = this.catalog().find((t) => t.name === name);
     if (!tool) {

@@ -33,6 +33,11 @@ def scrub(value):
 
 def audit(entry: dict) -> None:
     try:
+        # The work log is reserved for explicit human/agent actions, not background/system activity.
+        actor = entry.get("actor", "system")
+        if actor not in ("user", "agent"):
+            return
+        entry = {**entry, "actor": actor}
         config_dir().mkdir(parents=True, exist_ok=True)
         try:
             ap = audit_path()

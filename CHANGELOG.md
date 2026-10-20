@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.10
+
+### Changed
+- The work log now records only actions attributed to an agent or the user; automatic lifecycle, polling, and system events are omitted.
+- Native-app permission status refreshes use a private local status endpoint and no longer create a tool-call log entry. A deliberate “Check again” remains recorded as a user action.
+
 ## 0.18.9
 
 ### Fixed

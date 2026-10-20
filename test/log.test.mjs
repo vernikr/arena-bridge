@@ -50,7 +50,7 @@ const lastFor = (pred) => tailAudit(500).filter(pred).at(-1);
 
 test('parameters are stored whole; overflow goes to an artifact and is recoverable', () => {
   const content = 'a'.repeat(200_000);
-  audit({ id: 'log-test-overflow', tool: 'write_file', args: { path: '/x', content }, status: 'ok' });
+  audit({ id: 'log-test-overflow', actor: 'agent', tool: 'write_file', args: { path: '/x', content }, status: 'ok' });
   const rec = tailAudit(1)[0];
   assert.equal(rec.id, 'log-test-overflow');
   assert.equal(rec.args_truncated, true);
@@ -61,7 +61,7 @@ test('parameters are stored whole; overflow goes to an artifact and is recoverab
 
 test('a 5 000 character parameter stays inline and whole', () => {
   const text = 'b'.repeat(5000);
-  audit({ id: 'log-test-inline', tool: 'log_note', args: { text } });
+  audit({ id: 'log-test-inline', actor: 'agent', tool: 'log_note', args: { text } });
   const rec = tailAudit(1)[0];
   assert.equal(rec.args.text.length, 5000);
   assert.equal(rec.args_truncated, false);
@@ -151,16 +151,14 @@ test('failed authentications are logged at the start of each minute and counted 
 });
 
 test('over HTTP: unauthorized, unknown tool, invalid JSON and file reads are all recorded', async () => {
+  const beforeUnauthorized = tailAudit(500).length;
   const bad = await fetch(`${base}/call`, {
     method: 'POST',
     headers: { Authorization: 'Bearer wrong', 'Content-Type': 'application/json' },
     body: JSON.stringify({ tool: 'bash', args: { command: 'id' } }),
   });
   assert.equal(bad.status, 401);
-  const alert = lastFor((r) => r.kind === 'auth');
-  assert.equal(alert.level, 'alert');
-  assert.equal(alert.status, 'unauthorized');
-  assert.equal(alert.source.ip, '127.0.0.1');
+  assert.equal(tailAudit(500).length, beforeUnauthorized, 'unauthenticated/system probes are not audit events');
 
   const unknown = await fetch(`${base}/call`, { method: 'POST', headers: auth, body: JSON.stringify({ tool: 'nope' }) });
   assert.equal(unknown.status, 400);
@@ -171,7 +169,7 @@ test('over HTTP: unauthorized, unknown tool, invalid JSON and file reads are all
   const broken = await fetch(`${base}/call`, { method: 'POST', headers: auth, body: '{not json' });
   assert.equal(broken.status, 400);
   assert.equal((await broken.json()).error, 'INVALID_JSON');
-  assert.equal(lastFor((r) => r.error === 'INVALID_JSON').level, 'warning');
+  assert.equal(lastFor((r) => r.error === 'INVALID_JSON'), undefined, 'unattributed parser errors are not audit events');
 
   const read = await fetch(`${base}/files?path=${encodeURIComponent(path.join(WORK, 'hello.txt'))}`, { headers: auth });
   assert.equal(read.status, 200);
@@ -183,6 +181,19 @@ test('over HTTP: unauthorized, unknown tool, invalid JSON and file reads are all
   assert.equal(outside.status, 200, 'non-protected paths are not blocked by legacy roots');
   const outsideRec = lastFor((r) => r.tool === 'file_get');
   assert.equal(outsideRec.status, 'ok');
+
+  const countBeforeBackgroundCheck = tailAudit(500).length;
+  const permissionCheck = await fetch(`${base}/permissions`, { headers: { Authorization: `Bearer ${loaded.localToken}` } });
+  assert.equal(permissionCheck.status, 200);
+  assert.equal(tailAudit(500).length, countBeforeBackgroundCheck, 'background permission polling stays out of the work log');
+
+  const userCall = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loaded.localToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'read_file', args: { path: path.join(WORK, 'hello.txt') } }),
+  });
+  assert.equal(userCall.status, 200);
+  assert.equal(lastFor((r) => r.tool === 'read_file').actor, 'user');
 });
 
 test('over HTTP: an agent note sent through MCP is recorded with the MCP channel', async () => {

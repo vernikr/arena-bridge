@@ -63,7 +63,7 @@ final class AppModel: ObservableObject {
         GuideWindow.show(id: kind.rawValue, title: "\(kind.title) · Arena Bridge", size: NSSize(width: 640, height: 620)) {
             PermissionGuideView(kind: kind).environmentObject(self)
         }
-        checkPermissions(force: true)
+        checkPermissions(force: true, userInitiated: true)
     }
 
     /// Opens the certificate guide in its own floating window.
@@ -74,18 +74,32 @@ final class AppModel: ObservableObject {
     }
 
     /// Asks the running service which permissions its screen runtime has. Read-only; at most once a minute unless forced.
-    func checkPermissions(force: Bool = false) {
+    func checkPermissions(force: Bool = false, userInitiated: Bool = false) {
         guard !permissionsChecking else { return }
-        // Each check can make macOS show a prompt, so explicit checks are spaced by 10 s and the others by 60 s.
+        // The background refresh is silent and capped at once per minute. Only a deliberate
+        // check from the permission guide is recorded as a user action.
         let gap: TimeInterval = force ? 10 : 60
         if let at = permissionsCheckedAt, Date().timeIntervalSince(at) < gap { return }
         permissionsChecking = true
         Task {
-            let (code, json) = await bridge.call("call", method: "POST",
-                                                 body: ["tool": "mac_permissions", "args": [String: Any]()], timeout: 40)
-            let text = json["permissions"] as? String ?? ""
-            screenAccess = code == 200 ? PermissionKind.granted("Screen Recording", in: text) : nil
-            accessibilityAccess = code == 200 ? PermissionKind.granted("Accessibility", in: text) : nil
+            let code: Int
+            let screen: Bool?
+            let accessibility: Bool?
+            if userInitiated {
+                let result = await bridge.call("call", method: "POST",
+                                               body: ["tool": "mac_permissions", "args": [String: Any]()], timeout: 40, local: true)
+                code = result.0
+                let text = result.1["permissions"] as? String ?? ""
+                screen = code == 200 ? PermissionKind.granted("Screen Recording", in: text) : nil
+                accessibility = code == 200 ? PermissionKind.granted("Accessibility", in: text) : nil
+            } else {
+                let result = await bridge.call("permissions", timeout: 40, local: true)
+                code = result.0
+                screen = code == 200 ? result.1["screen"] as? Bool : nil
+                accessibility = code == 200 ? result.1["accessibility"] as? Bool : nil
+            }
+            screenAccess = screen
+            accessibilityAccess = accessibility
             permissionsCheckedAt = Date()
             permissionsChecking = false
             if screenAccess == true && accessibilityAccess == true {
@@ -410,7 +424,7 @@ final class AppModel: ObservableObject {
 
     /// Writes one step line to the work log. When the bridge is down, the line stays in the app's own log.
     private func note(_ text: String, level: String = "info") async {
-        let (code, _) = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text])
+        let (code, _) = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text], local: true)
         guard code != 200, let entry = LogEntry.parse(["id": "local-\(UUID().uuidString)", "tool": "service", "status": "step", "level": level, "args_preview": text]) else { return }
         entries.append(entry)
         recompute()

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { VERSION } from './version.mjs';
 import crypto from 'node:crypto';
-import { sendJson, sendText, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
+import { sendJson, sendText, readJson, readBody, isAuthorized, bearer, safeEqual, actorFor } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { toolCatalog } from './engine.mjs';
@@ -141,6 +141,7 @@ export function createHubServer(cfg) {
         res.setHeader('www-authenticate', 'Bearer');
         return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       }
+      const actor = actorFor(req, loadConfig());
 
       if (req.method === 'GET' && p === '/devices') {
         const list = [...devices.entries()].map(([name, d]) => ({
@@ -188,6 +189,7 @@ export function createHubServer(cfg) {
       if (req.method === 'POST' && p === '/exec') {
         const body = await readJson(req, cfg.maxUploadBytes);
         const source = await sourceOf(req, 'http');
+        source.actor = actor;
         const result = await callTool('bash', {
           device: body.device,
           command: body.command,
@@ -202,6 +204,7 @@ export function createHubServer(cfg) {
         const body = await readJson(req, cfg.maxUploadBytes);
         if (!body.tool) return sendJson(res, 400, { ok: false, error: 'tool is required' });
         const source = await sourceOf(req, 'http');
+        source.actor = actor;
         const result = await callTool(String(body.tool), body.args || {}, source);
         return sendJson(res, result.ok ? 200 : 400, result);
       }
@@ -235,6 +238,7 @@ export function createHubServer(cfg) {
 
       if (req.method === 'POST' && p === '/mcp') {
         const source = await sourceOf(req, 'mcp');
+        source.actor = actor;
         return handleMcp(req, res, { ...mcpCtx, callTool: (name, args) => callTool(name, args, source) });
       }
 

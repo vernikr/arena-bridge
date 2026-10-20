@@ -899,13 +899,13 @@ class Engine:
             if trust_allows(trust, name, args, cfg_now):
                 res = tool["handler"](args, ctx)
                 if cfg_now.get("audit", True):
-                    audit({"id": entry_id, "tool": name, "args": args, "status": "ok" if res.get("ok") else "error", "duration_ms": int((time.time() - started)*1000), "via": "trust_window", "exit_code": res.get("exit_code"), "error": None if res.get("ok") else res.get("error")})
+                    audit({"id": entry_id, "tool": name, "args": args, "actor": "agent", "status": "ok" if res.get("ok") else "error", "duration_ms": int((time.time() - started)*1000), "via": "trust_window", "exit_code": res.get("exit_code"), "error": None if res.get("ok") else res.get("error")})
                 return res
             decision = request_approval(name, args, cfg_now)
             if not decision["approved"]:
                 status = decision["rec"].get("status", "denied")
                 if cfg_now.get("audit", True):
-                    audit({"id": entry_id, "tool": name, "args": args, "status": "approval_denied", "approval_status": status})
+                    audit({"id": entry_id, "tool": name, "args": args, "actor": "agent", "status": "approval_denied", "approval_status": status})
                 pending = status in ("pending", "timeout", "expired")
                 return {
                     "ok": False,
@@ -930,7 +930,7 @@ class Engine:
             res = tool["handler"](args, ctx)
         except Exception as e:  # pragma: no cover - defensive
             if cfg_now.get("audit", True):
-                audit({"id": entry_id, "tool": name, "args": args, "status": "exception", "error": str(e)})
+                audit({"id": entry_id, "tool": name, "args": args, "actor": "agent", "status": "exception", "error": str(e)})
             return {"ok": False, "error": str(e)}
 
         if cfg_now.get("audit", True):
@@ -939,6 +939,7 @@ class Engine:
                     "id": entry_id,
                     "tool": name,
                     "args": args,
+                    "actor": "agent",
                     "status": "ok" if res.get("ok") else "error",
                     "duration_ms": int((time.time() - started) * 1000),
                     "exit_code": res.get("exit_code"),

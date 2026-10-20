@@ -264,6 +264,7 @@ await test('the user can approve a request from the chat', async () => {
 await test('the audit log masks credentials', async () => {
   const { audit, tailAudit } = await import('../src/audit.mjs');
   audit({
+    actor: 'agent',
     tool: 'bash',
     args: { command: 'curl https://api.telegram.org/bot8605407779:AAHsu4ZpVVrkpzjKD7Em1I-U55Zcd9ndVPY/getMe' },
   });

@@ -25,7 +25,7 @@ const {
 
 const trustEvents = () => tailAudit(10_000).filter((e) => e.kind === 'trust').map((e) => `${e.status}:${e.via}`);
 
-test('trust window: open, extend, close, expire and external change each log exactly one event', () => {
+test('trust logs keep user actions and omit automatic launch/expiry events', () => {
   const now = Date.now();
   openTrust({ until: now + 3_600_000, tools: [], paths: [] }, { via: 'launch', source: { channel: 'local' } });
   openTrust({ until: now + 7_200_000, tools: [], paths: [] }, { via: 'cli' });
@@ -39,18 +39,18 @@ test('trust window: open, extend, close, expire and external change each log exa
   fs.rmSync(TRUST_PATH);
   reconcileTrust();
   assert.deepEqual(trustEvents(), [
-    'open:launch', 'extend:cli', 'close:cli', 'open:approval', 'expire:expiry', 'open:external', 'close:external',
+    'extend:cli', 'close:cli', 'open:approval', 'open:external', 'close:external',
   ]);
 });
 
-test('bridge and tunnel lifecycle events are recorded with their origin', () => {
+test('automatic bridge and tunnel lifecycle events are not audit entries', () => {
   delete process.env.XPC_SERVICE_NAME;
+  const before = tailAudit(100).length;
   bridgeEvent('start', { port: 8787 });
   tunnelEvent('up', { url: 'example.trycloudflare.com' });
   tunnelEvent('down', { code: 1 });
   bridgeEvent('stop', { reason: 'signal' });
-  const seen = tailAudit(4).map((e) => `${e.kind}:${e.status}:${e.via}`);
-  assert.deepEqual(seen, ['service:start:cli', 'tunnel:up:cli', 'tunnel:down:cli', 'service:stop:cli']);
+  assert.equal(tailAudit(100).length, before);
 });
 
 /* ---- 100 000 synthetic records across nine archives and the active file ---- */
@@ -176,10 +176,10 @@ test('HTTP: /audit pages with cursors, /audit/entry returns the full record, /lo
 });
 
 test('rotation closes the active file; a cursor taken before it still reads forward', () => {
-  audit({ kind: 'step', tool: 'rot', status: '1', level: 'info', message: 'before rotation' });
+  audit({ actor: 'agent', kind: 'step', tool: 'rot', status: '1', level: 'info', message: 'before rotation' });
   const head = headCursor();
   const name = rotateAudit();
-  audit({ kind: 'step', tool: 'rot', status: '1', level: 'info', message: 'after rotation' });
+  audit({ actor: 'agent', kind: 'step', tool: 'rot', status: '1', level: 'info', message: 'after rotation' });
   assert.ok(name && fs.existsSync(path.join(HOME, name)));
   assert.deepEqual(auditPage({ after: head }).entries.map((e) => e.message), ['after rotation']);
   assert.equal(findEntry('no-such-id'), null);

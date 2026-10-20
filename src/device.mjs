@@ -43,7 +43,7 @@ export async function runDevice(cfg, engine, { log = console.log } = {}) {
 
       let result;
       try {
-        result = await engine.call(job.tool, job.args || {}, { source: job.source || { channel: 'hub', ip: null, country: null, host: null, client: null } });
+        result = await engine.call(job.tool, job.args || {}, { source: job.source || { channel: 'hub', ip: null, country: null, host: null, client: null }, actor: job.source?.actor || 'agent' });
       } catch (e) {
         result = { ok: false, error: e.message };
       }

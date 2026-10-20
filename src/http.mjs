@@ -70,10 +70,15 @@ export function bearer(req) {
   return m ? m[1].trim() : null;
 }
 
-export function isAuthorized(req, cfg) {
+export function actorFor(req, cfg) {
   const token = bearer(req);
-  if (!token) return false;
-  if (cfg.token && safeEqual(token, cfg.token)) return true;
-  // the local token is for the machine owner: approvals and trust
-  return !!(cfg.localToken && safeEqual(token, cfg.localToken));
+  if (!token) return null;
+  // The local token is held by the owner-facing app; the agent token is shared with the agent.
+  if (cfg.localToken && safeEqual(token, cfg.localToken)) return 'user';
+  if (cfg.token && safeEqual(token, cfg.token)) return 'agent';
+  return null;
+}
+
+export function isAuthorized(req, cfg) {
+  return actorFor(req, cfg) !== null;
 }

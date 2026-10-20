@@ -104,8 +104,12 @@ function argsFor(id, args) {
 
 export function audit(entry = {}) {
   try {
+    // Keep only actions initiated by a human or an agent. Background housekeeping,
+    // launchd lifecycle events, and unauthenticated/system probes are not user work.
+    const actor = entry.actor || 'system';
+    if (actor !== 'agent' && actor !== 'user') return;
     fs.mkdirSync(configDir(), { recursive: true, mode: 0o700 });
-    const { id, args, ...fields } = entry;
+    const { id, args, ...fields } = { ...entry, actor };
     const recId = String(id || newEntryId(fields.tool));
     const params = argsFor(recId, args);
     const body = clipFields(scrub({ kind: 'call', ...fields }));
@@ -114,7 +118,7 @@ export function audit(entry = {}) {
       ts: new Date().toISOString(),
       ...body,
       level: levelFor({ kind: body.kind, status: body.status, level: body.level }),
-      actor: body.actor || 'agent',
+      actor: body.actor || 'system',
       source: body.source ?? null,
       args: params.args,
       args_truncated: params.truncated,

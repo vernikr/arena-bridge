@@ -2,7 +2,7 @@ import http from 'node:http';
 import { VERSION } from './version.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual } from './http.mjs';
+import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual, actorFor } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide, settle } from './approvals.mjs';
@@ -13,6 +13,7 @@ import { reconcileTrust } from './trust.mjs';
 import { describeSource, sourceOf, admitUnauthorized } from './source.mjs';
 import { errorResponse } from './errors.mjs';
 import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
+import { permissionStatus } from './mac.mjs';
 
 export function createDirectServer(cfg, engine) {
   const mcpCtx = {
@@ -109,9 +110,16 @@ export function createDirectServer(cfg, engine) {
         res.setHeader('www-authenticate', 'Bearer');
         return sendJson(res, 401, { ok: false, error: 'unauthorized' });
       }
+      const actor = actorFor(req, cfgNow);
 
       if (req.method === 'GET' && p === '/tools') {
         return sendJson(res, 200, { ok: true, tools: engine.mcpTools() });
+      }
+
+      // Owner-app background polling only: do not create an audit entry for housekeeping.
+      if (req.method === 'GET' && p === '/permissions') {
+        if (actor !== 'user') return sendJson(res, 403, { ok: false, error: 'local user token required' });
+        return sendJson(res, 200, await permissionStatus(cfgNow));
       }
 
       if (req.method === 'GET' && p === '/prompt') {
@@ -178,7 +186,7 @@ export function createDirectServer(cfg, engine) {
           && typeof body.message === 'string' && body.message.length <= 500
           && LEVELS.includes(level) && /^[\w.-]{1,40}$/.test(tool);
         if (!ok) return sendJson(res, 400, { ok: false, error: 'invalid event' });
-        audit({ kind: 'step', tool, status: body.status, level, message: body.message, via: 'gui', actor: 'user', source: describeSource(req, 'http') });
+        audit({ kind: 'step', tool, status: body.status, level, message: body.message, via: 'gui', actor, source: describeSource(req, 'http') });
         return sendJson(res, 200, { ok: true });
       }
 
@@ -217,7 +225,7 @@ export function createDirectServer(cfg, engine) {
         const expected = loadConfig().localToken;
         const presented = bearer(req);
         if (!expected || !presented || !safeEqual(presented, expected)) {
-          audit({ kind: 'approval', tool: null, status: 'forbidden', error: 'FORBIDDEN', via: 'api', actor: 'agent', source: await sourceOf(req, 'http'), args: { approval_id: approveMatch[1] } });
+          audit({ kind: 'approval', tool: null, status: 'forbidden', error: 'FORBIDDEN', via: 'api', actor, source: await sourceOf(req, 'http'), args: { approval_id: approveMatch[1] } });
           return sendJson(res, 403, {
             ok: false,
             error: 'forbidden',
@@ -238,7 +246,7 @@ export function createDirectServer(cfg, engine) {
           cwd: body.cwd,
           timeout_sec: body.timeout_sec,
           env: body.env,
-        }, { source });
+        }, { source, actor });
         const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
         return sendJson(res, status, result);
       }
@@ -247,10 +255,10 @@ export function createDirectServer(cfg, engine) {
         const body = await readJson(req, cfgNow.maxUploadBytes);
         const source = await sourceOf(req, 'http');
         if (!body.tool) {
-          audit({ kind: 'call', tool: null, status: 'rejected', error: 'INVALID_ARGS', via: 'direct', source, args: {} });
+          audit({ kind: 'call', tool: null, status: 'rejected', error: 'INVALID_ARGS', via: 'direct', actor, source, args: {} });
           return sendJson(res, 400, { ok: false, error: 'tool is required' });
         }
-        const result = await engine.call(String(body.tool), body.args || {}, { source });
+        const result = await engine.call(String(body.tool), body.args || {}, { source, actor });
         // R5: return 202 for pending approvals, so client can poll GET /approvals/:id
         const status = result.ok ? 200 : (result.error === 'APPROVAL_PENDING' ? 202 : 400);
         return sendJson(res, status, result);
@@ -263,13 +271,13 @@ export function createDirectServer(cfg, engine) {
         if (!target) return sendJson(res, 400, { ok: false, error: 'path query parameter is required' });
         const chk = checkPath(target, cfgNow, engine.base, { write: req.method !== 'GET' });
         if (!chk.ok) {
-          audit({ tool: toolName, args: { path: target }, status: 'error', error: chk.error, via: 'files_api', source });
+          audit({ tool: toolName, args: { path: target }, status: 'error', error: chk.error, via: 'files_api', actor, source });
           return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
         }
         // PUT/DELETE must go through the approval gate and audit, like the tools
         if (req.method !== 'GET') {
           const { authorize } = await import('./gate.mjs');
-          const resAuth = await authorize(toolName, { path: target }, cfgNow, source);
+          const resAuth = await authorize(toolName, { path: target }, cfgNow, source, actor);
           if (!resAuth.ok) {
             const status = resAuth.status || 'denied';
             const pending = resAuth.pending;
@@ -284,23 +292,23 @@ export function createDirectServer(cfg, engine) {
         try {
           if (req.method === 'GET') {
             const buf = await fsp.readFile(chk.abs);
-            audit({ tool: 'file_get', args: { path: target }, status: 'ok', via: 'files_api', source, bytes: buf.length });
+            audit({ tool: 'file_get', args: { path: target }, status: 'ok', via: 'files_api', actor, source, bytes: buf.length });
             return sendRaw(res, 200, buf);
           }
           if (req.method === 'PUT' || req.method === 'POST') {
             const buf = await readBody(req, cfgNow.maxUploadBytes);
             await fsp.mkdir(path.dirname(chk.abs), { recursive: true });
             await fsp.writeFile(chk.abs, buf);
-            audit({ tool: 'file_put', args: { path: target }, status: 'ok', via: 'files_api', source, bytes: buf.length });
+            audit({ tool: 'file_put', args: { path: target }, status: 'ok', via: 'files_api', actor, source, bytes: buf.length });
             return sendJson(res, 200, { ok: true, path: chk.abs, bytes: buf.length });
           }
           if (req.method === 'DELETE') {
             await fsp.rm(chk.abs, { recursive: true, force: true });
-            audit({ tool: 'delete_path', args: { path: target }, status: 'ok', via: 'files_api', source });
+            audit({ tool: 'delete_path', args: { path: target }, status: 'ok', via: 'files_api', actor, source });
             return sendJson(res, 200, { ok: true, path: chk.abs, deleted: true });
           }
         } catch (e) {
-          audit({ tool: toolName, args: { path: target }, status: 'error', error: e.message, via: 'files_api', source });
+          audit({ tool: toolName, args: { path: target }, status: 'error', error: e.message, via: 'files_api', actor, source });
           return sendJson(res, 400, { ok: false, error: e.message });
         }
         return sendJson(res, 405, { ok: false, error: 'method not allowed' });
@@ -351,7 +359,7 @@ export function createDirectServer(cfg, engine) {
           return sendJson(res, 405, { ok: false, error: 'method not allowed', hint: 'use POST /mcp' });
         }
         const source = await sourceOf(req, 'mcp');
-        return handleMcp(req, res, { ...mcpCtx, callTool: (name, args) => engine.call(name, args, { source }) });
+        return handleMcp(req, res, { ...mcpCtx, callTool: (name, args) => engine.call(name, args, { source, actor }) });
       }
 
       return sendJson(res, 404, { ok: false, error: `no route for ${req.method} ${p}` });
