@@ -13,3 +13,7 @@
 ## Open
 - The first move to 0.18.0 is manual (the running 0.16.1 has no updater).
 - Bridge restarts once after the swap.
+
+## Result (2026-10-20)
+- Mac moved from 0.16.1 to 0.18.0 by the manual update script; the bridge reports 0.18.0, screen and accessibility permissions stay granted.
+- Not yet tested end to end: the automatic path needs a newer release than the installed one.
