@@ -184,7 +184,7 @@ def _():
 def _():
     before = len(SENT)
     gate = Engine({**cfg, "requireApproval": True, "approvalWaitSec": 2}, base=str(WORK))
-    r = gate.call("bash", {"command": "echo hi"})
+    r = gate.call("bash", {"command": "echo hi"}, cfg={**cfg, "requireApproval": True, "approvalWaitSec": 2})
     assert r["ok"] is False
     assert r["error"] == "APPROVAL_PENDING"
     assert len(SENT) == before + 1, "the user is told about the request"
@@ -195,7 +195,7 @@ def _():
 def _():
     before = len(SENT)
     gate = Engine({**cfg, "requireApproval": True, "approvalWaitSec": 2}, base=str(WORK))
-    r = gate.call("bash", {"command": "echo hi"})
+    r = gate.call("bash", {"command": "echo hi"}, cfg={**cfg, "requireApproval": True, "approvalWaitSec": 2})
     assert r["ok"] is False
     keyboard = (SENT[-1].get("reply_markup") or {}).get("inline_keyboard")
     assert keyboard, "the message has a keyboard"

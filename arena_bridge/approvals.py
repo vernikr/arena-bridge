@@ -24,10 +24,10 @@ def _expire_if_needed(path: Path, rec: dict, now: int | None = None) -> dict:
         rec["decidedAt"] = now
         rec["decidedBy"] = "system"
         tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(rec, indent=2))
-    try: tmp.chmod(0o600)
-    except: pass
-    tmp.replace(path)
+        tmp.write_text(json.dumps(rec, indent=2))
+        try: tmp.chmod(0o600)
+        except: pass
+        tmp.replace(path)
     return rec
 
 
