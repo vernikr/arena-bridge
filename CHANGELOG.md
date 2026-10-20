@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.0
+
+### Added
+- The macOS app updates itself: it checks the latest release, verifies the download and the signature against the installed app, updates the bridge command line tool and restarts.
+- An update switch and a Check now button in the Control card.
+
 ## 0.17.0
 
 ### Added
