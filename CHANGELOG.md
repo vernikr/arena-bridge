@@ -4,10 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.18.7
 
 ### Fixed
 - A tunnel that prints its address and exits at once no longer fails the start.
+- Command and tool calls over HTTP return their results.
+- Approving or denying a request through the local interface works.
 
 ## 0.18.6
 
