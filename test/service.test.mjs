@@ -14,6 +14,9 @@ process.env.PATH = `${bin}:${process.env.PATH}`;
 const m = await import('../src/service.mjs');
 try {
   const options = { bin: 'ngrok', domain: 'test.ngrok-free.dev', port: 9999 };
+  const configured = m.serviceConfigure(options);
+  assert.equal(configured.ok, true);
+  assert.equal(fs.existsSync(calls), false, 'configuration must not invoke launchctl or start the service');
   let r = m.serviceInstall(options);
   assert.equal(r.scheduled, true);
   assert.ok(m.plistPath().startsWith(tmp));

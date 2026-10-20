@@ -24,7 +24,7 @@ import { cmdBrowser as _cmdBrowserImpl } from './cli/browser.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
 import { COMPLETION_BASH, COMPLETION_ZSH, COMPLETION_FISH } from './completion.mjs';
 import { packageInfo, latestVersion, compareVersions, selfUpdate } from './selfupdate.mjs';
-import { serviceStatus, serviceInstall, serviceUninstall } from './service.mjs';
+import { serviceStatus, serviceInstall, serviceConfigure, serviceUninstall } from './service.mjs';
 import {
   sendTelegram,
   telegramSettings,
@@ -124,7 +124,7 @@ Commands:
 Common options:
   --mode direct|hub    mode for "init"
   --device NAME        device name (default: hostname)
-  --root PATH[,PATH]   authorized roots (default: home directory)
+  --root PATH[,PATH]   legacy setting; does not restrict filesystem access
   --port N             listen port (default: 8787)
   --host ADDR          bind address (default: 127.0.0.1)
   --hub URL            hub base URL (for "connect" / init --mode hub)
@@ -157,6 +157,11 @@ function cmdInit(args) {
   if (args.flags.host) cfg.host = String(args.flags.host);
   if (args.flags.hub) cfg.hub = String(args.flags.hub);
   if (args.flags['public-url']) cfg.publicUrl = String(args.flags['public-url']);
+  cfg.tunnel = { ...(cfg.tunnel || {}),
+    ...(args.flags.bin ? { bin: String(args.flags.bin) } : {}),
+    ...(args.flags.domain !== undefined ? { domain: String(args.flags.domain) || null } : {}),
+    ...(args.flags.authtoken !== undefined ? { authtoken: String(args.flags.authtoken) || null } : {}),
+  };
   if (args.flags.root) {
     const values = Array.isArray(args.flags.root) ? args.flags.root : [args.flags.root];
     const roots = values
@@ -700,15 +705,18 @@ function cmdRestart(args) {
 
 function cmdService(args) {
   const what = args._[1] || 'status';
-  if (what === 'install') {
-    const res = serviceInstall({
-      bin: args.flags.bin,
-      domain: args.flags.domain,
-      authtoken: args.flags.authtoken,
+  if (what === 'install' || what === 'configure') {
+    const cfg = loadConfig();
+    const options = {
+      bin: args.flags.bin || cfg.tunnel?.bin,
+      domain: args.flags.domain !== undefined ? String(args.flags.domain) : cfg.tunnel?.domain,
+      authtoken: args.flags.authtoken || cfg.tunnel?.authtoken,
       port: args.flags.port,
-    });
+    };
+    const res = what === 'configure' ? serviceConfigure(options) : serviceInstall(options);
     if (!res.ok) throw new Error(res.detail);
-    console.log(`\u2713 service installed: ${res.plist}`);
+    console.log(`\u2713 service ${what === 'configure' ? 'configuration saved' : 'installed'}: ${res.plist}`);
+    if (what === 'configure') return;
     console.log('  reload scheduled in 3 seconds; check: arena-bridge service status');
     console.log('  the bridge now starts with the system and keeps a public URL alive');
     console.log('  current URL: arena-bridge url');
@@ -845,8 +853,6 @@ function cmdConfig(args) {
   if (sub === 'validate') {
     const isJson = !!(args.flags.json);
     const errs = [];
-    if (!cfg.roots || !cfg.roots.length) errs.push('roots is empty — run arena-bridge init --root ~/projects');
-    else for (const r of cfg.roots) { try { if (!fs.existsSync(r)) errs.push(`root not found: ${r}`); } catch {} }
     if (!cfg.token) errs.push('token missing — run arena-bridge init');
     if (!cfg.deviceToken) errs.push('deviceToken missing');
     if (!Number.isFinite(Number(cfg.port)) || Number(cfg.port) < 1 || Number(cfg.port) > 65535) errs.push(`port invalid: ${cfg.port}`);
@@ -1034,18 +1040,16 @@ function cmdDoctor(args) {
   }
   const cfg = loadConfig();
   const checks = [];
-  checks.push({ name: 'config file', code: 'config_file', passed: fs.existsSync(path.join(CONFIG_DIR, 'config.json')), detail: CONFIG_DIR, hint: 'run arena-bridge init --root <path>' });
+  checks.push({ name: 'config file', code: 'config_file', passed: fs.existsSync(path.join(CONFIG_DIR, 'config.json')), detail: CONFIG_DIR, hint: 'run arena-bridge init' });
   checks.push({ name: 'agent token', code: 'agent_token', passed: !!cfg.token, detail: cfg.token ? 'present' : 'MISSING', hint: 'run arena-bridge init' });
   checks.push({ name: 'device token', code: 'device_token', passed: !!cfg.deviceToken, detail: cfg.deviceToken ? 'present' : 'MISSING', hint: 'run arena-bridge init' });
   checks.push({ name: 'mode', code: 'mode', passed: !!cfg.mode, detail: cfg.mode, hint: '' });
-  checks.push({ name: 'roots', code: 'roots', passed: (cfg.roots || []).length > 0, detail: (cfg.roots || []).join(', '), hint: 'arena-bridge init --root ~/Documents' });
+  checks.push({ name: 'filesystem paths', code: 'filesystem_paths', passed: true, detail: 'not restricted by configured roots', hint: '' });
   checks.push({ name: 'approval gate', code: 'approval_gate', passed: cfg.requireApproval !== false, detail: cfg.requireApproval ? 'on' : 'OFF (dangerous)', hint: 'set requireApproval=true in config' });
   checks.push({ name: 'shell', code: 'shell', passed: cfg.allowShell !== false, detail: cfg.allowShell ? 'on' : 'off', hint: '' });
   checks.push({ name: 'protected paths', code: 'protected', passed: (cfg.protected || []).length > 0, detail: `${(cfg.protected || []).length} entries`, hint: '' });
   // config validate as doctor checks
   try {
-    if (!cfg.roots || !cfg.roots.length) checks.push({ name: 'config roots', code: 'config_roots', passed: false, detail: 'empty', hint: 'run arena-bridge init --root ~/projects' });
-    else for (const r of cfg.roots) if (!fs.existsSync(r)) checks.push({ name: `root ${r}`, code: 'config_root_missing', passed: false, detail: 'not found', hint: `mkdir -p ${r}` });
     if (!cfg.token) checks.push({ name: 'config token', code: 'config_token', passed: false, detail: 'missing', hint: 'run arena-bridge init' });
     if (!Number.isFinite(Number(cfg.port)) || Number(cfg.port) < 1 || Number(cfg.port) > 65535) checks.push({ name: 'config port', code: 'config_port', passed: false, detail: `invalid: ${cfg.port}`, hint: 'arena-bridge config set port 8787' });
   } catch {}

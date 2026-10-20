@@ -9,7 +9,9 @@ struct BridgeConfig {
     var token: String? = nil
     var localToken: String? = nil
     var device: String? = nil
-    var roots: [String] = []
+    var roots: [String] = [] // legacy base-directory setting; never a path allowlist
+    var tunnelBin = "ngrok"
+    var tunnelDomain: String? = nil
     var requireApproval = true
     var telegramEnabled = false
     var telegramChats: [String] = []
@@ -40,6 +42,10 @@ struct BridgeConfig {
         cfg.localToken = raw["localToken"] as? String
         cfg.device = raw["device"] as? String
         cfg.roots = raw["roots"] as? [String] ?? []
+        if let tunnel = raw["tunnel"] as? [String: Any] {
+            cfg.tunnelBin = tunnel["bin"] as? String ?? cfg.tunnelBin
+            cfg.tunnelDomain = tunnel["domain"] as? String
+        }
         cfg.requireApproval = raw["requireApproval"] as? Bool ?? cfg.requireApproval
         if let tg = raw["telegram"] as? [String: Any] {
             cfg.telegramEnabled = tg["enabled"] as? Bool ?? false
@@ -348,6 +354,22 @@ struct Bridge {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)
         process.arguments = arguments
+        // Finder-launched apps don't inherit shell startup files (nvm/fnm/Volta), so
+        // /usr/bin/env node in the CLI shebang may otherwise fail even when Node is installed.
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var nodeBins = ["/opt/homebrew/bin", "/usr/local/bin", "\(home)/.volta/bin", "\(home)/.local/share/mise/shims"]
+        for root in ["\(home)/.nvm/versions/node", "\(home)/.fnm/node-versions"] {
+            if let versions = try? FileManager.default.contentsOfDirectory(atPath: root) {
+                for version in versions.sorted().reversed() {
+                    let suffix = root.hasSuffix("node-versions") ? "/installation/bin" : "/bin"
+                    nodeBins.append("\(root)/\(version)\(suffix)")
+                }
+            }
+        }
+        let inherited = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = (nodeBins + [inherited]).joined(separator: ":")
+        process.environment = env
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe

@@ -246,7 +246,7 @@ await test('the human login launch carries no debugging/automation flags', async
   }
 });
 
-await test('chrome_screenshot saves a PNG inside the authorized roots', async () => {
+await test('chrome_screenshot saves a PNG at the requested path', async () => {
   process.env.CHROME_PATH = FAKE_CHROME;
   const launch = await engine.call('chrome_launch', { headless: true, port: PORT + 4 });
   const target = path.join(TMP, 'shot.png');
@@ -258,15 +258,15 @@ await test('chrome_screenshot saves a PNG inside the authorized roots', async ()
   engine.browser.sessions.get(launch.session_id)?.proc?.kill();
 });
 
-await test('chrome_screenshot refuses paths outside the authorized roots', async () => {
+await test('chrome_screenshot is not restricted by legacy roots', async () => {
   process.env.CHROME_PATH = FAKE_CHROME;
   const launch = await engine.call('chrome_launch', { headless: true, port: PORT + 5 });
   const shot = await engine.call('chrome_screenshot', {
     session_id: launch.session_id,
-    path: '/etc/passwd',
+    path: path.join(TMP, 'requested-anywhere.png'),
   });
-  assert.equal(shot.ok, false);
-  assert.equal(shot.error, 'PROTECTED');
+  assert.equal(shot.ok, true, JSON.stringify(shot));
+  assert.ok(fs.existsSync(path.join(TMP, 'requested-anywhere.png')));
   engine.browser.sessions.get(launch.session_id)?.proc?.kill();
 });
 

@@ -1028,12 +1028,12 @@ export class BrowserManager {
       {
         name: 'chrome_screenshot',
         description:
-          'Capture a PNG screenshot of a tab. If "path" is given, the image is saved there (inside the authorized roots) ' +
+          'Capture a PNG screenshot of a tab. If "path" is given, the image is saved there (at the requested path) ' +
           'and the file can be read afterwards; otherwise the PNG is returned as base64.',
         approval: false,
         schema: S(
           {
-            path: { type: 'string', description: 'where to save the PNG (must be inside the authorized roots)' },
+            path: { type: 'string', description: 'where to save the PNG (must be at the requested path)' },
             session_id: { type: 'string' },
             tab_id: { type: 'string' },
             full_page: { type: 'boolean' },

@@ -104,7 +104,7 @@ await test('a rotated token takes effect without restarting the server', async (
   saveConfig(loaded); // restore
 });
 
-await test('a policy change (roots) applies without restarting the server', async () => {
+await test('filesystem access is not restricted by legacy roots', async () => {
   const other = path.join(TMP, 'other');
   fs.mkdirSync(other, { recursive: true });
   fs.writeFileSync(path.join(other, 'x.txt'), 'x');
@@ -115,24 +115,20 @@ await test('a policy change (roots) applies without restarting the server', asyn
     body: JSON.stringify({ tool: 'read_file', args: { path: path.join(other, 'x.txt') } }),
   });
   const j1 = await before.json();
-  assert.equal(j1.error, 'PROTECTED', 'not allowed before the change');
-
-  saveConfig({ ...loaded, roots: [WORK, other] });
-
+  assert.equal(j1.ok, true, 'path should work regardless of configured legacy roots');
   const after = await fetch(`${base}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ tool: 'read_file', args: { path: path.join(other, 'x.txt') } }),
   });
   const j2 = await after.json();
-  assert.equal(j2.ok, true, 'the new root should be reachable without a restart');
+  assert.equal(j2.ok, true, 'path remains reachable');
   assert.equal(j2.content, 'x');
   const fileApi = await fetch(`${base}/files?path=${encodeURIComponent(path.join(other, 'x.txt'))}`, { headers: auth });
-  assert.equal(await fileApi.text(), 'x', 'the file API should use the refreshed roots');
+  assert.equal(await fileApi.text(), 'x', 'the file API should read the requested path');
   const configApi = await fetch(`${base}/config`, { headers: auth });
   const configJson = await configApi.json();
-  assert.ok(configJson.roots.includes(other), 'the config endpoint should show the refreshed roots');
-  saveConfig(loaded); // restore
+  assert.ok(Array.isArray(configJson.roots), 'legacy roots remain informational config only');
 });
 
 await test('GET /prompt contains the base url and the token', async () => {
@@ -153,15 +149,14 @@ await test('read_file reads a file inside the root', async () => {
   assert.equal(j.content, 'hello world\n');
 });
 
-await test('read_file outside the roots is PROTECTED', async () => {
+await test('read_file outside legacy roots is allowed', async () => {
   const r = await fetch(`${base}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ tool: 'read_file', args: { path: '/etc/hostname' } }),
   });
   const j = await r.json();
-  assert.equal(j.ok, false);
-  assert.equal(j.error, 'PROTECTED');
+  assert.equal(j.ok, true, JSON.stringify(j));
 });
 
 await test('read_file of a protected path is PROTECTED', async () => {

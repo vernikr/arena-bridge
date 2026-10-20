@@ -261,7 +261,7 @@ export function macTools(cfg = {}) {
           app: { type: 'string', description: 'application name, e.g. "Safari"' },
           window_title: { type: 'string' },
           mode: { type: 'string', description: 'screen (default) or window' },
-          path: { type: 'string', description: 'where to save the PNG (defaults inside the first authorized root)' },
+          path: { type: 'string', description: 'where to save the PNG (defaults to the configured base directory)' },
           include_raw: { type: 'boolean' },
         },
         [],

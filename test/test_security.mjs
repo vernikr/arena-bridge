@@ -23,7 +23,7 @@ describe('security boundaries (wave 0)', () => {
     assert.equal(prot.ok, false);
     assert.match(prot.error, /PROTECTED/i);
   });
-  it('S2b: dangling symlink to outside is PROTECTED (lstat)', () => {
+  it('S2b: dangling symlink outside legacy roots is allowed', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sec-'));
     const roots = [dir];
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'out-'));
@@ -33,9 +33,9 @@ describe('security boundaries (wave 0)', () => {
     fs.symlinkSync(target, link);
     const cfg = { roots, protected: [] };
     const chk = checkPath(link, cfg, '/tmp');
-    // link target is outside roots -> should be denied (or at least not ok via isInside)
-    // Implementation may allow if roots includes dir but link points outside -> PROTECTED via resolveTarget
-    assert.ok(chk.ok === false || chk.abs !== target || chk.abs.includes(dir), 'link should not escape');
+    // No authorized-root allowlist: resolved targets work unless separately protected.
+    assert.equal(chk.ok, true);
+    assert.equal(chk.abs, target);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   });

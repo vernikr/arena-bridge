@@ -19,7 +19,8 @@ export const DEFAULTS = {
   deviceToken: null, // device token: only a device may use this
   hub: null, // hub base URL, when mode=hub
   device: os.hostname(), // this device's name
-  roots: [os.homedir()], // directories the agent may touch
+  roots: [os.homedir()], // retained for older configs; path access is not restricted by roots
+  tunnel: { bin: 'ngrok', domain: null, authtoken: null },
   protected: [
     '~/.arena-bridge',
     '~/.ssh',

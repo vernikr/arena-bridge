@@ -17,11 +17,11 @@ export function toolCatalog() {
       name: 'bash',
       description:
         'Run a shell command on the remote machine. Returns stdout, stderr and the exit code. ' +
-        'Use absolute paths; the working directory defaults to the authorized root. This is a side-effecting operation and may require human approval.',
+        'Use absolute paths; the working directory defaults to the configured base directory. This is a side-effecting operation and may require human approval.',
       approval: true,
       schema: S({
         command: { type: 'string', description: 'Shell command to execute' },
-        cwd: { type: 'string', description: 'Working directory (must be inside the authorized roots)' },
+        cwd: { type: 'string', description: 'Working directory (must be at the requested path)' },
         timeout_sec: { type: 'number', description: 'Timeout in seconds (default 120, max 1800)' },
         env: { type: 'object', description: 'Extra environment variables' },
       }),

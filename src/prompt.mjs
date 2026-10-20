@@ -80,7 +80,7 @@ ${toolsLine}
    \`chrome_snapshot\` with \`{"mode": "ax"}\` returns roles, names and element states; \`chrome_screenshot\` is for when the DOM is ambiguous.
 3. \`chrome_attach\` connects to the user's own Chrome (default port 9222, with their logged-in sessions).
    Actions on an attached browser require a local approval — ask for it instead of retrying.
-4. Screenshots: pass \`{"path": "shot.png"}\` to save the PNG inside the authorized roots, then read it with \`file_get\`.
+4. Screenshots: pass \`{"path": "shot.png"}\` to save the PNG at the requested path, then read it with \`file_get\`.
 5. Named profiles keep their logins between runs: \`chrome_launch {"profile":"work"}\` opens
    \`~/.arena-bridge/chrome-profiles/work\`. \`chrome_profiles\` lists them. The user logs in once with
    \`arena-bridge browser login work\` on their machine — ask for that instead of trying to log in yourself.
@@ -95,7 +95,7 @@ ${toolsLine}
 3. \`mac_apps\` and \`mac_windows\` show what is running; \`mac_app_launch\`/\`mac_app_focus\` open and switch.
 4. If a capture or a click fails, run \`mac_permissions\` — macOS needs Screen Recording and
    Accessibility permissions for the Arena Bridge app.
-5. Screenshots are saved as PNG inside the authorized roots; read them back with \`file_get\`.
+5. Screenshots are saved as PNG at the requested path; read them back with \`file_get\`.
 6. Stay out of the user's way: do not pass \`foreground\`, do not focus windows and do not move the
    pointer unless the user asks for it. Background actions are delivered to the target window only.
 7. \`mac_set\` writes a value straight into a control (no keystrokes, no focus change);
@@ -130,8 +130,7 @@ ${trustLine}
 - \`APPROVAL_DENIED\` means the user said no: do not retry, ask what to do instead.
 
 ## Rules
-1. Paths are restricted to the authorized roots (${(cfg.roots || []).join(', ')}).
-   Reading or writing anything else returns \`PROTECTED\` — do not try to work around it.
+1. Use the path the user specifies; there is no configured authorized-roots allowlist. Access is still subject to macOS permissions, protected sensitive locations, and approval requirements. Never work around an OS permission denial or a protected-location denial.
 2. Side-effecting tools (bash, write/edit/delete, process start/kill, actions on the user's own
    Chrome or on the desktop) may require a local human approval. When the answer contains
    \`APPROVAL_PENDING\`, stop and follow the recovery hint; never ask to approve a closed id.

@@ -693,7 +693,6 @@ struct SetupView: View {
     @State private var tunnel = "ngrok"
     @State private var domain = ""
     @State private var authtoken = ""
-    @State private var roots = ""
     @State private var telegramToken = ""
     @State private var telegramChat = ""
     @State private var working = false
@@ -716,14 +715,6 @@ struct SetupView: View {
                     TextField("Reserved domain (ngrok)", text: $domain)
                     SecureField("ngrok authtoken", text: $authtoken)
                 }
-                Section("Folders the agent may touch") {
-                    TextEditor(text: $roots)
-                        .frame(height: 70)
-                        .font(.system(.caption, design: .monospaced))
-                    Text("One folder per line, for example /Users/me/Documents")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
                 Section("Telegram") {
                     SecureField("Bot token", text: $telegramToken)
                     TextField("Chat id", text: $telegramChat)
@@ -742,32 +733,38 @@ struct SetupView: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Save and start") { apply() }
+                Button("Save") { apply() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(working)
             }
         }
         .padding(18)
-        .frame(width: 520, height: 520)
+        .frame(width: 520, height: 440)
         .onAppear(perform: load)
     }
 
     private func load() {
         let config = BridgeConfig.load()
-        roots = config.roots.joined(separator: "\n")
-        if let url = config.publicUrl, url.contains("ngrok") { domain = url }
+        tunnel = config.tunnelBin
+        domain = config.tunnelDomain ?? (config.publicUrl?.contains("ngrok") == true ? config.publicUrl! : "")
         telegramChat = config.telegramChats.first ?? ""
     }
 
     private func apply() {
         working = true
         error = nil
-        let folderList = roots.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        var arguments = ["init"]
-        for folder in folderList { arguments += ["--root", folder] }
-        let initResult = Bridge.run(arguments)
+        var initArgs = ["init", "--bin", tunnel]
+        initArgs += ["--domain", domain]
+        if !authtoken.isEmpty { initArgs += ["--authtoken", authtoken] }
+        let initResult = Bridge.run(initArgs)
         if initResult.code != 0 {
             error = initResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            working = false
+            return
+        }
+        let serviceResult = Bridge.run(["service", "configure"])
+        if serviceResult.code != 0 {
+            error = serviceResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
             working = false
             return
         }
@@ -779,16 +776,8 @@ struct SetupView: View {
                 return
             }
         }
-        var service = ["service", "install", "--bin", tunnel]
-        if !domain.isEmpty { service += ["--domain", domain] }
-        if !authtoken.isEmpty { service += ["--authtoken", authtoken] }
-        let serviceResult = Bridge.run(service)
-        if serviceResult.code != 0 {
-            error = serviceResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            working = false
-            return
-        }
-        Bridge.start()
+        // Persist only user settings. Starting/reloading the service is an explicit action
+        // in the main window, never a side effect of this Save button.
         working = false
         dismiss()
         Task { await model.refresh() }

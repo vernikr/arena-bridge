@@ -180,9 +180,9 @@ test('over HTTP: unauthorized, unknown tool, invalid JSON and file reads are all
   assert.equal(fileRec.status, 'ok');
 
   const outside = await fetch(`${base}/files?path=${encodeURIComponent('/etc/hosts')}`, { headers: auth });
-  assert.equal(outside.status, 403);
-  const denied = lastFor((r) => r.tool === 'file_get' && r.status === 'error');
-  assert.equal(denied.error, 'PROTECTED');
+  assert.equal(outside.status, 200, 'non-protected paths are not blocked by legacy roots');
+  const outsideRec = lastFor((r) => r.tool === 'file_get');
+  assert.equal(outsideRec.status, 'ok');
 });
 
 test('over HTTP: an agent note sent through MCP is recorded with the MCP channel', async () => {

@@ -827,10 +827,6 @@ def cmd_config(args):
         return
     if action == "validate":
         errs=[]
-        if not cfg.get("roots"): errs.append("roots is empty — run arena-bridge init --root ~/projects")
-        else:
-            for r in cfg.get("roots") or []:
-                if not __import__('os').path.exists(r): errs.append(f"root not found: {r}")
         if not cfg.get("token"): errs.append("token missing — run arena-bridge init")
         if not cfg.get("deviceToken"): errs.append("deviceToken missing")
         try:
@@ -945,17 +941,13 @@ def cmd_doctor(args):
         ("agent token", bool(cfg.get("token")), "present" if cfg.get("token") else "MISSING — run init"),
         ("device token", bool(cfg.get("deviceToken")), "present" if cfg.get("deviceToken") else "MISSING — run init"),
         ("mode", bool(cfg.get("mode")), str(cfg.get("mode"))),
-        ("roots", bool(cfg.get("roots")), ", ".join(cfg.get("roots") or [])),
+        ("filesystem paths", True, "not restricted by configured roots"),
         ("approval gate", cfg.get("requireApproval", True) is not False, "on" if cfg.get("requireApproval", True) else "OFF (dangerous)"),
         ("shell", cfg.get("allowShell", True) is not False, "on" if cfg.get("allowShell", True) else "off"),
         ("protected paths", bool(cfg.get("protected")), f"{len(cfg.get('protected') or [])} entries"),
     ]
     # config validate as doctor checks (integrated)
     try:
-        if not cfg.get("roots"): checks.append(("config roots", False, "empty — run arena-bridge init --root ~/projects"))
-        else:
-            for r in cfg.get("roots") or []:
-                if not __import__('os').path.exists(r): checks.append((f"root {r}", False, "not found — mkdir -p "+r))
         if not cfg.get("token"): checks.append(("config token", False, "missing — run arena-bridge init"))
         try:
             p=int(cfg.get("port",0))

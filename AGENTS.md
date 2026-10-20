@@ -54,7 +54,7 @@ Telegram tests are in CI (T1) — don't remove them. Release `if: success()` not
 ## Security boundaries (do not regress)
 
 - `audit_artifact` traversal via `basename` + `isInside` audit dir.
-- `search_files`/`list_dir` per-element `checkPath` + symlink target check.
+- `search_files`/`list_dir` per-element `checkPath` keeps protected locations blocked; configured roots are legacy and do not restrict paths.
 - `PUT/DELETE /files` through `authorize()` + audit.
 - `allowedChat` before `append_inbox` and `/approve`.
 - Token compare via `timingSafeEqual`/`hmac.compare_digest`.

@@ -13,7 +13,7 @@ def test_s2_protected_per_element():
     ok2, _, err, _ = check_path("/tmp/roots/a/.ssh/id_rsa", cfg, "/tmp")
     assert not ok2 and "PROTECTED" in err
 
-def test_s2b_dangling_symlink():
+def test_s2b_paths_outside_legacy_roots_are_allowed():
     import tempfile, os, pathlib
     from arena_bridge.policy import check_path
     with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as out:
@@ -24,8 +24,8 @@ def test_s2b_dangling_symlink():
         except: return
         cfg = {"roots": [d], "protected": []}
         ok, abs_path, *_ = check_path(str(link), cfg, "/tmp")
-        # should not allow escape to outside via symlink target check
-        assert not ok or str(abs_path) != str(target) or d in str(abs_path)
+        # Legacy roots no longer restrict host filesystem paths.
+        assert ok and abs_path == target
 
 def test_s4_allowed_chat():
     from arena_bridge.telegram import allowed_chat

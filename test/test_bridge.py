@@ -168,12 +168,12 @@ def _():
     assert j["content"] == "hello world\n"
 
 
-@test("read_file outside the roots is PROTECTED")
+@test("read_file outside legacy roots is allowed")
 def _():
     status, j = json_request(
         f"{base}/call", "POST", auth, {"tool": "read_file", "args": {"path": "/etc/hostname"}}
     )
-    assert j["error"] == "PROTECTED", j
+    assert j["ok"] is True, j
 
 
 @test("read_file of a protected path is PROTECTED")

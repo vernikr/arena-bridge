@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.8
+
+### Fixed
+- Setup no longer tries to start the service when saving. The existing Start control remains responsible for starting it.
+- Finder-launched macOS apps provide Node.js locations from common version managers to CLI subprocesses, fixing `env: node: No such file or directory`.
+- Configured roots no longer act as a filesystem allowlist; protected sensitive paths, OS permissions, and approval gates remain in force.
+
+### Changed
+- Setup no longer asks for folder roots. Tunnel settings are saved to config and the service definition without loading or starting the service.
+
 ## 0.18.7
 
 ### Fixed

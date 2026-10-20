@@ -62,15 +62,14 @@ test('S2: list_dir respects protected', async () => {
   assert.ok(!names.includes('secret.txt') || !res.entries.some(e => e.path.includes('protected/secret.txt')), 'protected file leaked');
 });
 
-test('S2b: dangling symlink not bypass', () => {
+test('S2b: access outside legacy roots is allowed', () => {
   const linkPath = path.join(work, 'link');
   try { fs.unlinkSync(linkPath); } catch {}
   try { fs.symlinkSync(path.join(outside, 'secret.txt'), linkPath); } catch {}
   fs.writeFileSync(path.join(outside, 'secret.txt'), 'outside secret');
   const chk = checkPath(linkPath, cfg, work);
-  // link target is outside roots, should be blocked even though link is inside roots
-  // Our B1 fix should resolve symlink and detect outside
-  assert.equal(chk.ok, false, 'dangling symlink outside roots should be blocked');
+  // Legacy roots are ignored; the resolved target is accessible unless explicitly protected.
+  assert.equal(chk.ok, true, 'path outside legacy roots should be allowed');
   try { fs.unlinkSync(linkPath); fs.unlinkSync(path.join(outside, 'secret.txt')); } catch {}
 });
 

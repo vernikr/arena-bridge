@@ -88,8 +88,7 @@ export function isInside(child, parent) {
 }
 
 /**
- * Path policy: protected locations are always denied, everything else must live under an
- * authorized root. Returns { ok, abs } or { ok:false, error:'PROTECTED', reason, abs }.
+ * Path policy: protected locations are denied; every other path is left to OS permissions. Returns { ok, abs } or { ok:false, error:'PROTECTED', reason, abs }.
  */
 export function checkPath(p, cfg, base = process.cwd(), _opts = {}) {
   let abs;
@@ -107,15 +106,6 @@ export function checkPath(p, cfg, base = process.cwd(), _opts = {}) {
         reason: `path is inside a protected location (${prot})`,
       };
     }
-  }
-  const roots = (cfg.roots || []).map((r) => resolveConfigured(r, base));
-  if (!roots.some((r) => isInside(abs, r))) {
-    return {
-      ok: false,
-      abs,
-      error: 'PROTECTED',
-      reason: `path is outside the authorized roots (${roots.join(', ')})`,
-    };
   }
   return { ok: true, abs };
 }

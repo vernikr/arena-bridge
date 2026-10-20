@@ -242,7 +242,7 @@ def _():
         assert "browser login" in src, f"{f} must expose \"browser login\""
 
 
-@test("chrome_screenshot saves a PNG inside the authorized roots")
+@test("chrome_screenshot saves a PNG at the requested path")
 def _():
     os.environ["CHROME_PATH"] = str(FAKE_CHROME)
     launch = engine.call("chrome_launch", {"headless": True, "port": PORT + 4})
@@ -254,13 +254,14 @@ def _():
     engine.browser.sessions[launch["session_id"]]["proc"].terminate()
 
 
-@test("chrome_screenshot refuses paths outside the authorized roots")
+@test("chrome_screenshot is not restricted by legacy roots")
 def _():
     os.environ["CHROME_PATH"] = str(FAKE_CHROME)
     launch = engine.call("chrome_launch", {"headless": True, "port": PORT + 5})
-    shot = engine.call("chrome_screenshot", {"session_id": launch["session_id"], "path": "/etc/passwd"})
-    assert shot["ok"] is False
-    assert shot["error"] == "PROTECTED"
+    target = TMP / "requested-anywhere.png"
+    shot = engine.call("chrome_screenshot", {"session_id": launch["session_id"], "path": str(target)})
+    assert shot["ok"] is True, shot
+    assert target.exists()
     engine.browser.sessions[launch["session_id"]]["proc"].terminate()
 
 

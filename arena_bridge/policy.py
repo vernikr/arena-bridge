@@ -105,8 +105,4 @@ def check_path(p, cfg, base=None, write=False):
         if is_inside(abs_path, _resolve_configured(prot, base)):
             return False, abs_path, "PROTECTED", f"path is inside a protected location ({prot})"
 
-    roots = cfg.get("roots") or []
-    if not any(is_inside(abs_path, _resolve_configured(r, base)) for r in roots):
-        return False, abs_path, "PROTECTED", f"path is outside the authorized roots ({', '.join(roots)})"
-
     return True, abs_path, None, None

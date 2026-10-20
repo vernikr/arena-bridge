@@ -733,7 +733,7 @@ class BrowserManager:
             {
                 "name": "chrome_screenshot",
                 "description": (
-                    "Capture a PNG screenshot of a tab. With 'path' the image is saved inside the authorized roots; "
+                    "Capture a PNG screenshot of a tab. With 'path' the image is saved at the requested path; "
                     "otherwise the PNG is returned as base64."
                 ),
                 "approval": False,

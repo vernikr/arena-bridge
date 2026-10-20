@@ -2,7 +2,7 @@
 // Generated from policy, engine, and http layers. Use via errorResponse()
 
 export const ERROR_CODES = {
-  PROTECTED: { message: 'path is outside authorized roots or inside protected location', hint: 'check roots/protected in config, use arena-bridge doctor', retryable: false },
+  PROTECTED: { message: 'path is invalid or inside a protected location', hint: 'check protected paths in config and macOS permissions', retryable: false },
   INVALID_PATH: { message: 'path is required or malformed', hint: 'provide absolute path or ~/', retryable: false },
   NOT_FOUND: { message: 'file or directory not found', hint: 'list_dir to see available paths', retryable: false },
   IS_DIR: { message: 'path is a directory, expected file', hint: 'use list_dir for directories', retryable: false },

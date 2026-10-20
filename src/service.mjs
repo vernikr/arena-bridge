@@ -162,7 +162,7 @@ export function serviceStatus() {
 
 export const reloadScript = "#!/bin/sh\nset -eu\nTARGET=$1\nPLIST=$2\nSTATUS=$3\nJOB=$4\nDOMAIN=${TARGET%/*}\nfinish() {\n  code=$?\n  trap - EXIT\n  if [ \"$code\" -eq 0 ]; then printf 'loaded\\n' > \"$STATUS\"; else printf 'failed (%s)\\n' \"$code\" > \"$STATUS\"; fi\n  rm -f \"$0\"\n  /bin/launchctl remove \"$JOB\" >/dev/null 2>&1 || true\n  exit \"$code\"\n}\ntrap finish EXIT\nprintf 'scheduled\\n' > \"$STATUS\"\nsleep 3\n/bin/launchctl enable \"$TARGET\"\nif /bin/launchctl print \"$TARGET\" >/dev/null 2>&1; then\n  /bin/launchctl bootout \"$TARGET\"\nfi\nattempt=0\nuntil /bin/launchctl bootstrap \"$DOMAIN\" \"$PLIST\"; do\n  attempt=$((attempt + 1))\n  [ \"$attempt\" -lt 10 ] || exit 1\n  sleep 1\ndone\n/bin/launchctl print \"$TARGET\" >/dev/null\n";
 
-export function serviceInstall(options = {}) {
+export function serviceConfigure(options = {}) {
   ensureDirs();
   fs.mkdirSync(logDir(), { recursive: true });
   fs.mkdirSync(path.dirname(plistPath()), { recursive: true });
@@ -171,6 +171,12 @@ export function serviceInstall(options = {}) {
   const plist = plistPath();
   fs.writeFileSync(`${plist}.tmp`, plistXml(options), { mode: 0o600 });
   fs.renameSync(`${plist}.tmp`, plist);
+  return { ok: true, plist };
+}
+
+export function serviceInstall(options = {}) {
+  const configured = serviceConfigure(options);
+  const plist = configured.plist;
   const job = `${LABEL}.reload.${randomUUID()}`;
   const script = path.join(CONFIG_DIR, `${job}.sh`);
   const status = path.join(CONFIG_DIR, 'service-reload.status');
