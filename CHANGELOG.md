@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.5
+
+### Fixed
+- The self-update updates the bridge copy that the background service runs, not only the command line copy, so the service restarts with the new version.
+
 ## 0.18.4
 
 ### Fixed
