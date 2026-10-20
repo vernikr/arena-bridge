@@ -210,7 +210,9 @@ test('over HTTP: an agent note sent through MCP is recorded with the MCP channel
   });
   assert.equal(r.status, 200);
   const rec = lastFor((x) => x.kind === 'note' && x.args?.text === 'Starting the test run.');
+  assert.equal(rec.actor, 'agent', 'agent bearer token determines initiator regardless of socket IP');
   assert.equal(rec.source.channel, 'mcp');
+  assert.equal(rec.source.ip, '127.0.0.1', 'loopback address is transport metadata, not the initiator');
   assert.equal(rec.source.client, 'mcp-client/2.0');
 });
 

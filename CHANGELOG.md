@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.11
+
+- Show the initiator (`agent` or `user`) as a dedicated work-log column and include it in saved text logs.
+- Display loopback addresses as `local` and label the channel separately, so transport IP is not mistaken for the initiator.
+- Preserve the same actor/source fields in the GUI and text export.
+
 ## 0.18.10
 
 ### Changed

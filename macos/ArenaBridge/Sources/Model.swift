@@ -425,7 +425,7 @@ final class AppModel: ObservableObject {
     /// Writes one step line to the work log. When the bridge is down, the line stays in the app's own log.
     private func note(_ text: String, level: String = "info") async {
         let (code, _) = await bridge.call("log/event", method: "POST", body: ["kind": "step", "tool": "service", "status": "step", "level": level, "message": text], local: true)
-        guard code != 200, let entry = LogEntry.parse(["id": "local-\(UUID().uuidString)", "tool": "service", "status": "step", "level": level, "args_preview": text]) else { return }
+        guard code != 200, let entry = LogEntry.parse(["id": "local-\(UUID().uuidString)", "tool": "service", "status": "step", "level": level, "actor": "user", "args_preview": text]) else { return }
         entries.append(entry)
         recompute()
     }
@@ -519,11 +519,11 @@ final class AppModel: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         var text = "\(AppInfo.name) — work log\n"
         text += "device: \(device)\nurl: \(url ?? "—")\ncreated: \(formatter.string(from: Date()))\n\n"
+        text += "time\tactor\ttool\tstatus\tduration\tsource\tdetail\n"
         var pictures: [Artifact] = []
         for entry in visibleEntries {
-            var line = "\(formatter.string(from: entry.time))  \(entry.tool)  \(entry.status)  \(entry.duration)"
-            if !entry.detail.isEmpty { line += "  — \(entry.detail)" }
-            text += line + "\n"
+            let detail = entry.detail.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+            text += "\(formatter.string(from: entry.time))\t\(entry.actor)\t\(entry.tool)\t\(entry.status)\t\(entry.duration)\t\(entry.source)\t\(detail)\n"
             if !entry.summary.isEmpty {
                 text += "    $ \(entry.summary)\n"
             }

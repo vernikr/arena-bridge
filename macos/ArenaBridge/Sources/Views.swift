@@ -398,6 +398,20 @@ struct LogCard: View {
                 }
                 .buttonStyle(.bordered)
             }
+            HStack(spacing: 8) {
+                Text("Time").frame(width: 82, alignment: .leading)
+                Color.clear.frame(width: 7, height: 1)
+                Text("Initiator").frame(width: 52, alignment: .leading)
+                Color.clear.frame(width: 16, height: 1)
+                Text("Tool").frame(width: 150, alignment: .leading)
+                Text("Status").frame(width: 72, alignment: .leading)
+                Text("Duration").frame(width: 84, alignment: .trailing)
+                Text("Source").frame(width: 180, alignment: .leading)
+                Text("Details")
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.tertiary)
             ScrollViewReader { proxy in
                 ScrollView([.horizontal, .vertical]) {
                     LazyVStack(alignment: .leading, spacing: 3) {
@@ -497,6 +511,9 @@ struct LogLine: View {
             Circle()
                 .fill(Self.levelColor(entry.level))
                 .frame(width: 7, height: 7)
+            Text(entry.actor)
+                .foregroundStyle(entry.actor == "agent" ? Color.blue : Color.secondary)
+                .frame(width: 52, alignment: .leading)
             ToolIcon(tool: entry.tool)
             Text(entry.tool)
                 .frame(width: 150, alignment: .leading)

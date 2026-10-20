@@ -141,6 +141,7 @@ struct LogEntry: Identifiable {
     let time: Date
     let clock: String
     let level: String
+    let actor: String
     let tool: String
     let status: String
     let duration: String
@@ -204,6 +205,7 @@ struct LogEntry: Identifiable {
             time: time,
             clock: clockFormat.string(from: time),
             level: raw["level"] as? String ?? "info",
+            actor: raw["actor"] as? String ?? "unknown",
             tool: tool,
             status: status,
             duration: duration,
@@ -211,7 +213,7 @@ struct LogEntry: Identifiable {
             summary: summary,
             source: sourceText(raw["source"] as? [String: Any]),
             artifacts: artifacts,
-            search: [tool, detail, summary].joined(separator: " ").lowercased()
+            search: [tool, detail, summary, raw["actor"] as? String ?? "unknown", sourceText(raw["source"] as? [String: Any])].joined(separator: " ").lowercased()
         )
     }
 
@@ -220,9 +222,11 @@ struct LogEntry: Identifiable {
         guard let source else { return "" }
         let host = source["host"] as? String ?? ""
         let ip = source["ip"] as? String ?? ""
-        if !host.isEmpty { return host }
-        if !ip.isEmpty { return ip }
-        return source["channel"] as? String ?? ""
+        let channel = source["channel"] as? String ?? ""
+        let isLoopback = ip == "127.0.0.1" || ip == "::1" || ip == "::ffff:127.0.0.1"
+        let endpoint = !host.isEmpty ? host : (!ip.isEmpty ? (isLoopback ? "local" : ip) : "")
+        if endpoint.isEmpty { return channel }
+        return channel.isEmpty ? endpoint : "\(endpoint) · \(channel)"
     }
 
     /// The list sends the start of the parameters as text; show the command without the JSON around it.
