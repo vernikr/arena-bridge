@@ -610,6 +610,11 @@ await test('the service command takes the tunnel flags', async () => {
   assert.equal(args.flags.domain, 'mymac.ngrok-free.app');
 });
 
+await test('the app starts a bootstrapped service without killing it again', async () => {
+  const swift = fs.readFileSync(new URL('../macos/ArenaBridge/Sources/Bridge.swift', import.meta.url), 'utf8');
+  assert.ok(swift.includes('static func kick() -> Bool { launchctl(["kickstart", serviceTarget]) != nil }'));
+});
+
 await test('the app name is the same in node, python and swift', async () => {
   const { APP_NAME, APP_ID } = await import('../src/app.mjs');
   const python = fs.readFileSync(new URL('../arena_bridge/app.py', import.meta.url), 'utf8');

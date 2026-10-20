@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.9
+
+### Fixed
+- Starting the LaunchAgent no longer force-kills the process that `bootstrap` just started via `RunAtLoad`; this avoids launchd's 10-second restart throttle during the Start flow.
+
 ## 0.18.8
 
 ### Fixed

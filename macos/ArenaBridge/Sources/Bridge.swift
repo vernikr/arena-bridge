@@ -406,7 +406,9 @@ struct Bridge {
     static func load() -> Bool { launchctl(["bootstrap", "gui/\(getuid())", plistPath]) != nil }
 
     @discardableResult
-    static func kick() -> Bool { launchctl(["kickstart", "-k", serviceTarget]) != nil }
+    /// Start an unloaded process without killing one that `bootstrap` has just launched.
+    /// `-k` here raced RunAtLoad and made launchd throttle the replacement for 10 seconds.
+    static func kick() -> Bool { launchctl(["kickstart", serviceTarget]) != nil }
 
     /// Unloads and loads the service again, then starts it. Used when a plain kick does not answer.
     static func reload() -> Bool {
