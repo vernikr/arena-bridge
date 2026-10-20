@@ -182,12 +182,29 @@ final class Updater: ObservableObject {
     /// Updates the command line tool that runs the bridge, then waits for the registry to show the version.
     nonisolated static func updateCLI(to version: String) throws {
         guard let cli = Bridge.cliPath() else { throw UpdateError.cli }
+        let service = serviceCommand()
+        func installed(_ tool: String, _ arguments: [String]) -> Bool {
+            (try? runCLI(tool, arguments))?.contains("installed: \(version)") ?? false
+        }
         for _ in 0..<40 {
             _ = try? runCLI(cli, ["update"])
-            if let out = try? runCLI(cli, ["version"]), out.contains("installed: \(version)") { return }
+            if let service { _ = try? runCLI(service.node, [service.script, "update"]) }
+            let serviceDone = service.map { installed($0.node, [$0.script, "version"]) } ?? true
+            if installed(cli, ["version"]) && serviceDone { return }
             Thread.sleep(forTimeInterval: 30)
         }
         throw UpdateError.cli
+    }
+
+    /// The node binary and script the background service runs the bridge with.
+    nonisolated static func serviceCommand() -> (node: String, script: String)? {
+        let plist = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(AppInfo.serviceLabel).plist")
+        guard let data = try? Data(contentsOf: plist),
+              let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let args = dict["ProgramArguments"] as? [String],
+              let index = args.firstIndex(where: { $0.hasSuffix("arena-bridge.mjs") }), index > 0 else { return nil }
+        return (args[index - 1], args[index])
     }
 
     nonisolated static func runCLI(_ cli: String, _ arguments: [String]) throws -> String {
