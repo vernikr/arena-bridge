@@ -126,5 +126,6 @@ jobs:
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 60); do npm view "arena-bridge@$VERSION" version >/dev/null 2>&1 && break; sleep 30; done
           if [ -n "$NTFY_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $NTFY_TOKEN"); else AUTH=(); fi
           curl -sf -X POST "https://ntfy.sh/vernikr-arena-bridge-releases" "${AUTH[@]}" -H "Title: Arena Bridge v$VERSION" -d "$VERSION"

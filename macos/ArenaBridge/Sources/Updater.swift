@@ -116,6 +116,7 @@ final class Updater: ObservableObject {
             NSApp.terminate(nil)
         } catch {
             status = "Update failed: \(error.localizedDescription)"
+            pending = nil
         }
     }
 
@@ -181,7 +182,7 @@ final class Updater: ObservableObject {
     /// Updates the command line tool that runs the bridge, then waits for the registry to show the version.
     nonisolated static func updateCLI(to version: String) throws {
         guard let cli = Bridge.cliPath() else { throw UpdateError.cli }
-        for _ in 0..<20 {
+        for _ in 0..<40 {
             _ = try? runCLI(cli, ["update"])
             if let out = try? runCLI(cli, ["version"]), out.contains("installed: \(version)") { return }
             Thread.sleep(forTimeInterval: 30)
