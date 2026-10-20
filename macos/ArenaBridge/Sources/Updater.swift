@@ -7,8 +7,8 @@ import Foundation
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
-    static let repo = "vernikr/arena-bridge"
-    static let topic = "vernikr-arena-bridge-releases"
+    nonisolated static let repo = "vernikr/arena-bridge"
+    nonisolated static let topic = "vernikr-arena-bridge-releases"
     private static let automaticKey = "update.automatic"
 
     @Published var status = ""
@@ -223,7 +223,8 @@ final class Updater: ObservableObject {
     }
 
     nonisolated static func requirement(_ app: URL) -> String {
-        (try? run("/usr/bin/codesign", ["-d", "-r-", app.path]))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let text = (try? run("/usr/bin/codesign", ["-d", "-r-", app.path])) ?? ""
+        return text.split(separator: "\n").first { $0.hasPrefix("designated =>") }.map(String.init) ?? ""
     }
 
     nonisolated static func sha256(of file: URL) -> String {
