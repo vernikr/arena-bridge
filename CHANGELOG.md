@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.4
+
+### Fixed
+- The self-update failed when the package registry was still behind the release: the release now announces a version only after the registry shows it, and a failed update is tried again on the next check.
+
 ## 0.18.3
 
 ### Changed
