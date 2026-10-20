@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.6
+
+### Changed
+- Test release: the app and the background service both move to the new version without manual steps.
+
 ## 0.18.5
 
 ### Fixed
