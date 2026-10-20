@@ -217,16 +217,15 @@ struct LogEntry: Identifiable {
         )
     }
 
-    /// The reverse-DNS name when known, otherwise the address, otherwise the channel.
+    /// The initiator's network location only: reverse-DNS name if available, otherwise IP.
     static func sourceText(_ source: [String: Any]?) -> String {
-        guard let source else { return "" }
+        guard let source else { return "—" }
         let host = source["host"] as? String ?? ""
         let ip = source["ip"] as? String ?? ""
-        let channel = source["channel"] as? String ?? ""
-        let isLoopback = ip == "127.0.0.1" || ip == "::1" || ip == "::ffff:127.0.0.1"
-        let endpoint = !host.isEmpty ? host : (!ip.isEmpty ? (isLoopback ? "local" : ip) : "")
-        if endpoint.isEmpty { return channel }
-        return channel.isEmpty ? endpoint : "\(endpoint) · \(channel)"
+        if !host.isEmpty, !ip.isEmpty { return "\(host) (\(ip))" }
+        if !host.isEmpty { return host }
+        if !ip.isEmpty { return ip }
+        return "—"
     }
 
     /// The list sends the start of the parameters as text; show the command without the JSON around it.

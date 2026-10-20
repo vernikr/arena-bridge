@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.12
+
+- Show only the initiator location in the work-log source column: domain/IP, without transport channel or a `local` label.
+- Include the IP alongside a reverse-DNS domain when both are available; keep the same value in GUI and saved text logs.
+
 ## 0.18.11
 
 - Show the initiator (`agent` or `user`) as a dedicated work-log column and include it in saved text logs.
