@@ -65,3 +65,5 @@ Telegram tests are in CI (T1) — don't remove them. Release `if: success()` not
 - Add tool: define in `engine.mjs` `toolCatalog()` + schema, add to `TOOLS`, regenerate `prompt` if needed, mirror in Python if required.
 - Change config: update `DEFAULTS`, add migration in `config.mjs` if `schemaVersion` changes, keep `saveConfig` merge logic.
 - Debug: `arena-bridge doctor --json`, `arena-bridge audit -n 20`, `arena-bridge logs -f` (bridge.log).
+
+- For native GitHub sub-issues, ensure `.github/workflows/issue-parent-sync.yml` exists with `issues: [opened, edited]`, `permissions: issues: write`, and a job calling `vernikr/mother/.github/workflows/issue-parent-sync.yml@v1` (create the caller workflow if missing); then put `<!-- issue-parent: #N -->` on its own line in the child Issue body, or use `<!-- issue-parent: none -->` to detach.
