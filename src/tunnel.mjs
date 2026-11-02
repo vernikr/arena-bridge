@@ -27,23 +27,25 @@ export function listenerPid(port) {
 }
 
 /**
- * Pids of tunnel processes: the name column matches a tunnel binary (by basename, since
- * macOS reports interpreted commands with their path), optionally aimed at one local port.
+ * Pids of tunnel processes, optionally aimed at one local port. The first command line
+ * tokens name the binary: on macOS an interpreted command carries the interpreter first
+ * and the script path second, so both tokens are checked by basename.
  */
 export function tunnelProcesses(port) {
   let text = '';
   try {
-    text = execFileSync('ps', ['-ax', '-o', 'pid=,comm=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    text = execFileSync('ps', ['-ax', '-o', 'pid=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch {
     return [];
   }
   const out = [];
   for (const line of text.split('\n')) {
-    const m = /^\s*(\d+)\s+(\S+)\s+(\S.*)$/.exec(line);
+    const m = /^\s*(\d+)\s+(\S.*)$/.exec(line);
     if (!m) continue;
-    const name = m[2].split('/').pop();
-    if (!TUNNEL_NAMES.includes(name)) continue;
-    if (port !== undefined && !m[3].includes(`127.0.0.1:${port}`)) continue;
+    const args = m[2];
+    const head = args.split(/\s+/).slice(0, 2).map((t) => t.split('/').pop());
+    if (!head.some((name) => TUNNEL_NAMES.includes(name))) continue;
+    if (port !== undefined && !args.includes(`127.0.0.1:${port}`)) continue;
     out.push(Number(m[1]));
   }
   return out;
