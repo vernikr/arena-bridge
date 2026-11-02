@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from 'node:child_process';
 import net from 'node:net';
-import { writePid, clearPid, readPid, pidAlive, pidName, pidArgs, stopPid } from './state.mjs';
+import { writePid, clearPid, readPid, pidAlive, pidName, stopPid } from './state.mjs';
 
 /** Tunnel binaries this bridge may stop; anything else on the machine is untouchable. */
 export const TUNNEL_NAMES = ['cloudflared', 'ngrok'];
@@ -27,26 +27,38 @@ export function listenerPid(port) {
 }
 
 /**
+ * Pids of tunnel processes: the name column matches a tunnel binary (by basename, since
+ * macOS reports interpreted commands with their path), optionally aimed at one local port.
+ */
+export function tunnelProcesses(port) {
+  let text = '';
+  try {
+    text = execFileSync('ps', ['-ax', '-o', 'pid=,comm=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+(\S+)\s+(\S.*)$/.exec(line);
+    if (!m) continue;
+    const name = m[2].split('/').pop();
+    if (!TUNNEL_NAMES.includes(name)) continue;
+    if (port !== undefined && !m[3].includes(`127.0.0.1:${port}`)) continue;
+    out.push(Number(m[1]));
+  }
+  return out;
+}
+
+/**
  * Stop tunnel processes that serve exactly our local port: orphaned tunnels of a dead
  * bridge generation. Tunnels of the user that point elsewhere keep running.
  */
 export function killTunnelsForPort(port) {
-  const target = `127.0.0.1:${port}`;
   const killed = [];
-  for (const name of TUNNEL_NAMES) {
-    let pids = [];
-    try {
-      pids = execFileSync('pgrep', ['-x', name], { encoding: 'utf8' }).split('\n').map((s) => s.trim()).filter(Boolean);
-    } catch {
-      continue;
-    }
-    for (const pid of pids) {
-      const num = Number(pid);
-      if (!pidArgs(num).includes(target)) continue;
-      stopPid(num);
-      if (readPid('tunnel') === num) clearPid('tunnel', num);
-      killed.push(num);
-    }
+  for (const pid of tunnelProcesses(port)) {
+    stopPid(pid);
+    if (readPid('tunnel') === pid) clearPid('tunnel', pid);
+    killed.push(pid);
   }
   return killed;
 }
