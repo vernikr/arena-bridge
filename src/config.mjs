@@ -71,11 +71,31 @@ export function ensureDirs() {
   fs.mkdirSync(APPROVALS_DIR, { recursive: true, mode: 0o700 });
 }
 
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+/** Read an atomic file and recover a complete temporary replacement after interruption. */
+export function readJsonWithRecovery(file) {
+  try {
+    return readJson(file);
+  } catch (primaryError) {
+    const tmp = `${file}.tmp`;
+    try {
+      const recovered = readJson(tmp);
+      fs.renameSync(tmp, file);
+      return recovered;
+    } catch {
+      throw primaryError;
+    }
+  }
+}
+
 export function loadConfig() {
   let fileCfg = {};
-  if (fs.existsSync(CONFIG_PATH)) {
+  if (fs.existsSync(CONFIG_PATH) || fs.existsSync(`${CONFIG_PATH}.tmp`)) {
     try {
-      fileCfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      fileCfg = readJsonWithRecovery(CONFIG_PATH);
     } catch (e) {
       throw new Error(`Invalid config file ${CONFIG_PATH}: ${e.message}`);
     }
@@ -83,8 +103,8 @@ export function loadConfig() {
   // Merge state (publicUrl) — state wins if config doesn't have it, for backward compat
   try {
     const statePath = path.join(CONFIG_DIR, 'state.json');
-    if (fs.existsSync(statePath)) {
-      const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      if (fs.existsSync(statePath) || fs.existsSync(`${statePath}.tmp`)) {
+        const state = readJsonWithRecovery(statePath);
       if (state.publicUrl && !fileCfg.publicUrl) fileCfg.publicUrl = state.publicUrl;
       // also expose state for debug
       fileCfg._state = state;
@@ -104,7 +124,7 @@ export function saveConfig(cfg) {
     try {
       const statePath = path.join(CONFIG_DIR, 'state.json');
       let state = {};
-      try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch {}
+      try { state = readJsonWithRecovery(statePath); } catch {}
       if (cfg.publicUrl) state.publicUrl = cfg.publicUrl;
       else delete state.publicUrl;
       fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
@@ -114,7 +134,7 @@ export function saveConfig(cfg) {
     } catch {}
   }
   let existing = {};
-  try { existing = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
+  try { existing = readJsonWithRecovery(CONFIG_PATH); } catch {}
   const out = { ...existing };
   for (const [k, v] of Object.entries(cfg)) {
     if (k === 'configPath' || k === '_state' || k === 'publicUrl') continue;

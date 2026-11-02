@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.19.1
+
+### Fixed
+- Removed the remaining Swift compiler warnings from the macOS app build.
+- Config and runtime state recover a valid temporary atomic-write file after an interrupted replacement.
+
+### Changed
+- Node CI now runs on versions 18, 20, and 24 on both Ubuntu and macOS.
+
 ## 0.19.0
 
 ### Added

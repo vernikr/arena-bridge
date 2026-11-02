@@ -12,7 +12,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-bridge-test-'));
 process.env.ARENA_BRIDGE_HOME = path.join(TMP, 'home');
 fs.mkdirSync(process.env.ARENA_BRIDGE_HOME, { recursive: true });
 
-const { loadConfig, saveConfig, DEFAULTS, CONFIG_DIR } = await import('../src/config.mjs');
+const { loadConfig, saveConfig, DEFAULTS, CONFIG_DIR, readJsonWithRecovery } = await import('../src/config.mjs');
+const { loadState, STATE_PATH } = await import('../src/state.mjs');
 assert.ok(CONFIG_DIR.startsWith(os.tmpdir()), 'the test must not touch the real configuration');
 const { Engine } = await import('../src/engine.mjs');
 const { createDirectServer } = await import('../src/direct.mjs');
@@ -28,6 +29,22 @@ fs.mkdirSync(WORK, { recursive: true });
 fs.writeFileSync(path.join(WORK, 'hello.txt'), 'hello world\n');
 
 assert.equal(validateArgs({ type: 'object', properties: { x: { type: 'number' } }, additionalProperties: false }, [], { x: 1 }).ok, true);
+
+await (async () => {
+  const configRecovery = path.join(TMP, 'config-recovery.json');
+  fs.writeFileSync(configRecovery, '{interrupted');
+  fs.writeFileSync(`${configRecovery}.tmp`, '{"recovered":true}\n');
+  assert.deepEqual(readJsonWithRecovery(configRecovery), { recovered: true });
+  assert.equal(fs.existsSync(configRecovery), true);
+  assert.equal(fs.existsSync(`${configRecovery}.tmp`), false);
+
+  fs.writeFileSync(STATE_PATH, '{interrupted');
+  fs.writeFileSync(`${STATE_PATH}.tmp`, '{"recovered":true}\n');
+  assert.deepEqual(loadState().recovered, true);
+  assert.equal(fs.existsSync(STATE_PATH), true);
+  assert.equal(fs.existsSync(`${STATE_PATH}.tmp`), false);
+  fs.rmSync(STATE_PATH, { force: true });
+})();
 
 let passed = 0;
 let failed = 0;

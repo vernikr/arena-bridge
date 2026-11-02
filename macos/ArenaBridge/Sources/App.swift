@@ -15,7 +15,7 @@ struct ArenaBridgeApp: App {
                 .environmentObject(model)
                 .frame(minWidth: 600, minHeight: 680)
                 .task { await model.refresh() }
-                .onChange(of: scenePhase) { phase in
+                .onChange(of: scenePhase) { _, phase in
                     if phase == .active { Task { await model.refresh() } }
                 }
         }

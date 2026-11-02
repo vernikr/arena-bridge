@@ -380,9 +380,9 @@ final class AppModel: ObservableObject {
         Task {
             await run(starting: false, [
                 ("Checking open work", { await self.note("\(self.approvals.count) approvals pending"); return nil }),
-                ("Stopping bridge", { await Task.detached { Bridge.stop() }.value; return nil }),
-                ("Waiting for the public address to close", { await self.waitFor(10) { await Task.detached { !Bridge.tunnelRunning() }.value } ? nil : "public address still open after 10 s" }),
-                ("Confirming stopped", { await Task.detached { !Bridge.serviceState().running }.value ? nil : "service still running" }),
+                ("Stopping bridge", { _ = await Task.detached(operation: { Bridge.stop() }).value; return nil }),
+                ("Waiting for the public address to close", { await self.waitFor(10) { await Task.detached(operation: { !Bridge.tunnelRunning() }).value } ? nil : "public address still open after 10 s" }),
+                ("Confirming stopped", { await Task.detached(operation: { !Bridge.serviceState().running }).value ? nil : "service still running" }),
             ])
         }
     }
@@ -423,7 +423,7 @@ final class AppModel: ObservableObject {
 
     private func cancelled(at step: Int) async {
         cancelRequested = false
-        await Task.detached { Bridge.stop() }.value
+        _ = await Task.detached(operation: { Bridge.stop() }).value
         operation = nil
         notice = "Start cancelled at step \(step). The bridge is stopped."
         await note("start cancelled by the user at step \(step)", level: "alert")
@@ -431,18 +431,18 @@ final class AppModel: ObservableObject {
     }
 
     private func blocking(_ reason: String, _ work: @escaping @Sendable () -> Bool) async -> String? {
-        await Task.detached { work() }.value ? nil : reason
+        await Task.detached(operation: { work() }).value ? nil : reason
     }
 
     private func stopOld() async -> String? {
-        guard await Task.detached { Bridge.serviceState().running }.value else { return nil }
-        await Task.detached { Bridge.stop() }.value
-        let gone = await waitFor(10) { await Task.detached { !Bridge.serviceState().running }.value }
+        guard await Task.detached(operation: { Bridge.serviceState().running }).value else { return nil }
+        _ = await Task.detached(operation: { Bridge.stop() }).value
+        let gone = await waitFor(10) { await Task.detached(operation: { !Bridge.serviceState().running }).value }
         return gone ? nil : "old process still running after 10 s"
     }
 
     private func checkSetup() async -> String? {
-        let installed = await Task.detached { Bridge.serviceState().installed }.value
+        let installed = await Task.detached(operation: { Bridge.serviceState().installed }).value
         return installed ? nil : "run Setup first"
     }
 

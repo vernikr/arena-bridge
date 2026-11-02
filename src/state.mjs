@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONFIG_DIR, CONFIG_PATH } from './config.mjs';
+import { CONFIG_DIR, CONFIG_PATH, readJsonWithRecovery } from './config.mjs';
 
 export const STATE_PATH = path.join(CONFIG_DIR, 'state.json');
 
 export function loadState() {
   try {
-    if (fs.existsSync(STATE_PATH)) {
-      return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    if (fs.existsSync(STATE_PATH) || fs.existsSync(`${STATE_PATH}.tmp`)) {
+      return readJsonWithRecovery(STATE_PATH);
     }
   } catch {}
   return {};
@@ -15,11 +15,11 @@ export function loadState() {
 
 export function saveState(patch) {
   let cur = {};
-  try { cur = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch {}
+  try { cur = readJsonWithRecovery(STATE_PATH); } catch {}
   // migrate publicUrl from config.json if present and not in state
   if (!cur.publicUrl && fs.existsSync(CONFIG_PATH)) {
     try {
-      const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      const cfg = readJsonWithRecovery(CONFIG_PATH);
       if (cfg.publicUrl) {
         cur.publicUrl = cfg.publicUrl;
         // remove from config to complete migration (best effort)
@@ -125,7 +125,7 @@ export function stopPid(pid, waitMs = 3000) {
 
 export function clearStateKey(key) {
   let cur = {};
-  try { cur = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch {}
+  try { cur = readJsonWithRecovery(STATE_PATH); } catch {}
   if (key in cur) {
     delete cur[key];
     const tmp = STATE_PATH + '.tmp';
