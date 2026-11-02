@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.3
+
+### Fixed
+- Menubar icon rendering now uses the native macOS label color directly for reliable visibility in both appearance modes.
+
 ## 0.20.2
 
 ### Fixed

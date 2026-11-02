@@ -50,6 +50,7 @@ struct MenuBarIcon: View {
 /// A compact link-2 icon based on the Lucide 24x24 geometry.
 struct Link2Icon: View {
     let off: Bool
+    private let labelColor = Color(nsColor: .labelColor)
 
     var body: some View {
         Canvas { context, size in
@@ -76,13 +77,13 @@ struct Link2Icon: View {
             links.move(to: point(8, 12))
             links.addLine(to: point(off ? 12 : 16, 12))
             let style = StrokeStyle(lineWidth: 2 * scale, lineCap: .round, lineJoin: .round)
-            context.stroke(links, with: .color(.primary), style: style)
+            context.stroke(links, with: .color(labelColor), style: style)
 
             if off {
                 var slash = Path()
                 slash.move(to: point(3, 3))
                 slash.addLine(to: point(21, 21))
-                context.stroke(slash, with: .color(.primary), style: style)
+                context.stroke(slash, with: .color(labelColor), style: style)
             }
         }
         .frame(width: 22, height: 22)
@@ -92,6 +93,8 @@ struct Link2Icon: View {
 
 /// Animated three-dot indicator used while the service is changing state.
 struct EllipsisIcon: View {
+    private let labelColor = Color(nsColor: .labelColor)
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.12)) { timeline in
             let phase = timeline.date.timeIntervalSinceReferenceDate * 4
@@ -99,7 +102,7 @@ struct EllipsisIcon: View {
                 ForEach(0..<3, id: \.self) { index in
                     let opacity = 0.25 + 0.75 * max(0, sin(phase - Double(index) * 0.9))
                     Circle()
-                        .fill(Color.primary)
+                        .fill(labelColor)
                         .frame(width: 3, height: 3)
                         .opacity(opacity)
                 }

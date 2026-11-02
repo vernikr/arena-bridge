@@ -14,3 +14,4 @@
 - Menubar feature release: `0.20.0`.
 - Follow-up patch target: `0.20.1` for installer initialization and the macOS service restart target discovered during deployment.
 - Follow-up patch target: `0.20.2` for explicit menubar icon coloring after visual verification.
+- Follow-up patch target: `0.20.3` for native macOS label-color rendering in the Canvas icon.
