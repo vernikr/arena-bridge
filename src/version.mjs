@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = "0.18.13";
+export const VERSION = "0.18.14";
 
 export function getVersion() {
   try {

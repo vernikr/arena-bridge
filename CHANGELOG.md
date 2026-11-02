@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.14
+
+### Fixed
+- Orphaned tunnel cleanup finds tunnel processes on macOS as well: an interpreted command is named after its interpreter there, so the process table is matched by the head of the command line instead of the process name.
+
 ## 0.18.13
 
 ### Fixed
