@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.1
+
+### Fixed
+- The installer initializes platform variables before planning or parsing options, so `set -u` no longer aborts macOS installs.
+- `arena-bridge restart` now targets the current macOS user launchd domain correctly.
+
 ## 0.20.0
 
 ### Added

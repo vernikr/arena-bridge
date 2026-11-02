@@ -826,7 +826,7 @@ function cmdRestart(args) {
       console.log('restarting service...');
       try {
         const label = 'ai.arena.bridge';
-        let res = spawnSync('launchctl', ['kickstart', '-k', `gui/${process.uid}/${label}`], { encoding: 'utf8' });
+        let res = spawnSync('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${label}`], { encoding: 'utf8' });
         if (res.status !== 0) res = spawnSync('launchctl', ['kickstart', '-k', label], { encoding: 'utf8' });
         if (res.status === 0) { console.log('✓ service kickstarted'); return; }
         console.log(`kickstart failed: ${res.stderr || res.stdout || res.error || 'unknown'}`);

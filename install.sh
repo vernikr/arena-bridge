@@ -15,19 +15,16 @@ APP_ONLY=0
 VERSION=""
 PREFIX=""
 
-# Plan: what will be done
-say "arena-bridge installer — plan:"
-if [ "$APP_ONLY" -eq 0 ]; then
-  say "  • CLI: npm/pipx/pip3 → arena-bridge (version: ${VERSION:-latest})${PREFIX:+ prefix $PREFIX}"
-else
-  say "  • CLI: skipped (--app-only)"
-fi
-if [ "$CLI_ONLY" -eq 0 ] && [ "$OS" = "Darwin" ]; then
-  say "  • App: $REPO/releases → /Applications/Arena Bridge.app ($ASSET_ARCH)"
-else
-  say "  • App: skipped"
-fi
-say ""
+say() { printf '%s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64|aarch64) ASSET_ARCH="arm64" ;;
+  x86_64|amd64) ASSET_ARCH="x86_64" ;;
+  *) die "unsupported architecture: $ARCH" ;;
+esac
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -48,21 +45,24 @@ Options:
   -h, --help     show this help
 HELP
       exit 0 ;;
-    *) echo "unknown option: $1" >&2; exit 1 ;;
+    *) die "unknown option: $1" ;;
   esac
   shift
 done
 
-say() { printf '%s\n' "$*"; }
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64|aarch64) ASSET_ARCH="arm64" ;;
-  x86_64|amd64) ASSET_ARCH="x86_64" ;;
-  *) die "unsupported architecture: $ARCH" ;;
-esac
+# Plan: what will be done
+say "arena-bridge installer — plan:"
+if [ "$APP_ONLY" -eq 0 ]; then
+  say "  • CLI: npm/pipx/pip3 → arena-bridge (version: ${VERSION:-latest})${PREFIX:+ prefix $PREFIX}"
+else
+  say "  • CLI: skipped (--app-only)"
+fi
+if [ "$CLI_ONLY" -eq 0 ] && [ "$OS" = "Darwin" ]; then
+  say "  • App: $REPO/releases → /Applications/Arena Bridge.app ($ASSET_ARCH)"
+else
+  say "  • App: skipped"
+fi
+say ""
 
 # --- the command line tool ------------------------------------------------
 

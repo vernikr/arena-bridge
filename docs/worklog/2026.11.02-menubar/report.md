@@ -11,4 +11,5 @@
 ## Verification
 
 - macOS app build passed with no compiler warnings.
-- Release target: `0.20.0`.
+- Menubar feature release: `0.20.0`.
+- Follow-up patch target: `0.20.1` for installer initialization and the macOS service restart target discovered during deployment.
