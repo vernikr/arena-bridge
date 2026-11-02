@@ -38,9 +38,7 @@ struct MenuBarIcon: View {
 
     var body: some View {
         if model.transitioning {
-            TimelineView(.animation(minimumInterval: 0.12)) { timeline in
-                Image(nsImage: MenuBarStatusImage.ellipsis(at: timeline.date.timeIntervalSinceReferenceDate))
-            }
+            Image(nsImage: MenuBarStatusImage.ellipsis)
             .frame(width: 22, height: 22)
             .accessibilityLabel("Bridge changing state")
         } else {
@@ -90,19 +88,17 @@ private enum MenuBarStatusImage {
         return image
     }
 
-    static func ellipsis(at time: TimeInterval) -> NSImage {
+    static let ellipsis: NSImage = {
         let image = NSImage(size: NSSize(width: 22, height: 22), flipped: false) { _ in
-            let phase = time * 4
             for index in 0..<3 {
-                let opacity = 0.25 + 0.75 * max(0, sin(phase - Double(index) * 0.9))
-                NSColor.labelColor.withAlphaComponent(CGFloat(opacity)).setFill()
+                NSColor.labelColor.setFill()
                 NSBezierPath(ovalIn: NSRect(x: 6 + CGFloat(index) * 5, y: 9, width: 3, height: 3)).fill()
             }
             return true
         }
         image.isTemplate = true
         return image
-    }
+    }()
 }
 
 struct MainWindowAccessor: NSViewRepresentable {

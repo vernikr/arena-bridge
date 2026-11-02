@@ -3,7 +3,7 @@
 ## Implemented
 
 - Added a menubar item with Lucide-style link-2 and link-2-off vector icons.
-- Added an animated three-dot transition indicator for start and stop operations.
+- Added a three-dot transition indicator for start and stop operations.
 - Added Start/Stop, Copy Prompt, Open, and Quit actions to the menubar menu.
 - Added main-window lifecycle handling: closing the main window switches the app to accessory mode so it leaves the Dock while the menubar item remains available.
 - Reopening the app from the menubar restores the regular activation policy and main window.
@@ -17,3 +17,4 @@
 - Follow-up patch target: `0.20.3` for native macOS label-color rendering in the Canvas icon.
 - Follow-up patch target: `0.20.4` for a native `NSImage` template renderer in `MenuBarExtra`.
 - Follow-up patch target: `0.20.5` for automatic use of the stable local signing certificate.
+- Follow-up patch target: `0.20.6` for a non-animated menubar transition icon and non-blocking service checks.

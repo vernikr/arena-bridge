@@ -352,7 +352,7 @@ struct Bridge {
 
     /// Run the bridge command line tool.
     @discardableResult
-    static func run(_ arguments: [String]) -> (code: Int32, output: String) {
+    static func run(_ arguments: [String], timeout: TimeInterval = 30) -> (code: Int32, output: String) {
         guard let cli = cliPath() else { return (127, "arena-bridge not found") }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)
@@ -373,17 +373,37 @@ struct Bridge {
         let inherited = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         env["PATH"] = (nodeBins + [inherited]).joined(separator: ":")
         process.environment = env
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("arena-bridge-\(UUID().uuidString).txt")
+        FileManager.default.createFile(atPath: file.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard let output = try? FileHandle(forWritingTo: file) else {
+            return (1, "cannot create output file")
+        }
+        process.standardOutput = output
+        process.standardError = output
         do {
             try process.run()
         } catch {
+            try? output.close()
             return (127, error.localizedDescription)
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        if process.isRunning {
+            process.terminate()
+            Thread.sleep(forTimeInterval: 0.2)
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
         process.waitUntilExit()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        try? output.close()
+        let data = (try? Data(contentsOf: file)) ?? Data()
+        let code = process.terminationReason == .uncaughtSignal
+            ? 128 + process.terminationStatus
+            : process.terminationStatus
+        return (code, String(data: data, encoding: .utf8) ?? "")
     }
 
     // -- the macOS background service ---------------------------------- //
@@ -462,7 +482,7 @@ struct Bridge {
     /// a raw bootout leaves the tunnel of a SIGKILLed generation open in the cloud.
     @discardableResult
     static func stop() -> Bool {
-        if cliPath() != nil { return run(["stop"]).code == 0 }
+        if cliPath() != nil { return run(["stop"], timeout: 15).code == 0 }
         guard let result = launchctl(["bootout", serviceTarget]) else { return false }
         return result.code == 0 || result.output.contains("Could not find specified service")
     }

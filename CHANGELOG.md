@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.6
+
+### Fixed
+- Prevented the menubar status item from continuously redrawing during start and stop transitions.
+- Moved service-state and CLI process checks off the main UI thread and bounded CLI execution time.
+
 ## 0.20.5
 
 ### Fixed

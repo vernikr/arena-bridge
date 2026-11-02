@@ -181,7 +181,7 @@ final class AppModel: ObservableObject {
 
     /// Ensure a blanket 3h trust window exists on app launch (runs once).
     func ensureTrustOnLaunch() async {
-        let trust = Bridge.trustStatus()
+        let trust = await Task.detached(operation: { Bridge.trustStatus() }).value
         if !trust.enabled {
             openTrust(hours: 3)
         }
@@ -277,7 +277,7 @@ final class AppModel: ObservableObject {
         if showBusy { busy = true }
         defer { if showBusy { busy = false } }
         checkPermissions()
-        let service = Bridge.serviceState()
+        let service = await Task.detached(operation: { Bridge.serviceState() }).value
         if serviceInstalled != service.installed { serviceInstalled = service.installed }
         if running != service.running { running = service.running }
 
@@ -328,7 +328,7 @@ final class AppModel: ObservableObject {
             notificationsCheckedAt = Date()
         }
 
-        let trust = Bridge.trustStatus()
+        let trust = await Task.detached(operation: { Bridge.trustStatus() }).value
         if trustEnabled != trust.enabled { trustEnabled = trust.enabled }
         if trustRemaining != trust.remainingSec { trustRemaining = trust.remainingSec }
         if trustTools != trust.tools { trustTools = trust.tools }
