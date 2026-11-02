@@ -10,6 +10,7 @@ import { BrowserManager, cleanupOrphanChromes } from './browser.mjs';
 import { macTools } from './mac.mjs';
 import { trustState, trustAllows } from './trust.mjs';
 import { errorResponse } from './errors.mjs';
+import { validateArgs } from './schema.mjs';
 import { telegramTools } from './telegram.mjs';
 
 /* ------------------------------------------------------------------ *
@@ -71,6 +72,11 @@ export class Engine {
       const hint = best && bestD <= 3 ? `did you mean '${best}'?` : `available: ${all.slice(0,10).join(', ')}`;
       record({ kind: 'call', status: 'rejected', error: 'UNKNOWN_TOOL', via: 'direct' });
       return errorResponse('UNKNOWN_TOOL', { message: `unknown tool: ${name}`, tool: name, hint });
+    }
+    const valid = validateArgs(tool.schema, tool.required, args);
+    if (!valid.ok) {
+      record({ kind: 'call', status: 'rejected', error: 'INVALID_ARGS', via: 'validation' });
+      return errorResponse('INVALID_ARGS', { message: valid.message, field: valid.field });
     }
     const started = Date.now();
     let approval = null;

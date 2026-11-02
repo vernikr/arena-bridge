@@ -1,16 +1,20 @@
 import http from 'node:http';
 import { VERSION } from './version.mjs';
 import crypto from 'node:crypto';
-import { sendJson, sendText, readJson, readBody, isAuthorized, bearer, safeEqual, actorFor } from './http.mjs';
+import { sendJson, sendText, sendRaw, readJson, readBody, isAuthorized, bearer, safeEqual, actorFor } from './http.mjs';
 import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { toolCatalog } from './engine.mjs';
 import { listApprovals, decide } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
-import { loadConfig } from './config.mjs';
+import { loadConfig, CONFIG_DIR } from './config.mjs';
 import fsp from 'node:fs/promises';
-import { audit } from './audit.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { audit, auditPage, auditDir, findEntry, headCursor, lean, readArtifact, tailAudit } from './audit.mjs';
 import { sourceOf, describeSource, admitUnauthorized } from './source.mjs';
+import { errorResponse } from './errors.mjs';
+import { trustState } from './trust.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_QUEUED_PER_DEVICE = 100;
@@ -46,7 +50,7 @@ export function createHubServer(cfg) {
   const dispatch = (device, tool, args, timeoutSec = 120, source = null) => {
     const q = queues.get(device) || [];
     if (q.length >= MAX_QUEUED_PER_DEVICE) {
-      return Promise.resolve({ ok: false, error: 'DEVICE_BUSY', reason: `device "${device}" has too many queued jobs` });
+      return Promise.resolve(errorResponse('DEVICE_BUSY', { reason: `device "${device}" has too many queued jobs` }));
     }
     return new Promise((resolve) => {
       const id = crypto.randomUUID();
@@ -104,10 +108,27 @@ export function createHubServer(cfg) {
 
     try {
       if (p === '/health') {
+        const current = loadConfig();
+        let pending = 0, auditCount = 0, logSize = 0;
+        try { pending = listApprovals().filter((item) => item.status === 'pending').length; } catch {}
+        try { auditCount = tailAudit(500).length; } catch {}
+        try {
+          const log = path.join(CONFIG_DIR, 'logs', 'bridge.log');
+          if (fs.existsSync(log)) logSize = fs.statSync(log).size;
+        } catch {}
         return sendJson(res, 200, {
           ok: true,
           mode: 'hub',
           version: VERSION,
+          device: current.device,
+          uptime_sec: Math.round(process.uptime()),
+          pending_approvals: pending,
+          trust_active: !!trustState().active,
+          audit_count: auditCount,
+          log_size: logSize,
+          has_public_url: !!current.publicUrl,
+          public_url: current.publicUrl ?? null,
+          tunnel_alive: null,
           devices: [...devices.keys()],
         });
       }
@@ -180,6 +201,80 @@ export function createHubServer(cfg) {
 
       if (req.method === 'GET' && p === '/approvals') {
         return sendJson(res, 200, { ok: true, approvals: listApprovals() });
+      }
+
+      if (req.method === 'GET' && /^\/approvals\/[\w-]+$/.test(p)) {
+        const id = p.split('/').pop();
+        const approval = listApprovals().find((item) => item.id === id);
+        if (!approval) return sendJson(res, 404, { ok: false, error: 'approval_not_found' });
+        return sendJson(res, 200, { ok: true, approval });
+      }
+
+      if (req.method === 'GET' && p === '/config') {
+        const current = loadConfig();
+        return sendJson(res, 200, {
+          ok: true,
+          device: current.device,
+          roots: current.roots,
+          protected_count: current.protected.length,
+          requireApproval: current.requireApproval,
+          allowShell: current.allowShell,
+          approvalWaitSec: current.approvalWaitSec,
+          maxOutputBytes: current.maxOutputBytes,
+          telegram: {
+            enabled: !!current.telegram?.enabled,
+            chat_ids: current.telegram?.chatIds || [],
+          },
+        });
+      }
+
+      if (req.method === 'GET' && p === '/audit') {
+        const q = url.searchParams;
+        const raw = q.get('limit');
+        const limit = raw === null || raw === '' ? 100 : Number(raw);
+        if (!Number.isFinite(limit) || limit <= 0) return sendJson(res, 400, { ok: false, error: 'invalid limit' });
+        const page = auditPage({
+          limit: Math.min(500, Math.floor(limit)),
+          before: q.get('before') || undefined,
+          after: q.get('after') || undefined,
+          tool: q.get('tool') || undefined,
+          kind: q.get('kind') || undefined,
+          level: q.get('level') || undefined,
+        });
+        if (page.error) return sendJson(res, 400, { ok: false, error: page.error });
+        return sendJson(res, 200, {
+          ok: true,
+          entries: page.entries.map(lean),
+          next: page.next,
+          has_more: page.has_more,
+          reset: page.reset,
+          head: headCursor(),
+          artifacts_dir: auditDir(),
+        });
+      }
+
+      if (req.method === 'GET' && p === '/audit/entry') {
+        const id = url.searchParams.get('id');
+        if (!id) return sendJson(res, 400, { ok: false, error: 'id query parameter is required' });
+        const entry = findEntry(id);
+        if (!entry) return sendJson(res, 404, { ok: false, error: 'entry_not_found' });
+        return sendJson(res, 200, { ok: true, entry });
+      }
+
+      if (req.method === 'GET' && p === '/audit/artifact') {
+        const entry = url.searchParams.get('entry');
+        const file = url.searchParams.get('file');
+        if (!entry || !file) return sendJson(res, 400, { ok: false, error: 'entry and file query parameters are required' });
+        const art = readArtifact(entry, file);
+        if (!art) return sendJson(res, 404, { ok: false, error: 'artifact_not_found' });
+        const type = /\.png$/i.test(art.file)
+          ? 'image/png'
+          : /\.jpe?g$/i.test(art.file)
+            ? 'image/jpeg'
+            : /\.json$/i.test(art.file)
+              ? 'application/json; charset=utf-8'
+              : 'text/plain; charset=utf-8';
+        return sendRaw(res, 200, art.data, type);
       }
 
       const approveMatch = /^\/approvals\/([\w-]+)$/.exec(p);

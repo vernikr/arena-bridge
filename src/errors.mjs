@@ -17,6 +17,7 @@ export const ERROR_CODES = {
   UNKNOWN_TOOL: { message: 'unknown tool', hint: 'GET /tools for catalog', retryable: false },
   INVALID_ARGS: { message: 'arguments are missing or malformed', hint: 'check the tool schema in GET /tools', retryable: false },
   RATE_LIMITED: { message: 'too many calls in a short time', hint: 'wait a second and retry', retryable: true },
+  DEVICE_BUSY: { message: 'the target device queue is full', hint: 'wait and retry the call', retryable: true },
 };
 
 export function errorResponse(code, extra = {}) {

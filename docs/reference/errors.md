@@ -19,5 +19,6 @@ Single source: `src/errors.mjs` `ERROR_CODES` → `errorResponse(code)` → HTTP
 | `UNKNOWN_TOOL` | unknown tool | GET /tools for catalog | false |
 | `INVALID_ARGS` | arguments are missing or malformed | check the tool schema in GET /tools | false |
 | `RATE_LIMITED` | too many calls in a short time | wait a second and retry | true |
+| `DEVICE_BUSY` | the target device queue is full | wait and retry the call | true |
 
 Agent mapping: `PROTECTED`/`NOT_FOUND`/`IS_DIR` = policy, `APPROVAL_DENIED`/`PENDING` = gate, `TIMEOUT` retry with backoff, `UNKNOWN_TOOL` → `GET /tools`, `RATE_LIMITED` wait a second.

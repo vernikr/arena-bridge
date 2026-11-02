@@ -21,10 +21,13 @@ const { runDevice, postResult } = await import('../src/device.mjs');
 const { listApprovals, decide } = await import('../src/approvals.mjs');
 const { startTunnel, isPortOpen } = await import('../src/tunnel.mjs');
 const { saveTrust, clearTrust, trustState, trustAllows, parseDuration } = await import('../src/trust.mjs');
+const { validateArgs } = await import('../src/schema.mjs');
 
 const WORK = path.join(TMP, 'work');
 fs.mkdirSync(WORK, { recursive: true });
 fs.writeFileSync(path.join(WORK, 'hello.txt'), 'hello world\n');
+
+assert.equal(validateArgs({ type: 'object', properties: { x: { type: 'number' } }, additionalProperties: false }, [], { x: 1 }).ok, true);
 
 let passed = 0;
 let failed = 0;
@@ -156,6 +159,28 @@ await test('read_file reads a file inside the root', async () => {
   const j = await r.json();
   assert.equal(j.ok, true, JSON.stringify(j));
   assert.equal(j.content, 'hello world\n');
+});
+
+await test('tool schemas reject malformed and unknown arguments', async () => {
+  const wrongType = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'read_file', args: { path: 42 } }),
+  });
+  const first = await wrongType.json();
+  assert.equal(wrongType.status, 400);
+  assert.equal(first.error, 'INVALID_ARGS');
+  assert.equal(first.field, 'path');
+
+  const unknown = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'sysinfo', args: { extra: true } }),
+  });
+  const second = await unknown.json();
+  assert.equal(unknown.status, 400);
+  assert.equal(second.error, 'INVALID_ARGS');
+  assert.equal(second.field, 'extra');
 });
 
 await test('read_file outside legacy roots is allowed', async () => {
@@ -581,6 +606,18 @@ await test('hub reports the device as online', async () => {
   assert.equal(j.devices[0].online, true);
 });
 
+await test('hub exposes the direct-mode health and audit surface', async () => {
+  const health = await (await fetch(`${hubBase}/health`)).json();
+  for (const key of ['uptime_sec', 'pending_approvals', 'trust_active', 'audit_count', 'log_size', 'has_public_url', 'public_url', 'tunnel_alive']) {
+    assert.ok(Object.hasOwn(health, key), `missing health field ${key}`);
+  }
+  const config = await (await fetch(`${hubBase}/config`, { headers: auth })).json();
+  assert.equal(config.ok, true);
+  const auditPage = await (await fetch(`${hubBase}/audit?limit=1`, { headers: auth })).json();
+  assert.equal(auditPage.ok, true);
+  assert.ok(Array.isArray(auditPage.entries));
+});
+
 await test('agent call is forwarded to the device and executed there', async () => {
   const r = await fetch(`${hubBase}/call`, {
     method: 'POST',
@@ -680,11 +717,13 @@ await test('a dropped tunnel is restarted and the new URL is reported', async ()
 });
 
 await test('repeated --root flags accumulate instead of overwriting', async () => {
-  const { parseArgs } = await import('../src/cli.mjs');
+  const { parseArgs, validateConfig } = await import('../src/cli.mjs');
   const args = parseArgs(['init', '--root', '~/projects', '--root', '~/Documents,~/notes']);
   assert.deepEqual(args.flags.root, ['~/projects', '~/Documents,~/notes']);
   const flat = args.flags.root.flatMap((v) => v.split(',')).map((v) => v.trim());
   assert.deepEqual(flat, ['~/projects', '~/Documents', '~/notes']);
+  assert.deepEqual(validateConfig({ ...loaded, port: 8787 }), []);
+  assert.ok(validateConfig({ ...loaded, port: 0 }).some((error) => error.includes('port')));
 });
 
 await test('the service command takes the tunnel flags', async () => {

@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.19.0
+
+### Added
+- Tool calls are validated against the published schemas before handlers run, including required fields, types, and unknown arguments.
+- `config validate` checks mode, URLs, limits, tokens, tunnel settings, Telegram settings, and core runtime values.
+- Hub mode now exposes the same health, config, approval polling, and audit read endpoints as direct mode.
+- Added the retryable `DEVICE_BUSY` error for bounded hub queues.
+
 ## 0.18.16
 
 ### Fixed

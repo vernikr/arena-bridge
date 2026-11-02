@@ -36,6 +36,63 @@ import {
 
 const REPEATABLE_FLAGS = new Set(['root']);
 
+export function validateConfig(cfg = {}) {
+  const errors = [];
+  const add = (message) => errors.push(message);
+  const nonEmptyString = (name, value) => {
+    if (typeof value !== 'string' || !value.trim()) add(`${name} must be a non-empty string`);
+  };
+  const integerRange = (name, value, min, max) => {
+    if (!Number.isInteger(value) || value < min || value > max) add(`${name} must be an integer from ${min} to ${max}`);
+  };
+  const urlValue = (name, value, required = false) => {
+    if (value == null || value === '') {
+      if (required) add(`${name} is required`);
+      return;
+    }
+    try {
+      const parsed = new URL(String(value));
+      if (!['http:', 'https:'].includes(parsed.protocol)) add(`${name} must use http or https`);
+    } catch {
+      add(`${name} must be a valid URL`);
+    }
+  };
+
+  if (!['direct', 'hub'].includes(cfg.mode)) add(`mode must be direct or hub`);
+  nonEmptyString('host', cfg.host);
+  integerRange('port', Number(cfg.port), 1, 65535);
+  nonEmptyString('device', cfg.device);
+  for (const key of ['token', 'deviceToken', 'localToken']) nonEmptyString(key, cfg[key]);
+  if (!Array.isArray(cfg.roots) || cfg.roots.some((value) => typeof value !== 'string')) add('roots must be an array of strings');
+  if (!Array.isArray(cfg.protected) || cfg.protected.some((value) => typeof value !== 'string')) add('protected must be an array of strings');
+  for (const key of ['requireApproval', 'allowShell', 'audit', 'exposeDeviceInHealth']) {
+    if (typeof cfg[key] !== 'boolean') add(`${key} must be boolean`);
+  }
+  integerRange('approvalWaitSec', Number(cfg.approvalWaitSec), 0, 3600);
+  integerRange('approvalTtlSec', Number(cfg.approvalTtlSec), 1, 86400);
+  integerRange('maxOutputBytes', Number(cfg.maxOutputBytes), 1, 256 * 1024 * 1024);
+  integerRange('maxUploadBytes', Number(cfg.maxUploadBytes), 1, 256 * 1024 * 1024);
+  integerRange('commandTimeoutSec', Number(cfg.commandTimeoutSec), 1, 1800);
+  urlValue('hub', cfg.hub, cfg.mode === 'hub');
+  urlValue('publicUrl', cfg.publicUrl);
+
+  if (!cfg.tunnel || typeof cfg.tunnel !== 'object' || Array.isArray(cfg.tunnel)) add('tunnel must be an object');
+  else {
+    nonEmptyString('tunnel.bin', cfg.tunnel.bin);
+    if (cfg.tunnel.domain != null && (typeof cfg.tunnel.domain !== 'string' || /\s/.test(cfg.tunnel.domain))) add('tunnel.domain must be a hostname without spaces');
+    if (cfg.tunnel.authtoken != null && typeof cfg.tunnel.authtoken !== 'string') add('tunnel.authtoken must be a string or null');
+  }
+  if (cfg.peekabooPath != null && typeof cfg.peekabooPath !== 'string') add('peekabooPath must be a string or null');
+  if (!cfg.telegram || typeof cfg.telegram !== 'object' || Array.isArray(cfg.telegram)) add('telegram must be an object');
+  else {
+    if (typeof cfg.telegram.enabled !== 'boolean') add('telegram.enabled must be boolean');
+    if (!Array.isArray(cfg.telegram.chatIds) || cfg.telegram.chatIds.some((id) => typeof id !== 'string' || !id.trim())) add('telegram.chatIds must be an array of non-empty strings');
+    if (typeof cfg.telegram.poll !== 'boolean') add('telegram.poll must be boolean');
+    if (cfg.telegram.enabled && (!cfg.telegram.botToken || !cfg.telegram.chatIds.length)) add('enabled Telegram requires botToken and at least one chat id');
+  }
+  return errors;
+}
+
 export function parseArgs(argv) {
   const out = { _: [], flags: {} };
   const set = (key, value) => {
@@ -854,7 +911,19 @@ function cmdRotate(args) {
 
 function cmdConfig(args) {
   const sub = args._[1] || 'list';
-  const cfg = loadConfig();
+  let cfg;
+  try {
+    cfg = loadConfig();
+  } catch (e) {
+    if (sub === 'validate') {
+      const errors = [e.message];
+      if (args.flags.json) console.log(JSON.stringify({ ok: false, errors }, null, 2));
+      else { console.log('✗ config issues:'); for (const error of errors) console.log(`  - ${error}`); }
+      process.exitCode = 1;
+      return;
+    }
+    throw e;
+  }
   if (sub === 'list' || sub === 'show') {
     const out = { ...cfg };
     delete out.configPath;
@@ -931,10 +1000,7 @@ function cmdConfig(args) {
   }
   if (sub === 'validate') {
     const isJson = !!(args.flags.json);
-    const errs = [];
-    if (!cfg.token) errs.push('token missing — run arena-bridge init');
-    if (!cfg.deviceToken) errs.push('deviceToken missing');
-    if (!Number.isFinite(Number(cfg.port)) || Number(cfg.port) < 1 || Number(cfg.port) > 65535) errs.push(`port invalid: ${cfg.port}`);
+    const errs = validateConfig(cfg);
     if (isJson) console.log(JSON.stringify({ ok: errs.length===0, errors: errs }, null, 2));
     else { if (!errs.length) console.log('✓ config valid'); else { console.log('✗ config issues:'); for (const e of errs) console.log(`  - ${e}`); process.exitCode=1; } }
     return;
