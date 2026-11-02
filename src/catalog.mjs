@@ -9,6 +9,13 @@ import { clip, runShell } from './engine_helpers.mjs';
 import { errorResponse } from './errors.mjs';
 
 let lastNoteAt = 0;
+const SESSION_RETENTION_MS = 10 * 60 * 1000;
+
+function pruneSessions(sessions, now = Date.now()) {
+  for (const [id, session] of sessions) {
+    if (session.exited && session.endedAt && now - session.endedAt > SESSION_RETENTION_MS) sessions.delete(id);
+  }
+}
 
 const S = (o) => ({ type: 'object', properties: o, required: [], additionalProperties: false });
 
@@ -448,6 +455,7 @@ export function toolCatalog() {
       handler: async (args, ctx) => {
         const command = String(args.command ?? '');
         if (!command.trim()) return { ok: false, error: 'command is required' };
+        pruneSessions(ctx.sessions);
         const base = args.cwd ? resolveTarget(args.cwd, ctx.base) : ctx.base;
         const chk = checkPath(base, ctx.cfg, ctx.base);
         if (!chk.ok) return { ok: false, error: chk.error, reason: chk.reason };
@@ -489,6 +497,7 @@ export function toolCatalog() {
         child.on('close', (code) => {
           session.exited = true;
           session.exitCode = code;
+          session.endedAt = Date.now();
         });
         // R6: limit bash sessions to 20, cleanup oldest
         if (ctx.sessions.size >= 20) {

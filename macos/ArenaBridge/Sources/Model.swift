@@ -114,13 +114,15 @@ final class AppModel: ObservableObject {
     private var timer: AnyCancellable?
     private var eventTask: Task<Void, Never>?
     private var tick = 0
+    private var refreshing = false
+    private var notificationsCheckedAt: Date?
     private var knownIds = Set<String>()
     private var headCursor: String?
     private var clearMark: String?
     static let windowSize = 5000
 
     init() {
-        timer = Timer.publish(every: 4, on: .main, in: .common)
+        timer = Timer.publish(every: 8, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in Task { await self?.step() } }
         // Auto-open blanket trust window for 3h on launch per user request
@@ -162,9 +164,9 @@ final class AppModel: ObservableObject {
                         let s = line.trimmingCharacters(in: .whitespaces)
                         if s.isEmpty || s.hasPrefix(":") { continue }
                         if s.hasPrefix("event:") {
-                            // on approvals/audit/heartbeat → refresh lightweight
+                            // Refresh for actual state changes; heartbeats only keep the stream alive.
                             let ev = s.replacingOccurrences(of: "event:", with: "").trimmingCharacters(in: .whitespaces)
-                            if ev == "approvals" || ev == "audit" || ev == "heartbeat" {
+                            if ev == "approvals" || ev == "audit" {
                                 await self.refresh(log: ev == "audit", showBusy: false)
                             }
                         }
@@ -269,51 +271,67 @@ final class AppModel: ObservableObject {
     // -- reading -------------------------------------------------------- //
 
     func refresh(log: Bool = true, showBusy: Bool = true) async {
+        guard !refreshing else { return }
+        refreshing = true
+        defer { refreshing = false }
         if showBusy { busy = true }
         defer { if showBusy { busy = false } }
         checkPermissions()
         let service = Bridge.serviceState()
-        serviceInstalled = service.installed
-        running = service.running
+        if serviceInstalled != service.installed { serviceInstalled = service.installed }
+        if running != service.running { running = service.running }
 
         let health = await bridge.call("health")
         var liveUrl: String?
         if health.0 == 200 {
-            version = health.1["version"] as? String ?? "—"
-            device = health.1["device"] as? String ?? "—"
-            mode = health.1["mode"] as? String ?? "—"
-            publicReady = health.1["has_public_url"] as? Bool ?? false
+            let nextVersion = health.1["version"] as? String ?? "—"
+            let nextDevice = health.1["device"] as? String ?? "—"
+            let nextMode = health.1["mode"] as? String ?? "—"
+            let nextPublicReady = health.1["has_public_url"] as? Bool ?? false
+            if version != nextVersion { version = nextVersion }
+            if device != nextDevice { device = nextDevice }
+            if mode != nextMode { mode = nextMode }
+            if publicReady != nextPublicReady { publicReady = nextPublicReady }
             liveUrl = health.1["public_url"] as? String
-            running = true
+            if !running { running = true }
         }
 
         let config = bridge.config
-        url = liveUrl ?? config.publicUrl
-        telegramEnabled = config.telegramEnabled
-        telegramChats = config.telegramChats
+        let nextURL = liveUrl ?? config.publicUrl
+        if url != nextURL { url = nextURL }
+        if telegramEnabled != config.telegramEnabled { telegramEnabled = config.telegramEnabled }
+        if telegramChats != config.telegramChats { telegramChats = config.telegramChats }
 
         let tools = await bridge.call("tools")
         if tools.0 == 200 {
-            toolCount = (tools.1["tools"] as? [[String: Any]])?.count ?? 0
+            let nextToolCount = (tools.1["tools"] as? [[String: Any]])?.count ?? 0
+            if toolCount != nextToolCount { toolCount = nextToolCount }
         }
 
         let list = await bridge.call("approvals")
-        approvals = ((list.1["approvals"] as? [[String: Any]]) ?? [])
+        let nextApprovals = ((list.1["approvals"] as? [[String: Any]]) ?? [])
             .filter { ($0["status"] as? String) == "pending" }
             .compactMap(Approval.parse)
             .sorted { $0.created > $1.created }
-        announceApprovals()
+        if approvals.map(\.id) != nextApprovals.map(\.id) {
+            approvals = nextApprovals
+            announceApprovals()
+        }
 
         if log {
             await loadAudit()
         }
 
-        notificationsAllowed = await Notifier.shared.allowed()
+        if notificationsCheckedAt == nil || Date().timeIntervalSince(notificationsCheckedAt!) >= 60 {
+            let allowed = await Notifier.shared.allowed()
+            if notificationsAllowed != allowed { notificationsAllowed = allowed }
+            notificationsCheckedAt = Date()
+        }
 
         let trust = Bridge.trustStatus()
-        trustEnabled = trust.enabled
-        trustRemaining = trust.remainingSec
-        trustTools = trust.tools
+        if trustEnabled != trust.enabled { trustEnabled = trust.enabled }
+        if trustRemaining != trust.remainingSec { trustRemaining = trust.remainingSec }
+        if trustTools != trust.tools { trustTools = trust.tools }
     }
 
     /// Tell the user that the agent is waiting for a decision.

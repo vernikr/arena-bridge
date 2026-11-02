@@ -13,6 +13,7 @@ import { audit } from './audit.mjs';
 import { sourceOf, describeSource, admitUnauthorized } from './source.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MAX_QUEUED_PER_DEVICE = 100;
 
 function deviceTokens(cfg) {
   const list = [];
@@ -34,10 +35,23 @@ export function createHubServer(cfg) {
   const queues = new Map(); // name -> [{id, tool, args}]
   const jobs = new Map(); // id -> { resolve, timer }
 
-  const dispatch = (device, tool, args, timeoutSec = 120, source = null) =>
-    new Promise((resolve) => {
+  const removeQueued = (device, id) => {
+    const q = queues.get(device);
+    if (!q) return;
+    const remaining = q.filter((job) => job.id !== id);
+    if (remaining.length) queues.set(device, remaining);
+    else queues.delete(device);
+  };
+
+  const dispatch = (device, tool, args, timeoutSec = 120, source = null) => {
+    const q = queues.get(device) || [];
+    if (q.length >= MAX_QUEUED_PER_DEVICE) {
+      return Promise.resolve({ ok: false, error: 'DEVICE_BUSY', reason: `device "${device}" has too many queued jobs` });
+    }
+    return new Promise((resolve) => {
       const id = crypto.randomUUID();
       const timer = setTimeout(() => {
+        removeQueued(device, id);
         jobs.delete(id);
         resolve({
           ok: false,
@@ -46,10 +60,10 @@ export function createHubServer(cfg) {
         });
       }, (timeoutSec + 15) * 1000);
       jobs.set(id, { resolve, timer });
-      const q = queues.get(device) || [];
       q.push({ id, tool, args, source });
       queues.set(device, q);
     });
+  };
 
   const callTool = async (tool, args, source = null) => {
     const device = args?.device || cfg.device;

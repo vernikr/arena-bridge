@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.16
+
+### Fixed
+- The macOS app no longer refreshes the full interface for every SSE heartbeat; background refreshes are coalesced, spaced out, and publish state only when it changes.
+- Hub devices retry result delivery after transient network failures, and expired queued jobs are removed instead of executing later.
+- Hub job queues are bounded and completed process sessions are pruned after retention.
+
 ## 0.18.15
 
 ### Fixed

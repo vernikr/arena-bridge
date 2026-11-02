@@ -4,6 +4,35 @@
  */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Retry a result while the hub may still be waiting for it. A 404 means the job expired. */
+export async function postResult(base, headers, payload, {
+  fetchImpl = fetch,
+  sleepImpl = sleep,
+  log = () => {},
+  maxAttempts = 8,
+} = {}) {
+  let delay = 1000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetchImpl(`${base}/device/result`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) return true;
+      if (res.status === 404) return false;
+      log(`[device] result failed: HTTP ${res.status} (attempt ${attempt}/${maxAttempts})`);
+    } catch (e) {
+      log(`[device] result connection error (attempt ${attempt}/${maxAttempts}): ${e.message}`);
+    }
+    if (attempt < maxAttempts) {
+      await sleepImpl(delay);
+      delay = Math.min(delay * 2, 30_000);
+    }
+  }
+  return false;
+}
+
 export async function runDevice(cfg, engine, { log = console.log } = {}) {
   const base = String(cfg.hub || '').replace(/\/+$/, '');
   if (!base) throw new Error('cfg.hub is required in hub mode');
@@ -48,11 +77,7 @@ export async function runDevice(cfg, engine, { log = console.log } = {}) {
         result = { ok: false, error: e.message };
       }
 
-      await fetch(`${base}/device/result`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ id: job.id, result }),
-      });
+      await postResult(base, headers, { id: job.id, result }, { log });
     } catch (e) {
       log(`[device] connection error: ${e.message}`);
       await sleep(backoff);

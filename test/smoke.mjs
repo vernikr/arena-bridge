@@ -17,7 +17,7 @@ assert.ok(CONFIG_DIR.startsWith(os.tmpdir()), 'the test must not touch the real 
 const { Engine } = await import('../src/engine.mjs');
 const { createDirectServer } = await import('../src/direct.mjs');
 const { createHubServer } = await import('../src/hub.mjs');
-const { runDevice } = await import('../src/device.mjs');
+const { runDevice, postResult } = await import('../src/device.mjs');
 const { listApprovals, decide } = await import('../src/approvals.mjs');
 const { startTunnel, isPortOpen } = await import('../src/tunnel.mjs');
 const { saveTrust, clearTrust, trustState, trustAllows, parseDuration } = await import('../src/trust.mjs');
@@ -227,6 +227,17 @@ await test('start_process and read_process_output work in the Node bridge', asyn
   const result = await output.json();
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.match(result.stdout, /node-process-ok/);
+
+  const old = engine.sessions.get(start.session_id);
+  assert.ok(old?.exited, 'the test process should have exited');
+  old.endedAt = Date.now() - 11 * 60 * 1000;
+  const replacement = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'start_process', args: { command: 'exit 0' } }),
+  });
+  assert.equal((await replacement.json()).ok, true);
+  assert.equal(engine.sessions.has(start.session_id), false, 'expired sessions should be pruned');
 });
 
 await test('delete_path removes a file in the Node bridge', async () => {
@@ -579,6 +590,22 @@ await test('agent call is forwarded to the device and executed there', async () 
   const j = await r.json();
   assert.equal(j.ok, true, JSON.stringify(j));
   assert.match(j.stdout, /from-device/);
+});
+
+await test('device retries a result after a transient hub failure', async () => {
+  let attempts = 0;
+  const waits = [];
+  const delivered = await postResult('http://hub.test', { Authorization: 'Bearer device' }, { id: 'job-1', result: { ok: true } }, {
+    fetchImpl: async () => {
+      attempts++;
+      if (attempts === 1) throw new Error('temporary network failure');
+      return { ok: true, status: 200 };
+    },
+    sleepImpl: async (ms) => waits.push(ms),
+  });
+  assert.equal(delivered, true);
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [1000]);
 });
 
 await test('device token cannot use the agent API', async () => {
