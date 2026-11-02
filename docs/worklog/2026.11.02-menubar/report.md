@@ -1,0 +1,14 @@
+# Menubar service control
+
+## Implemented
+
+- Added a menubar item with Lucide-style link-2 and link-2-off vector icons.
+- Added an animated three-dot transition indicator for start and stop operations.
+- Added Start/Stop, Copy Prompt, Open, and Quit actions to the menubar menu.
+- Added main-window lifecycle handling: closing the main window switches the app to accessory mode so it leaves the Dock while the menubar item remains available.
+- Reopening the app from the menubar restores the regular activation policy and main window.
+
+## Verification
+
+- macOS app build passed with no compiler warnings.
+- Release target: `0.20.0`.

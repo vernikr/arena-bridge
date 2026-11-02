@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.0
+
+### Added
+- Added a menubar item with Lucide-style link icons for running and stopped states.
+- Added an animated transition indicator while the bridge is starting or stopping.
+- Added menubar actions: Start/Stop, Copy Prompt, Open, and Quit.
+- Closing the main window now hides the Dock icon while keeping the menubar item available.
+
 ## 0.19.1
 
 ### Fixed

@@ -1,7 +1,9 @@
 import SwiftUI
+import AppKit
 
 @main
 struct ArenaBridgeApp: App {
+    @NSApplicationDelegateAdaptor(ArenaBridgeAppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -10,7 +12,7 @@ struct ArenaBridgeApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 600, minHeight: 680)
@@ -31,5 +33,19 @@ struct ArenaBridgeApp: App {
                 Button("Stop") { model.stop() }
             }
         }
+        MenuBarExtra {
+            MenuBarView()
+                .environmentObject(model)
+        } label: {
+            MenuBarIcon()
+                .environmentObject(model)
+        }
+        .menuBarExtraStyle(.menu)
+    }
+}
+
+final class ArenaBridgeAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }

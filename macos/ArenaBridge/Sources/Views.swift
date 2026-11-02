@@ -37,6 +37,7 @@ struct ContentView: View {
         .sheet(item: $model.detailEntry) { entry in
             EntryDetail(entry: entry)
         }
+        .background(MainWindowAccessor())
     }
 }
 
@@ -800,4 +801,3 @@ struct SetupView: View {
         Task { await model.refresh() }
     }
 }
-

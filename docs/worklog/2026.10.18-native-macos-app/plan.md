@@ -3,7 +3,7 @@
 ## Goal
 
 One window for everything the user needs from the bridge: first-time setup, start, stop,
-status, approvals and the work log. No menubar icon — an ordinary app window.
+status, approvals and the work log, with a menubar control for the service lifecycle.
 
 ## What was built
 
