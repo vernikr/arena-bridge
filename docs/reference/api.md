@@ -1,6 +1,6 @@
 # HTTP API
 
-`GET /health` (no auth, `exposeDeviceInHealth` opt) → `{ok, version, device?, pending_approvals, trust_active, audit_count, log_size, has_public_url}`
+`GET /health` (no auth, `exposeDeviceInHealth` opt) → `{ok, version, device?, pending_approvals, trust_active, audit_count, log_size, has_public_url, public_url, tunnel_alive}`; `has_public_url` and `public_url` follow the live tunnel when the process owns one, otherwise the stored URL
 
 `GET /tools`, `GET /prompt`, `GET /config`, `GET /audit?limit&before&after&tool&kind&level`, `GET /audit/entry?id=`, `POST /log/event` (step events, bearer), `GET /audit/artifact?entry=&file=`, `GET /approvals`, `GET /approvals/:id`, `POST /approvals/:id` (localToken), `POST /call {tool,args}` → `200|202|400`, `POST /exec`, `GET|PUT|DELETE /files?path=` (via gate+audit), `POST /mcp` (2025-06-18+2026-07-28), `GET /v1/events` (SSE, bearer, heartbeat 3s).
 

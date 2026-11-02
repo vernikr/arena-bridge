@@ -485,6 +485,7 @@ arena-bridge audit -n 50       # что происходило
 | `init` | создать `~/.arena-bridge/config.json` с токенами (`--root` повторяемый) |
 | `start` | локальный API-сервер |
 | `tunnel` | API + облачный туннель, печатает промпт |
+| `stop` | остановить сервис, API и все туннели этого бриджа, включая осиротевшие процессы |
 | `hub` / `connect` | режим «хаб»: VPS принимает подключения многих машин |
 | `prompt` | готовый промпт для чата с агентом |
 | `tools` | каталог инструментов в JSON |
@@ -564,6 +565,7 @@ arena_bridge/  тот же функционал на Python (stdlib only)
 | --- | --- |
 | `port 8787 is already in use` | остановите старый экземпляр (`Ctrl+C`) или `arena-bridge start --port 8788` |
 | туннель не поднимается | `cloudflared` по умолчанию использует QUIC и может быть заблокирован — `arena-bridge tunnel --protocol http2` (это поведение по умолчанию) |
+| публичный адрес «живой», но агент не подключается, или Stop ругается на незакрытый адрес | `arena-bridge stop` закрывает и осиротевшие туннели прошлых запусков, затем Start заново |
 | агент не видит файлы | проверьте `arena-bridge doctor` и `roots` в `~/.arena-bridge/config.json`; вне `roots` всё равно `PROTECTED` |
 | `APPROVAL_PENDING` | при `timeout`/`expired` старый запрос закрыт: согласуйте новый вызов или попросите открыть `arena-bridge trust --for 1h` |
 | скриншоты не работают | `arena-bridge permissions` — выдайте Arena Bridge Screen Recording и Accessibility (see [macOS permissions](#macos-permissions)) |
