@@ -7,7 +7,7 @@ import { handleMcp } from './mcp.mjs';
 import { buildPrompt } from './prompt.mjs';
 import { listApprovals, decide, settle } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
-import { loadConfig } from './config.mjs';
+import { loadConfig, CONFIG_DIR } from './config.mjs';
 import { tailAudit, readArtifact, auditDir, audit, auditPage, findEntry, lean, headCursor, LEVELS, pruneAudit, pruneArtifacts } from './audit.mjs';
 import { reconcileTrust } from './trust.mjs';
 import { describeSource, sourceOf, admitUnauthorized } from './source.mjs';

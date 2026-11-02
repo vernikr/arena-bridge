@@ -39,17 +39,23 @@ export function readBody(req, limit = 16 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let len = 0;
+    let rejected = false;
     req.on('data', (c) => {
+      if (rejected) return;
       len += c.length;
       if (len > limit) {
+        rejected = true;
         reject(new Error('request body too large'));
-        req.destroy();
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    req.on('end', () => {
+      if (!rejected) resolve(Buffer.concat(chunks));
+    });
+    req.on('error', (error) => {
+      if (!rejected) reject(error);
+    });
   });
 }
 

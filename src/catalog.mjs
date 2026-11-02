@@ -1,8 +1,9 @@
 import fsp from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkPath, resolveTarget } from './policy.mjs';
+import { checkPath, resolveTarget, isInside } from './policy.mjs';
 import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
 import { clip, runShell } from './engine_helpers.mjs';
 import { errorResponse } from './errors.mjs';
@@ -597,4 +598,3 @@ export function toolCatalog() {
     },
   ];
 }
-

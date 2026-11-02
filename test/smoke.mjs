@@ -76,6 +76,15 @@ await test('GET /health works without auth', async () => {
   assert.equal(j.ok, true);
 });
 
+await test('GET /health reports the bridge log size', async () => {
+  const logs = path.join(CONFIG_DIR, 'logs');
+  fs.mkdirSync(logs, { recursive: true });
+  fs.writeFileSync(path.join(logs, 'bridge.log'), 'health-check');
+  const r = await fetch(`${base}/health`);
+  const j = await r.json();
+  assert.equal(j.log_size, Buffer.byteLength('health-check'));
+});
+
 await test('GET /tools requires auth', async () => {
   const r = await fetch(`${base}/tools`);
   assert.equal(r.status, 401);
@@ -199,6 +208,54 @@ await test('bash executes a command', async () => {
   assert.equal(j.ok, true, JSON.stringify(j));
   assert.match(j.stdout, /smoke-ok/);
   assert.equal(j.exit_code, 0);
+});
+
+await test('start_process and read_process_output work in the Node bridge', async () => {
+  const started = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'start_process', args: { command: 'printf node-process-ok' } }),
+  });
+  const start = await started.json();
+  assert.equal(start.ok, true, JSON.stringify(start));
+
+  const output = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'read_process_output', args: { session_id: start.session_id, timeout_sec: 3 } }),
+  });
+  const result = await output.json();
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.match(result.stdout, /node-process-ok/);
+});
+
+await test('delete_path removes a file in the Node bridge', async () => {
+  const target = path.join(WORK, 'delete-me.txt');
+  fs.writeFileSync(target, 'delete me');
+  const r = await fetch(`${base}/call`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'delete_path', args: { path: target } }),
+  });
+  const j = await r.json();
+  assert.equal(j.ok, true, JSON.stringify(j));
+  assert.equal(fs.existsSync(target), false);
+});
+
+await test('oversized request bodies receive a 413 response', async () => {
+  saveConfig({ ...loaded, maxUploadBytes: 32 });
+  try {
+    const r = await fetch(`${base}/call`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: 'read_file', args: { path: 'x'.repeat(64) } }),
+    });
+    assert.equal(r.status, 413);
+    const j = await r.json();
+    assert.equal(j.error, 'PAYLOAD_TOO_LARGE');
+  } finally {
+    saveConfig(loaded);
+  }
 });
 
 await test('files API supports GET/PUT/DELETE', async () => {

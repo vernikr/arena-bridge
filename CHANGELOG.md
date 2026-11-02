@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.15
+
+### Fixed
+- Restored the Node handlers for background processes and path deletion after the catalog split.
+- `/health` reports the configured bridge log size again.
+- Oversized HTTP request bodies return a normal `413 PAYLOAD_TOO_LARGE` response instead of resetting the connection.
+
 ## 0.18.14
 
 ### Fixed
