@@ -4,7 +4,7 @@ Single source: `src/errors.mjs` `ERROR_CODES` → `errorResponse(code)` → HTTP
 
 | code | message | hint | retryable |
 |---|---|---|---|
-| `PROTECTED` | path is outside authorized roots or inside protected location | check roots/protected in config, use arena-bridge doctor | false |
+| `PROTECTED` | path is invalid or inside a protected location | check protected paths in config, use arena-bridge doctor | false |
 | `INVALID_PATH` | path is required or malformed | provide absolute path or ~/ | false |
 | `NOT_FOUND` | file or directory not found | list_dir to see available paths | false |
 | `IS_DIR` | path is a directory, expected file | use list_dir for directories | false |

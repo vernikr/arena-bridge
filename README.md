@@ -400,8 +400,7 @@ arena-bridge trust --status --json                            # для прил�
 arena-bridge trust --off
 ```
 
-* окно снимает требование **подтверждения**, но не снимает **политику путей**: за пределами
-  `roots` и в защищённых каталогах по-прежнему `PROTECTED`;
+* окно снимает требование **подтверждения**, но не снимает защиту `protected` и системные ограничения;
 * `--paths` ограничивает доверие конкретными папками; `bash` под такое ограничение не попадает —
   чтобы доверять командам, укажите `--tools bash` явно;
 * окно живёт локально (`~/.arena-bridge/trust.json`), агент открыть его не может;
@@ -459,8 +458,9 @@ arena-bridge browser close work       # закрыть окно этого пр�
 | `localToken` | только вы | подтверждать запросы и открывать окно доверия |
 
 * **Агент не может одобрить сам себя**: `POST /approvals/:id` требует локальный токен.
-* **Пути ограничены**: всё вне `roots` — `PROTECTED`. Защищённый список по умолчанию включает
-  `~/.ssh`, `~/.aws`, `~/.arena-bridge`, `~/.npmrc`, профили браузеров, ключи.
+* **Защищённые пути**: список `protected` по умолчанию включает `~/.ssh`, `~/.aws`,
+  `~/.arena-bridge`, `~/.npmrc`, профили браузеров и ключи. `roots` сохраняется как
+  информационная настройка старых конфигураций и не является allowlist.
 * **Подтверждения**: `bash`, запись, удаление, управление вашим Chrome и десктопом ждут
   `arena-bridge approve <id>`. Подтверждать нужно, пока вызов ожидает решения.
   После `timeout` или `expired` запрос закрыт и его `approval_id` больше не принимается.
@@ -551,7 +551,7 @@ src/            Node-реализация (zero dependencies)
   browser.mjs   17 инструментов chrome_*
   mac.mjs       20 инструментов mac_* (Peekaboo, Accessibility API)
   trust.mjs     окно доверия
-  policy.mjs    проверка путей (roots / protected)
+  policy.mjs    проверка путей и protected-списка
   engine.mjs    каталог, гейт подтверждений, аудит
   direct.mjs    HTTP-сервер
   hub.mjs       хаб для нескольких машин
@@ -566,7 +566,7 @@ arena_bridge/  тот же функционал на Python (stdlib only)
 | `port 8787 is already in use` | остановите старый экземпляр (`Ctrl+C`) или `arena-bridge start --port 8788` |
 | туннель не поднимается | `cloudflared` по умолчанию использует QUIC и может быть заблокирован — `arena-bridge tunnel --protocol http2` (это поведение по умолчанию) |
 | публичный адрес «живой», но агент не подключается, или Stop ругается на незакрытый адрес | `arena-bridge stop` закрывает и осиротевшие туннели прошлых запусков, затем Start заново |
-| агент не видит файлы | проверьте `arena-bridge doctor` и `roots` в `~/.arena-bridge/config.json`; вне `roots` всё равно `PROTECTED` |
+| агент не видит файлы | проверьте `arena-bridge doctor` и `protected` в `~/.arena-bridge/config.json` |
 | `APPROVAL_PENDING` | при `timeout`/`expired` старый запрос закрыт: согласуйте новый вызов или попросите открыть `arena-bridge trust --for 1h` |
 | скриншоты не работают | `arena-bridge permissions` — выдайте Arena Bridge Screen Recording и Accessibility (see [macOS permissions](#macos-permissions)) |
 | `peekaboo_not_found` | поставьте Peekaboo или укажите путь: `arena-bridge init` + `peekabooPath` в конфиге |

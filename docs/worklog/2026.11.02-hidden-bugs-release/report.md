@@ -20,25 +20,25 @@ The fixes are covered by end-to-end smoke checks and released as `0.18.15`.
 - `npm pack --dry-run` — passed.
 - Node undefined-identifier scan — no remaining findings after allowing standard Node globals.
 
-## Remaining plan by waves
+## Plan completion
 
-### Wave 1 — delivery reliability
+### Wave 1 — delivery reliability — complete in `0.18.16`
 
-1. Add retry and reconciliation for hub device results when the result request fails after the device has executed a job.
-2. Add bounded job retention and explicit cancellation for disconnected hub devices.
-3. Remove completed process sessions after a retention period and expose a lifecycle status for stale sessions.
+- Retry result delivery after transient hub failures.
+- Bound queues and remove expired queued jobs.
+- Remove completed process sessions after a retention period.
 
-### Wave 2 — input and lifecycle consistency
+### Wave 2 — input and lifecycle consistency — complete in `0.19.0`
 
-1. Validate tool arguments against the published schemas before handlers run and return unified `INVALID_ARGS` responses.
-2. Complete CLI configuration validation for ports, timeouts, upload/output limits, and tunnel settings.
-3. Unify direct and hub health/audit capabilities so operators get the same status surface in either mode.
+- Validate tool arguments against the published schemas before handlers run.
+- Validate core CLI configuration values and runtime settings.
+- Align direct and hub health/audit/approval polling capabilities.
 
-### Wave 3 — platform and maintenance quality
+### Wave 3 — platform and maintenance quality — complete in `0.19.1`
 
-1. Replace remaining deprecated SwiftUI call forms and clean the compiler warnings in the native app build.
-2. Add matrix coverage for the supported Node versions and the service/tunnel restart paths.
-3. Add focused migration tests for state/config changes and recovery after interrupted writes.
+- Remove Swift compiler warnings.
+- Run Node 18/20/24 on Ubuntu and macOS in CI.
+- Test recovery after interrupted config/state writes.
 
 ## Server assessment
 
