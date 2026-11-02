@@ -38,78 +38,70 @@ struct MenuBarIcon: View {
 
     var body: some View {
         if model.transitioning {
-            EllipsisIcon()
-                .foregroundStyle(.secondary)
-        } else {
-            Link2Icon(off: !model.running)
-                .foregroundStyle(model.running ? Color.green : Color.secondary)
-        }
-    }
-}
-
-/// A compact link-2 icon based on the Lucide 24x24 geometry.
-struct Link2Icon: View {
-    let off: Bool
-    private let labelColor = Color(nsColor: .labelColor)
-
-    var body: some View {
-        Canvas { context, size in
-            let scale = min(size.width, size.height) / 24
-            let point: (CGFloat, CGFloat) -> CGPoint = { x, y in
-                CGPoint(x: x * scale + (size.width - 24 * scale) / 2,
-                        y: y * scale + (size.height - 24 * scale) / 2)
-            }
-            var links = Path()
-            links.move(to: point(9, 17))
-            links.addLine(to: point(7, 17))
-            links.addCurve(to: point(7, 7), control1: point(2, 17), control2: point(2, 7))
-            if !off {
-                links.addLine(to: point(9, 7))
-            }
-            links.move(to: point(15, 7))
-            links.addLine(to: point(17, 7))
-            if off {
-                links.addCurve(to: point(21, 15), control1: point(21.8, 7), control2: point(22, 11.7))
-            } else {
-                links.addCurve(to: point(17, 17), control1: point(22, 7), control2: point(22, 17))
-                links.addLine(to: point(15, 17))
-            }
-            links.move(to: point(8, 12))
-            links.addLine(to: point(off ? 12 : 16, 12))
-            let style = StrokeStyle(lineWidth: 2 * scale, lineCap: .round, lineJoin: .round)
-            context.stroke(links, with: .color(labelColor), style: style)
-
-            if off {
-                var slash = Path()
-                slash.move(to: point(3, 3))
-                slash.addLine(to: point(21, 21))
-                context.stroke(slash, with: .color(labelColor), style: style)
-            }
-        }
-        .frame(width: 22, height: 22)
-        .accessibilityLabel(off ? "Bridge stopped" : "Bridge running")
-    }
-}
-
-/// Animated three-dot indicator used while the service is changing state.
-struct EllipsisIcon: View {
-    private let labelColor = Color(nsColor: .labelColor)
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.12)) { timeline in
-            let phase = timeline.date.timeIntervalSinceReferenceDate * 4
-            HStack(spacing: 2.5) {
-                ForEach(0..<3, id: \.self) { index in
-                    let opacity = 0.25 + 0.75 * max(0, sin(phase - Double(index) * 0.9))
-                    Circle()
-                        .fill(labelColor)
-                        .frame(width: 3, height: 3)
-                        .opacity(opacity)
-                }
+            TimelineView(.animation(minimumInterval: 0.12)) { timeline in
+                Image(nsImage: MenuBarStatusImage.ellipsis(at: timeline.date.timeIntervalSinceReferenceDate))
             }
             .frame(width: 22, height: 22)
+            .accessibilityLabel("Bridge changing state")
+        } else {
+            Image(nsImage: MenuBarStatusImage.link(off: !model.running))
+                .frame(width: 22, height: 22)
+                .accessibilityLabel(model.running ? "Bridge running" : "Bridge stopped")
         }
-        .accessibilityLabel("Bridge changing state")
+    }
+}
+
+private enum MenuBarStatusImage {
+    static func link(off: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: 22, height: 22), flipped: false) { rect in
+            let p: (CGFloat, CGFloat) -> NSPoint = { x, y in NSPoint(x: x, y: 22 - y) }
+            let links = NSBezierPath()
+            links.move(to: p(9, 17))
+            links.line(to: p(7, 17))
+            links.curve(to: p(7, 7), controlPoint1: p(2, 17), controlPoint2: p(2, 7))
+            if !off { links.line(to: p(9, 7)) }
+            links.move(to: p(15, 7))
+            links.line(to: p(17, 7))
+            if off {
+                links.curve(to: p(21, 15), controlPoint1: p(21.8, 7), controlPoint2: p(22, 11.7))
+            } else {
+                links.curve(to: p(17, 17), controlPoint1: p(22, 7), controlPoint2: p(22, 17))
+                links.line(to: p(15, 17))
+            }
+            links.move(to: p(8, 12))
+            links.line(to: p(off ? 12 : 16, 12))
+            links.lineWidth = 2
+            links.lineCapStyle = .round
+            links.lineJoinStyle = .round
+            NSColor.labelColor.setStroke()
+            links.stroke()
+            if off {
+                let slash = NSBezierPath()
+                slash.move(to: p(3, 3))
+                slash.line(to: p(21, 21))
+                slash.lineWidth = 2
+                slash.lineCapStyle = .round
+                NSColor.labelColor.setStroke()
+                slash.stroke()
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    static func ellipsis(at time: TimeInterval) -> NSImage {
+        let image = NSImage(size: NSSize(width: 22, height: 22), flipped: false) { _ in
+            let phase = time * 4
+            for index in 0..<3 {
+                let opacity = 0.25 + 0.75 * max(0, sin(phase - Double(index) * 0.9))
+                NSColor.labelColor.withAlphaComponent(CGFloat(opacity)).setFill()
+                NSBezierPath(ovalIn: NSRect(x: 6 + CGFloat(index) * 5, y: 9, width: 3, height: 3)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 

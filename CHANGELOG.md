@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.4
+
+### Fixed
+- Replaced the menubar Canvas renderer with a native template image so the status icon is visible in macOS `MenuBarExtra` labels.
+
 ## 0.20.3
 
 ### Fixed
