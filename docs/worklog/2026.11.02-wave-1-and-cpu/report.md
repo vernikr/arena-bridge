@@ -31,6 +31,10 @@ The result was repeated SwiftUI recomputation while the user was idle.
 - Native macOS app build: passed.
 - Added regression coverage for result retry and process-session pruning.
 
+## Live verification
+
+Release `0.18.16` was installed on the connected Intel Mac together with the matching CLI, and the bridge service was restarted. The native app dropped from the reported 15–20% idle CPU to 0–1.2% during repeated measurements and 0% while idle.
+
 ## Next wave
 
 Proceed to input and lifecycle consistency: schema validation before handlers, complete CLI configuration validation, and parity of health/audit capabilities between direct and hub modes.
