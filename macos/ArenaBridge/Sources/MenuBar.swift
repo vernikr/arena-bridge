@@ -76,16 +76,16 @@ struct Link2Icon: View {
             links.move(to: point(8, 12))
             links.addLine(to: point(off ? 12 : 16, 12))
             let style = StrokeStyle(lineWidth: 2 * scale, lineCap: .round, lineJoin: .round)
-            context.stroke(links, with: .foreground, style: style)
+            context.stroke(links, with: .color(.primary), style: style)
 
             if off {
                 var slash = Path()
                 slash.move(to: point(3, 3))
                 slash.addLine(to: point(21, 21))
-                context.stroke(slash, with: .foreground, style: style)
+                context.stroke(slash, with: .color(.primary), style: style)
             }
         }
-        .frame(width: 18, height: 18)
+        .frame(width: 22, height: 22)
         .accessibilityLabel(off ? "Bridge stopped" : "Bridge running")
     }
 }
@@ -99,12 +99,12 @@ struct EllipsisIcon: View {
                 ForEach(0..<3, id: \.self) { index in
                     let opacity = 0.25 + 0.75 * max(0, sin(phase - Double(index) * 0.9))
                     Circle()
-                        .fill(.foreground)
+                        .fill(Color.primary)
                         .frame(width: 3, height: 3)
                         .opacity(opacity)
                 }
             }
-            .frame(width: 18, height: 18)
+            .frame(width: 22, height: 22)
         }
         .accessibilityLabel("Bridge changing state")
     }

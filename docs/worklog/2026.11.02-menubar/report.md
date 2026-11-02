@@ -13,3 +13,4 @@
 - macOS app build passed with no compiler warnings.
 - Menubar feature release: `0.20.0`.
 - Follow-up patch target: `0.20.1` for installer initialization and the macOS service restart target discovered during deployment.
+- Follow-up patch target: `0.20.2` for explicit menubar icon coloring after visual verification.

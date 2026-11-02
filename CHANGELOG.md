@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.2
+
+### Fixed
+- Menubar link icons now use an explicit system color and remain visible in macOS status items.
+
 ## 0.20.1
 
 ### Fixed
