@@ -345,13 +345,13 @@ Harder cases:
 
 The **Keep permissions after updates…** button in each permission guide opens the same steps inside the app.
 
-macOS identifies an app by its signature. Builds without your own certificate are *ad-hoc* signed, and macOS can reset their permissions after every rebuild. To avoid this, create a certificate once:
+macOS identifies an app by its signature. Builds without a stable certificate are *ad-hoc* signed, and macOS can reset their permissions after every rebuild. To avoid this, create a certificate once:
 
 1. Open **Keychain Access** (Spotlight → "Keychain Access").
 2. Menu **Keychain Access → Certificate Assistant → Create a Certificate…**
 3. Name: `Arena Bridge Local`. Identity Type: **Self-Signed Root**. Certificate Type: **Code Signing**. Click **Create**, then **Done**.
 4. In Keychain Access, choose **login** under Keychains and search for `Arena Bridge Local`. Three items appear: a certificate, a public key and a private key. Double-click the item whose Kind is **certificate**, expand **Trust**, set **When using this certificate** to **Always Trust**, close the window, and enter your password.
-5. Build with it: `ARENA_SIGN_IDENTITY="Arena Bridge Local" bash macos/ArenaBridge/build.sh`. Install the app and grant the permissions once more. Later builds signed the same way keep them.
+5. Build with it: `ARENA_SIGN_IDENTITY="Arena Bridge Local" bash macos/ArenaBridge/build.sh`. The build script also selects this certificate automatically when it is present. Install the app and grant the permissions once more. Later builds signed the same way keep them.
 
 Release downloads are ad-hoc signed, so after installing one, follow the grant steps again. The Control card warning and `arena-bridge permissions` show the state after every update.
 

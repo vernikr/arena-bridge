@@ -53,9 +53,15 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$BUNDLE/Contents/Info.plist"
 
-# signing: without ARENA_SIGN_IDENTITY the app is ad-hoc signed, and macOS may reset its
-# screen and accessibility permissions after every rebuild. A certificate in the keychain keeps them.
-SIGN_ID="${ARENA_SIGN_IDENTITY:--}"
+# signing: prefer the stable local certificate when it exists. Ad-hoc signing changes the
+# code identity on every rebuild and makes macOS ask for screen and accessibility access again.
+if [ -n "${ARENA_SIGN_IDENTITY:-}" ]; then
+  SIGN_ID="$ARENA_SIGN_IDENTITY"
+elif command -v security >/dev/null 2>&1 && security find-identity -v -p codesigning 2>/dev/null | grep -Fq '"Arena Bridge Local"'; then
+  SIGN_ID="Arena Bridge Local"
+else
+  SIGN_ID="-"
+fi
 echo "signing with: $SIGN_ID"
 # the nested code is signed first, the bundle covers it afterwards
 codesign --force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$BUNDLE/Contents/Helpers/$HELPER" || { echo "signing failed: is the certificate \"$SIGN_ID\" in the keychain?" >&2; exit 1; }

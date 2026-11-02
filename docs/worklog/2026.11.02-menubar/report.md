@@ -16,3 +16,4 @@
 - Follow-up patch target: `0.20.2` for explicit menubar icon coloring after visual verification.
 - Follow-up patch target: `0.20.3` for native macOS label-color rendering in the Canvas icon.
 - Follow-up patch target: `0.20.4` for a native `NSImage` template renderer in `MenuBarExtra`.
+- Follow-up patch target: `0.20.5` for automatic use of the stable local signing certificate.

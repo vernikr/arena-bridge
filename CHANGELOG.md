@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.5
+
+### Fixed
+- macOS builds automatically use the stable `Arena Bridge Local` signing certificate when it is present, preventing repeated Screen Recording and Accessibility prompts after rebuilds.
+
 ## 0.20.4
 
 ### Fixed
