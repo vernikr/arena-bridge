@@ -35,7 +35,8 @@ describe('security boundaries (wave 0)', () => {
     const chk = checkPath(link, cfg, '/tmp');
     // No authorized-root allowlist: resolved targets work unless separately protected.
     assert.equal(chk.ok, true);
-    assert.equal(chk.abs, target);
+    // macOS tmpdirs live behind /private; compare the resolved forms.
+    assert.equal(chk.abs, fs.realpathSync(target));
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   });

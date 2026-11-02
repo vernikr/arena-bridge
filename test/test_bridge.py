@@ -171,7 +171,7 @@ def _():
 @test("read_file outside legacy roots is allowed")
 def _():
     status, j = json_request(
-        f"{base}/call", "POST", auth, {"tool": "read_file", "args": {"path": "/etc/hostname"}}
+        f"{base}/call", "POST", auth, {"tool": "read_file", "args": {"path": "/etc/hosts"}}
     )
     assert j["ok"] is True, j
 
