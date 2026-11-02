@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.13
+
+### Fixed
+- Stop closes the tunnel it opened: the stop path killed the first spawned tunnel handle, which is a corpse after an automatic tunnel restart, and orphaned the live tunnel — the public address stayed open against a dead bridge ("Failed at step 3/4: public address still open after 10 s") while the agent lost the machine.
+- Orphaned bridge generations are retired: the bridge and its tunnel record pid files, the bridge shuts down when its parent process disappears (a SIGKILLed helper, a closed terminal), and the new `stop` command closes the service, the API and orphaned tunnels of this bridge — never tunnels serving other ports.
+- The app reads launchctl exit codes: a failed bootstrap, kickstart or bootout is a failure, so Start falls back to a reload and Stop reports the truth.
+- The stop confirmation matches the bridge pid file or the tunnel binaries by exact name, not any command line containing `cloudflared` — the bridge's own `--bin cloudflared` no longer looks like an open tunnel.
+- `/health` follows the live tunnel (`public_url`, `tunnel_alive`): a dead tunnel is no longer shown as "public address ready", and spent tunnel restarts unpublish the stored public URL.
+- The work log keeps timeline order when records arrive out of order, follows the bridge cursor across log rotations, pages until caught up and refills after a cursor reset.
+- `arena-bridge tunnel` honours the configured tunnel binary, authtoken and domain when the flags are absent.
+- Self-update installs ad-hoc signed builds (nothing to compare) and still refuses a different certificate.
+
+### Added
+- `arena-bridge stop` — stop the service, the API and every tunnel of this bridge, including orphaned processes of previous generations.
+
 ## 0.18.12
 
 - Show only the initiator location in the work-log source column: domain/IP, without transport channel or a `local` label.

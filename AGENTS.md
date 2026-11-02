@@ -11,7 +11,7 @@ Keep it short; details go to `docs/reference/`.
 | `src/engine.mjs` `arena_bridge/engine.py` | `Engine.call()` gate + `catalog()` join | Imports `toolCatalog` from `catalog.mjs`, `clip`/`runShell` from `engine_helpers.mjs`; approval/trust/audit pipeline, `mcpTools()`. |
 | `src/gate.mjs` `arena_bridge/gate.py` | `authorize(tool,args,cfg)` | Single source for `PUT/DELETE /files` + `POST /call` gate: trust → requireApproval → requestApproval, 202 vs 403. |
 | `src/policy.mjs` `arena_bridge/policy.py` | `resolveTarget`/`checkPath` + `isInside` | lstat-based symlink handling (B1). Single source for path policy. |
-| `src/config.mjs` `arena_bridge/config.py` `src/state.mjs` | `loadConfig`/`saveConfig` + `DEFAULTS` + `loadState`/`saveState` (`STATE_PATH`) | `config.json` = user intent, `state.json` = runtime (`publicUrl`). Atomic tmp+rename. |
+| `src/config.mjs` `arena_bridge/config.py` `src/state.mjs` | `loadConfig`/`saveConfig` + `DEFAULTS` + `loadState`/`saveState` (`STATE_PATH`) + pid files (`bridge.pid`, `tunnel.pid`) and process helpers | `config.json` = user intent, `state.json` = runtime (`publicUrl`). Atomic tmp+rename. |
 | `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()`/`levelFor()` | JSON-lines, reverse-read, 5–10MB rotation. Parameters kept whole, >64 KB overflow to `args.json` artifact. Levels info/notice/warning/alert. |
 | `src/source.mjs` | `describeSource()`/`sourceOf()`/`admitUnauthorized()` | Caller identity from the tunnel's `Cf-Connecting-IP`, reverse-DNS host (250 ms budget, cached), 401 rate limit per address. Node only. |
 | `src/approvals.mjs` `arena_bridge/approvals.py` | `requestApproval()` file-based | 400ms poll, TTL vs wait, `trust.json` blanket window. |
@@ -20,9 +20,9 @@ Keep it short; details go to `docs/reference/`.
 | `src/browser.mjs` `arena_bridge/browser.py` | `BrowserManager` + CDP | Plain launch for login, DevTools keepalive, `chrome_activate`. |
 | `src/mac.mjs` `arena_bridge/mac.py` | Peekaboo desktop control | Screen, mouse, keyboard, app control. |
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
-| `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
+| `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (23 cmds: `init/setup/start/tunnel/stop/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
-| `macos/ArenaBridge/` | SwiftUI app: `Bridge.swift` (API client, log record parsing), `Model.swift` (state, log paging, start/stop steps), `Views.swift` (cards, log panel, detail sheet) | Log: cursor reads with `after`, 5 000-row window, level filter, clear view. Start/stop: numbered steps via `run(starting:_:)`. macOS 15 minimum. `Info.plist` version from `package.json`. |
+| `macos/ArenaBridge/` | SwiftUI app: `Bridge.swift` (API client, log record parsing), `Model.swift` (state, log paging, start/stop steps), `Views.swift` (cards, log panel, detail sheet) | Log: cursor reads with `after` (bridge segment+byte cursor, paged), 5 000-row window, timeline order, level filter, clear view. Start/stop: numbered steps via `run(starting:_:)`. macOS 15 minimum. `Info.plist` version from `package.json`. |
 
 ## How to run tests
 
