@@ -612,7 +612,14 @@ await test('the service command takes the tunnel flags', async () => {
 
 await test('the app starts a bootstrapped service without killing it again', async () => {
   const swift = fs.readFileSync(new URL('../macos/ArenaBridge/Sources/Bridge.swift', import.meta.url), 'utf8');
-  assert.ok(swift.includes('static func kick() -> Bool { launchctl(["kickstart", serviceTarget]) != nil }'));
+  assert.ok(swift.includes('static func kick() -> Bool { launchctl(["kickstart", serviceTarget])?.code == 0 }'));
+  assert.ok(!swift.includes('kickstart", "-k"'), 'a forced kickstart kills the process RunAtLoad just started');
+});
+
+await test('the app reads launchctl failures as failures', async () => {
+  const swift = fs.readFileSync(new URL('../macos/ArenaBridge/Sources/Bridge.swift', import.meta.url), 'utf8');
+  assert.ok(swift.includes('static func stop() -> Bool {'), 'stop exists');
+  assert.ok(!/launchctl\(\[("bootout"|"bootstrap"|"kickstart")[^\n]*\) != nil/.test(swift), 'launchctl results check the exit code');
 });
 
 await test('the app name is the same in node, python and swift', async () => {

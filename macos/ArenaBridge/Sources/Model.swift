@@ -194,25 +194,40 @@ final class AppModel: ObservableObject {
 
     /// Reads only the records written since the last read. Starts over when the bridge says the cursor is gone.
     private func loadAudit() async {
-        var query = ["limit": "500"]
-        if let cursor = headCursor { query["after"] = cursor }
-        let (code, body) = await bridge.call("audit", query: query)
-        guard code == 200 else { return }
-        if body["reset"] as? Bool == true {
-            entries = []
-            knownIds = []
+        // The cursor of the bridge names the exact log segment and byte, so a rotation
+        // cannot move it; paging continues while the bridge reports older unseen records.
+        var cursor = headCursor
+        var refilled = false
+        for _ in 0..<10 {
+            var query = ["limit": "500"]
+            if let cursor { query["after"] = cursor }
+            let (code, body) = await bridge.call("audit", query: query)
+            guard code == 200 else { return }
+            if body["reset"] as? Bool == true, !refilled {
+                entries = []
+                knownIds = []
+                headCursor = nil
+                cursor = nil
+                refilled = true
+                continue
+            }
+            let fresh = ((body["entries"] as? [[String: Any]]) ?? [])
+                .compactMap(LogEntry.parse)
+                .filter { knownIds.insert($0.id).inserted }
+            let next = body["next"] as? String
+            let more = body["has_more"] as? Bool == true
+            headCursor = next ?? body["head"] as? String ?? headCursor
+            if !fresh.isEmpty {
+                entries.append(contentsOf: fresh)
+                if entries.count > Self.windowSize {
+                    entries.removeFirst(entries.count - Self.windowSize)
+                    knownIds = Set(entries.map(\.id))
+                }
+                if !atBottom { unseen += fresh.count }
+            }
+            guard more, let next, next != cursor, !refilled else { break }
+            cursor = next
         }
-        let fresh = ((body["entries"] as? [[String: Any]]) ?? [])
-            .compactMap(LogEntry.parse)
-            .filter { knownIds.insert($0.id).inserted }
-        headCursor = body["head"] as? String ?? headCursor
-        guard !fresh.isEmpty else { return }
-        entries.append(contentsOf: fresh)
-        if entries.count > Self.windowSize {
-            entries.removeFirst(entries.count - Self.windowSize)
-            knownIds = Set(entries.map(\.id))
-        }
-        if !atBottom { unseen += fresh.count }
         recompute()
     }
 
@@ -224,6 +239,9 @@ final class AppModel: ObservableObject {
         }
         let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
         let floor = LogEntry.rank(levelFloor)
+        // Records can arrive out of order (a local fallback row while the service was
+        // down, a page read across a rotation); the view is always the timeline.
+        rows = rows.sorted { $0.time != $1.time ? $0.time < $1.time : $0.id < $1.id }[...]
         visibleEntries = rows.filter {
             LogEntry.rank($0.level) >= floor && (needle.isEmpty || $0.search.contains(needle))
         }
@@ -259,16 +277,18 @@ final class AppModel: ObservableObject {
         running = service.running
 
         let health = await bridge.call("health")
+        var liveUrl: String?
         if health.0 == 200 {
             version = health.1["version"] as? String ?? "—"
             device = health.1["device"] as? String ?? "—"
             mode = health.1["mode"] as? String ?? "—"
             publicReady = health.1["has_public_url"] as? Bool ?? false
+            liveUrl = health.1["public_url"] as? String
             running = true
         }
 
         let config = bridge.config
-        url = config.publicUrl
+        url = liveUrl ?? config.publicUrl
         telegramEnabled = config.telegramEnabled
         telegramChats = config.telegramChats
 

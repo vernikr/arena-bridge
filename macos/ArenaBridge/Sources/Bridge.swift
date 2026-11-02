@@ -398,7 +398,7 @@ struct Bridge {
     /// Is the service installed and running?
     static func serviceState() -> (installed: Bool, running: Bool) {
         let installed = FileManager.default.fileExists(atPath: plistPath)
-        let text = launchctl(["print", serviceTarget], timeout: 5) ?? ""
+        let text = launchctl(["print", serviceTarget], timeout: 5)?.output ?? ""
         return (installed, text.contains("state = running"))
     }
 
@@ -406,12 +406,12 @@ struct Bridge {
     static func start() -> Bool { load() && kick() }
 
     @discardableResult
-    static func load() -> Bool { launchctl(["bootstrap", "gui/\(getuid())", plistPath]) != nil }
+    static func load() -> Bool { launchctl(["bootstrap", "gui/\(getuid())", plistPath])?.code == 0 }
 
     @discardableResult
     /// Start an unloaded process without killing one that `bootstrap` has just launched.
     /// `-k` here raced RunAtLoad and made launchd throttle the replacement for 10 seconds.
-    static func kick() -> Bool { launchctl(["kickstart", serviceTarget]) != nil }
+    static func kick() -> Bool { launchctl(["kickstart", serviceTarget])?.code == 0 }
 
     /// Unloads and loads the service again, then starts it. Used when a plain kick does not answer.
     static func reload() -> Bool {
@@ -421,24 +421,56 @@ struct Bridge {
     }
 
     /// True while a tunnel process is alive; used to confirm the public address closed.
+    /// The pid file of the bridge is exact; the name search only covers bridges too old to write one,
+    /// and matches the tunnel binaries themselves, never the command line of the bridge.
     static func tunnelRunning() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-f", "cloudflared|ngrok"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return false }
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        let pidFile = BridgeConfig.home.appendingPathComponent("tunnel.pid").path
+        if let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
+           let pid = Int(text.trimmingCharacters(in: .whitespaces)), pid > 0 {
+            let name = processName(pid)
+            return name.hasSuffix("cloudflared") || name.hasSuffix("ngrok")
+        }
+        return !pgrep(["-x", "cloudflared"]).isEmpty || !pgrep(["-x", "ngrok"]).isEmpty
     }
 
+    static func processName(_ pid: Int) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "comm=", "-p", String(pid)]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "" }
+        process.waitUntilExit()
+        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    static func pgrep(_ arguments: [String]) -> [String] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        process.waitUntilExit()
+        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .split(separator: "\n").map(String.init) ?? []
+    }
+
+    /// Stops the service and, through the bridge command, every process of this bridge:
+    /// a raw bootout leaves the tunnel of a SIGKILLed generation open in the cloud.
     @discardableResult
-    static func stop() -> Bool { launchctl(["bootout", serviceTarget]) != nil }
+    static func stop() -> Bool {
+        if cliPath() != nil { return run(["stop"]).code == 0 }
+        guard let result = launchctl(["bootout", serviceTarget]) else { return false }
+        return result.code == 0 || result.output.contains("Could not find specified service")
+    }
 
     /// Runs launchctl with a time limit. The output goes to a file, so a stuck command cannot block the app.
-    /// Returns nil when the command did not finish in time.
+    /// Returns nil when the command did not finish in time; the exit code tells failure from success.
     @discardableResult
-    static func launchctl(_ arguments: [String], timeout: TimeInterval = 10) -> String? {
+    static func launchctl(_ arguments: [String], timeout: TimeInterval = 10) -> (code: Int32, output: String)? {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("launchctl-\(UUID().uuidString).txt")
         FileManager.default.createFile(atPath: file.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: file) }
@@ -457,6 +489,7 @@ struct Bridge {
             process.waitUntilExit()
             return nil
         }
-        return (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        let text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        return (process.terminationStatus, text)
     }
 }

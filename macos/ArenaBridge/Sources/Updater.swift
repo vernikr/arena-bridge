@@ -159,8 +159,10 @@ final class Updater: ObservableObject {
         _ = try run("/usr/bin/ditto", [mount.appendingPathComponent("Arena Bridge.app").path, app.path])
 
         _ = try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+        // An ad-hoc build has no designated requirement to compare; the release checksum
+        // already proves the download, so only a *different* certificate is a reason to refuse.
         let current = requirement(Bundle.main.bundleURL)
-        guard !current.isEmpty, current == requirement(app) else { throw UpdateError.signature }
+        if !current.isEmpty, current != requirement(app) { throw UpdateError.signature }
         let newVersion = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         guard newVersion == release.version else { throw UpdateError.version }
 
