@@ -15,7 +15,7 @@ import { errorResponse } from './errors.mjs';
 import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
 import { permissionStatus } from './mac.mjs';
 
-export function createDirectServer(cfg, engine) {
+export function createDirectServer(cfg, engine, runtime = null) {
   const mcpCtx = {
     cfg,
     listTools: () => engine.mcpTools(),
@@ -91,7 +91,9 @@ export function createDirectServer(cfg, engine) {
           trust_active: trustActive,
           audit_count: auditCount,
           log_size: logSize,
-          has_public_url: !!cfg.publicUrl,
+          has_public_url: runtime ? !!runtime().public_url : !!cfg.publicUrl,
+          public_url: runtime ? runtime().public_url ?? null : cfg.publicUrl ?? null,
+          tunnel_alive: runtime ? !!runtime().tunnel_alive : null,
         });
       }
 

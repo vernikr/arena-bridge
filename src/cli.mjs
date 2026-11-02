@@ -12,7 +12,8 @@ import { listApprovals, decide } from './approvals.mjs';
 import { tailAudit, auditDir, listArtifacts, pruneArtifacts } from './audit.mjs';
 import { pruneInbox } from './telegram.mjs';
 import { pruneApprovals } from './approvals.mjs';
-import { startTunnel, isPortOpen } from './tunnel.mjs';
+import { startTunnel, isPortOpen, killStaleTunnel, killTunnelsForPort, listenerPid } from './tunnel.mjs';
+import { readPid, writePid, clearPid, pidAlive, pidArgs, pidParent, stopPid } from './state.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
 import { parseDuration, trustState, openTrust, closeTrust, reconcileTrust } from './trust.mjs';
 import { bridgeEvent, tunnelEvent } from './lifecycle.mjs';
@@ -84,6 +85,7 @@ Commands:
   init                 Create ~/.arena-bridge/config.json with fresh tokens
   start                Run the local API server (direct mode) on this machine
   tunnel               Start the API + a cloudflared quick tunnel, print the ready prompt
+  stop                 Stop the service, the API and every tunnel of this bridge
   hub                  Run a relay server that many devices connect to
   connect              Connect this machine to a hub as a device
   prompt               Print the ready-to-paste agent instructions
@@ -189,6 +191,29 @@ function cmdInit(args) {
   console.log(`\nNext: arena-bridge start   (then expose it with a tunnel)`);
 }
 
+/**
+ * A bridge that outlives its parent serves a dead or duplicate API forever: launchd may
+ * SIGKILL the helper without a signal the bridge can catch, and a closed terminal leaves
+ * the same orphan. Watching the parent pid turns every orphan into a clean shutdown.
+ */
+function watchParent(bye) {
+  const parent = process.ppid;
+  const timer = setInterval(() => {
+    if (process.ppid !== parent) bye();
+  }, 1000);
+  timer.unref();
+}
+
+/** Stop a bridge of a previous generation from its pid file, never a foreign process. */
+function killStaleBridge() {
+  const pid = readPid('bridge');
+  if (!pid || pid === process.pid || !pidAlive(pid)) return null;
+  if (!pidArgs(pid).includes('arena-bridge')) return null;
+  stopPid(pid);
+  clearPid('bridge', pid);
+  return pid;
+}
+
 async function cmdStart(args) {
   const cfg = loadConfig();
   if (!cfg.token) {
@@ -228,13 +253,17 @@ async function cmdStart(args) {
     console.log(buildPrompt(cfg, { tool: engine }));
     console.log('-----8<-----');
   });
+  writePid('bridge');
   const bye = () => {
     bridgeEvent('stop', { reason: 'signal' });
+    clearPid('bridge', process.pid);
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);
+  process.on('SIGHUP', bye);
+  watchParent(bye);
 }
 
 async function cmdTunnel(args) {
@@ -245,7 +274,9 @@ async function cmdTunnel(args) {
   }
   const port = Number(args.flags.port || cfg.port || 8787);
   const protocol = String(args.flags.protocol || 'http2');
-  const bin = String(args.flags.bin || 'cloudflared');
+  const bin = String(args.flags.bin || cfg.tunnel?.bin || 'cloudflared');
+  const authtoken = args.flags.authtoken || cfg.tunnel?.authtoken || undefined;
+  const domain = (args.flags.domain !== undefined ? String(args.flags.domain) : cfg.tunnel?.domain) || undefined;
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
 
   // Auto-open blanket trust window on start (3h, all tools, any agent) per user request
@@ -260,26 +291,45 @@ async function cmdTunnel(args) {
   } catch {}
 
   let server = null;
+  let tunnel = null;
+  let publicUrl = null;
+  if (await isPortOpen(port)) {
+    // A bridge whose parent died keeps the port and serves forever; only such an orphan is replaced.
+    const listener = listenerPid(port);
+    const orphan = listener && listener !== process.pid && pidParent(listener) === 1
+      && pidArgs(listener).includes('arena-bridge');
+    if (orphan) {
+      console.log(`stopping an orphaned bridge (pid ${listener}) from a previous generation…`);
+      stopPid(listener);
+      clearPid('bridge', listener);
+      for (let i = 0; i < 25 && await isPortOpen(port); i++) await new Promise((r) => setTimeout(r, 200));
+    }
+  }
   if (await isPortOpen(port)) {
     console.log(`port ${port} is already serving — reusing the running instance`);
   } else {
-    server = createDirectServer(cfg, engine);
+    killStaleTunnel();
+    killTunnelsForPort(port);
+    server = createDirectServer(cfg, engine, () => ({
+      tunnel_alive: tunnel.alive(),
+      public_url: tunnel.alive() ? publicUrl : null,
+    }));
     await new Promise((r) => server.listen(port, cfg.host, r));
     bridgeEvent('start', { port });
     console.log(`arena-bridge API on http://${cfg.host}:${port}`);
   }
 
   console.log(`starting ${bin} (protocol=${protocol})…`);
-  const { child, urlPromise, onUrl } = startTunnel(cfg, {
+  tunnel = startTunnel(cfg, {
     port,
     protocol,
     bin,
-    authtoken: args.flags.authtoken,
-    domain: args.flags.domain,
+    authtoken,
+    domain,
     onExit: (code) => tunnelEvent('down', { code }),
   });
+  const { urlPromise, onUrl } = tunnel;
 
-  let publicUrl;
   try {
     publicUrl = await urlPromise;
   } catch (e) {
@@ -288,12 +338,9 @@ async function cmdTunnel(args) {
       console.error(`  ${bin} is not installed. Install it (macOS: brew install cloudflared) or pass a path: --bin /path/to/cloudflared`);
       console.error('  Any other tunnel works too: ngrok http 8787, tailscale funnel --bg 8787');
     }
-    try {
-      child.kill();
-    } catch {
-      /* ignore */
-    }
+    tunnel.kill();
     server?.close();
+    clearPid('bridge', process.pid);
     process.exit(1);
   }
 
@@ -312,25 +359,38 @@ async function cmdTunnel(args) {
     console.log('Update the base URL in the agent chat (arena-bridge prompt prints a fresh copy).');
   });
 
-  console.log(`\npublic URL: ${publicUrl}   (saved as config.publicUrl)\n`);
+  console.log(`\npublic URL: ${publicUrl}   (saved for the app and "arena-bridge url")\n`);
   console.log('Paste this into the agent chat:');
   console.log('-----8<-----');
   console.log(buildPrompt(cfg, { tool: engine, baseUrl: publicUrl }));
   console.log('-----8<-----\n');
   console.log('Ctrl+C stops both the tunnel and the API.');
 
+  writePid('bridge');
   const bye = () => {
     bridgeEvent('stop', { reason: 'signal' });
-    try {
-      child.kill();
-    } catch {
-      /* ignore */
-    }
+    tunnel.kill();
+    clearPid('bridge', process.pid);
     server?.close();
     setTimeout(() => process.exit(0), 300).unref();
   };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);
+  process.on('SIGHUP', bye);
+  watchParent(bye);
+
+  // Every restart spent: the public URL is a lie from here on, so unpublish it at once.
+  const spent = setInterval(() => {
+    if (!tunnel.spent() || !publicUrl) return;
+    clearInterval(spent);
+    publicUrl = null;
+    cfg.publicUrl = null;
+    saveConfig(cfg);
+    tunnelEvent('down', { reason: 'restarts exhausted' });
+    console.error('\n✗ the tunnel gave up after repeated failures — the public URL is closed.');
+    console.error('  Start again: arena-bridge tunnel   (or Start in the app)');
+  }, 1000);
+  spent.unref();
 }
 
 function cmdHub(args) {
@@ -680,6 +740,25 @@ async function cmdUpdate(args) {
   console.log(`\u2713 updated ${res.installed} -> ${res.latest}`);
   if (res.output) console.log(res.output);
   console.log('restart the bridge to use the new version: arena-bridge tunnel');
+}
+
+async function cmdStop(args) {
+  const cfg = loadConfig();
+  const port = Number(args.flags.port || cfg.port || 8787);
+  const label = 'ai.arena.bridge';
+  try {
+    spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${label}`], { stdio: 'ignore' });
+  } catch {}
+  const bridge = readPid('bridge');
+  if (bridge && pidAlive(bridge) && pidArgs(bridge).includes('arena-bridge')) stopPid(bridge);
+  const listener = listenerPid(port);
+  if (listener && listener !== process.pid && pidArgs(listener).includes('arena-bridge')) stopPid(listener);
+  for (let i = 0; i < 25 && await isPortOpen(port); i++) await new Promise((r) => setTimeout(r, 200));
+  killStaleTunnel();
+  const tunnels = killTunnelsForPort(port);
+  clearPid('bridge');
+  console.log(`✓ bridge stopped${tunnels.length ? ` (closed ${tunnels.length} orphaned tunnel process)` : ''}`);
+  console.log(`  port ${port} free: ${!(await isPortOpen(port))}`);
 }
 
 function cmdRestart(args) {
@@ -1155,6 +1234,8 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdService(args);
     case 'restart':
       return cmdRestart(args);
+    case 'stop':
+      return cmdStop(args);
     case 'browser':
       return cmdBrowser(args);
     case 'completion':

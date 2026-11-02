@@ -122,8 +122,6 @@ export function saveConfig(cfg) {
     const already = k in existing;
     if (already || JSON.stringify(v) !== JSON.stringify(def) || ['token','deviceToken','localToken','hub','device','port','host','mode'].includes(k)) {
       out[k] = v;
-    } else if (v !== undefined && v !== null && JSON.stringify(v) !== JSON.stringify(def)) {
-      out[k] = v;
     }
   }
   const tmp = CONFIG_PATH + '.tmp';

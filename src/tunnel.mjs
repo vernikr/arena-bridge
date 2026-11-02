@@ -1,5 +1,55 @@
 import { spawn, execFileSync } from 'node:child_process';
 import net from 'node:net';
+import { writePid, clearPid, readPid, pidAlive, pidName, pidArgs, stopPid } from './state.mjs';
+
+/** Tunnel binaries this bridge may stop; anything else on the machine is untouchable. */
+export const TUNNEL_NAMES = ['cloudflared', 'ngrok'];
+
+/** Stop a tunnel of a previous generation from its pid file, never a foreign process. */
+export function killStaleTunnel() {
+  const pid = readPid('tunnel');
+  if (!pid || !pidAlive(pid)) return null;
+  const name = pidName(pid).split('/').pop();
+  if (!TUNNEL_NAMES.includes(name)) return null;
+  stopPid(pid);
+  clearPid('tunnel', pid);
+  return pid;
+}
+
+/** The pid listening on a TCP port, via lsof; null when the port is free or lsof is missing. */
+export function listenerPid(port) {
+  try {
+    const out = execFileSync('lsof', ['-t', '-i', `TCP:${port}`, '-s', 'TCP:LISTEN'], { encoding: 'utf8' });
+    return Number(out.split('\n')[0].trim()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stop tunnel processes that serve exactly our local port: orphaned tunnels of a dead
+ * bridge generation. Tunnels of the user that point elsewhere keep running.
+ */
+export function killTunnelsForPort(port) {
+  const target = `127.0.0.1:${port}`;
+  const killed = [];
+  for (const name of TUNNEL_NAMES) {
+    let pids = [];
+    try {
+      pids = execFileSync('pgrep', ['-x', name], { encoding: 'utf8' }).split('\n').map((s) => s.trim()).filter(Boolean);
+    } catch {
+      continue;
+    }
+    for (const pid of pids) {
+      const num = Number(pid);
+      if (!pidArgs(num).includes(target)) continue;
+      stopPid(num);
+      if (readPid('tunnel') === num) clearPid('tunnel', num);
+      killed.push(num);
+    }
+  }
+  return killed;
+}
 
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
@@ -65,6 +115,7 @@ export function startTunnel(
   let buffer = '';
   let settled = false;
   let attempt = 0;
+  let exhausted = false;
   let resolveUrl;
   let rejectUrl;
   const listeners = new Set();
@@ -87,6 +138,7 @@ export function startTunnel(
 
   const spawnChild = () => {
     child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    if (child.pid) writePid('tunnel', child.pid);
     buffer = '';
     child.stdout.on('data', onChunk);
     child.stderr.on('data', onChunk);
@@ -98,8 +150,9 @@ export function startTunnel(
     });
     child.on('close', (code) => {
       onExit?.(code);
+      const mine = child;
       if (!settled) {
-        if (isNgrok && attempt++ < restarts) {
+        if (!exhausted && isNgrok && attempt++ < restarts) {
           killStaleNgrok(domain);
           setTimeout(spawnChild, delay);
           return;
@@ -108,20 +161,42 @@ export function startTunnel(
         rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared`));
         return;
       }
-      if (attempt++ < restarts) {
+      if (!exhausted && attempt++ < restarts) {
         setTimeout(spawnChild, delay);
+        return;
       }
+      // No restart left: the tunnel stays down and the pid file must not point at a corpse.
+      exhausted = true;
+      if (child === mine) clearPid('tunnel', mine.pid);
     });
   };
 
   spawnChild();
 
   return {
-    child,
     urlPromise,
     args,
     target,
     onUrl: (fn) => listeners.add(fn),
+    /** The live tunnel process, so a stop never kills a corpse and orphans a real one. */
+    get child() {
+      return child;
+    },
+    /** True while the current tunnel process is alive and restarts are not spent. */
+    alive: () => !!child && !exhausted && child.exitCode === null && child.signalCode === null,
+    /** True once every restart is spent and the tunnel stays down. */
+    spent: () => exhausted,
+    kill: () => {
+      exhausted = true;
+      const pid = child?.pid;
+      if (pid) clearPid('tunnel', pid);
+      try {
+        child?.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
+      return !!pid;
+    },
   };
 }
 
