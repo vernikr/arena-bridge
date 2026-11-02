@@ -153,7 +153,7 @@ await test('read_file outside legacy roots is allowed', async () => {
   const r = await fetch(`${base}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'read_file', args: { path: '/etc/hostname' } }),
+    body: JSON.stringify({ tool: 'read_file', args: { path: '/etc/hosts' } }),
   });
   const j = await r.json();
   assert.equal(j.ok, true, JSON.stringify(j));
