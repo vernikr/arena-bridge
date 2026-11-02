@@ -34,6 +34,7 @@ npm run test:python               # all Python suites via npm
 ```
 
 CI (`ci.yml`): Node on ubuntu+macos, Python 3.9+3.11 on ubuntu+macos, `macos-app` job (builds the app), `version-check` job.
+Tests run on macOS runners too: use paths that exist on both systems (`/etc/hosts`, not `/etc/hostname`), compare tmp paths in resolved form (`/private` prefix), and match foreign processes by the head of the command line — macOS names an interpreted process after its interpreter.
 Telegram tests are in CI (T1) — don't remove them. Release `if: success()` not `if: always()`.
 
 ## Parity rules
