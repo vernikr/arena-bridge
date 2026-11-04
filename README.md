@@ -147,6 +147,8 @@ arena-bridge setup --root ~/projects
 
 ## Управление Chrome
 
+Для уже запущенного Chrome с несколькими профилями см. [подключение через DevToolsActivePort](docs/chrome-existing-session-cdp.md): один browser-level CDP-сеанс, выбор вкладки по URL/title и обязательная активация перед действиями. Это отдельный проверенный ручной сценарий; текущий `chrome_attach` пока использует `/json/version`.
+
 Свой минимальный CDP-клиент внутри пакета: **ни puppeteer, ни playwright не нужны**.
 
 ```jsonc
