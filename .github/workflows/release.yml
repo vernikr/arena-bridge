@@ -3,6 +3,8 @@ name: release
 on:
   push:
     tags: ['v*']
+  create:
+    branches: ['release/v*']
 
 jobs:
   npm:
@@ -63,13 +65,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/heads/release/}"
+          else
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "${RELEASE_TAG#v}" ]; then
+            echo "Release ref $RELEASE_TAG does not match package version $PACKAGE_VERSION" >&2
+            exit 1
+          fi
           shasum -a 256 arena-bridge-npm.tgz dist/*.tar.gz dist/*.whl > SHA256SUMS || sha256sum arena-bridge-npm.tgz dist/*.tar.gz dist/*.whl > SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             arena-bridge-npm.tgz \
             dist/*.tar.gz \
             dist/*.whl \
             SHA256SUMS \
-            --title "arena-bridge $GITHUB_REF_NAME" \
+            --title "arena-bridge $RELEASE_TAG" \
             --generate-notes
 
   macos:
@@ -118,14 +130,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download "$GITHUB_REF_NAME" -p SHA256SUMS -O SHA256SUMS
+          if [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/heads/release/}"
+          else
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          gh release download "$RELEASE_TAG" -p SHA256SUMS -O SHA256SUMS
           cat SHA256SUMS-apps >> SHA256SUMS
-          gh release upload "$GITHUB_REF_NAME" Arena-Bridge-arm64.dmg Arena-Bridge-x86_64.dmg SHA256SUMS --clobber
+          gh release upload "$RELEASE_TAG" Arena-Bridge-arm64.dmg Arena-Bridge-x86_64.dmg SHA256SUMS --clobber
       - name: announce the release to the app update channel
         env:
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/heads/release/}"
+          else
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${RELEASE_TAG#v}"
           for i in $(seq 1 60); do npm view "arena-bridge@$VERSION" version >/dev/null 2>&1 && break; sleep 30; done
           if [ -n "$NTFY_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $NTFY_TOKEN"); else AUTH=(); fi
           curl -sf -X POST "https://ntfy.sh/vernikr-arena-bridge-releases" "${AUTH[@]}" -H "Title: Arena Bridge v$VERSION" -d "$VERSION"
