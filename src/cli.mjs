@@ -383,7 +383,14 @@ async function cmdTunnel(args) {
     bin,
     authtoken,
     domain,
-    onExit: (code) => tunnelEvent('down', { code }),
+    onExit: (code, details = {}) => {
+      const output = typeof details.output === 'string' ? details.output.slice(-1800) : '';
+      tunnelEvent('down', { code, attempt: details.attempt, ...(output ? { output } : {}) });
+      if (typeof code === 'number' && code !== 0 && output) {
+        console.error(`[tunnel] ${bin} exited with code ${code} (attempt ${details.attempt || '?'})`);
+        console.error(output);
+      }
+    },
   });
   const { urlPromise, onUrl } = tunnel;
 
