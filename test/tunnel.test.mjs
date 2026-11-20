@@ -60,7 +60,7 @@ test('startup failure preserves ngrok diagnostics and redacts the authtoken', as
   const ngrok = path.join(bin, 'ngrok');
   fs.writeFileSync(
     ngrok,
-    '#!/bin/sh\necho "ERR_NGROK_108: too many active sessions; token=example-secret-token" >&2\nexit 1\n',
+    '#!/bin/sh\nprintf "ERR_NGROK_108: authtoken=example-sec" >&2\nsleep 0.1\nprintf "ret-token\\n" >&2\nexit 1\n',
     { mode: 0o755 },
   );
 
