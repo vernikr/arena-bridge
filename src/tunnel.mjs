@@ -127,6 +127,7 @@ export function startTunnel(
 
   let child = null;
   let buffer = '';
+  let diagnosticTail = '';
   let settled = false;
   let attempt = 0;
   let exhausted = false;
@@ -140,8 +141,18 @@ export function startTunnel(
   });
 
   const onChunk = (chunk) => {
-    buffer += chunk.toString();
-    const match = urlPattern.exec(buffer);
+    let text = chunk.toString()
+      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+      .replace(/\u0000/g, '');
+    if (authtoken) text = text.replaceAll(String(authtoken), '[REDACTED]');
+    text = text
+      .replace(/(--authtoken(?:=|\s+))\S+/gi, '$1[REDACTED]')
+      .replace(/(authtoken["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, '$1[REDACTED]');
+
+    const combined = buffer + text;
+    const match = urlPattern.exec(combined);
+    buffer = combined.slice(-8192);
+    diagnosticTail = (diagnosticTail + text).slice(-4000);
     if (!match) return;
     if (!settled) {
       settled = true;
@@ -163,7 +174,8 @@ export function startTunnel(
       }
     });
     child.on('close', (code) => {
-      onExit?.(code);
+      const output = diagnosticTail.trim().slice(-2000);
+      onExit?.(code, { attempt: attempt + 1, output });
       const mine = child;
       if (!settled) {
         if (!exhausted && isNgrok && attempt++ < restarts) {
@@ -172,7 +184,9 @@ export function startTunnel(
           return;
         }
         settled = true;
-        rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared`));
+        const details = diagnosticTail.trim();
+        const suffix = details ? `\nLast output from ${bin}:\n${details}` : '';
+        rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared${suffix}`));
         return;
       }
       if (!exhausted && attempt++ < restarts) {
