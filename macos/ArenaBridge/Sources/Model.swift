@@ -297,7 +297,9 @@ final class AppModel: ObservableObject {
         }
 
         let config = bridge.config
-        let nextURL = liveUrl ?? config.publicUrl
+        // A successful health response is authoritative: nil means there is no live tunnel.
+        // Keep the saved URL only while the local API itself is unavailable.
+        let nextURL = health.0 == 200 ? liveUrl : config.publicUrl
         if url != nextURL { url = nextURL }
         if telegramEnabled != config.telegramEnabled { telegramEnabled = config.telegramEnabled }
         if telegramChats != config.telegramChats { telegramChats = config.telegramChats }
@@ -306,6 +308,21 @@ final class AppModel: ObservableObject {
         if tools.0 == 200 {
             let nextToolCount = (tools.1["tools"] as? [[String: Any]])?.count ?? 0
             if toolCount != nextToolCount { toolCount = nextToolCount }
+        }
+
+        // A start may time out just before ngrok finishes reconnecting. Clear its
+        // stale failure only after health confirms the live tunnel and tools are ready.
+        if let op = operation,
+           op.starting,
+           op.reason != nil,
+           op.step >= 5,
+           health.0 == 200,
+           health.1["has_public_url"] as? Bool == true,
+           health.1["tunnel_alive"] as? Bool == true,
+           tools.0 == 200,
+           toolCount > 0 {
+            operation = nil
+            notice = "The bridge recovered and is running."
         }
 
         let list = await bridge.call("approvals")
@@ -369,7 +386,7 @@ final class AppModel: ObservableObject {
                 ("Loading service", { await self.blocking("launchctl did not answer in 10 s") { Bridge.load() } }),
                 ("Starting process", { await self.blocking("launchctl did not answer in 10 s") { Bridge.kick() || Bridge.reload() } }),
                 ("Waiting for the local API", { await self.waitFor(15) { await self.flag("ok") } ? nil : "local API did not answer in 15 s" }),
-                ("Waiting for the public address", { await self.waitFor(30) { await self.flag("has_public_url") } ? nil : "public address not ready in 30 s" }),
+                ("Waiting for the public address", { await self.waitFor(60) { await self.flag("has_public_url") } ? nil : "public address not ready in 60 s" }),
                 ("Checking tools", { await self.waitFor(5) { await self.toolCount() > 0 } ? nil : "no tools reported in 5 s" }),
             ])
         }

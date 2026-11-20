@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.7
+
+### Fixed
+- The macOS start check allows the full tunnel retry window; a recovered live tunnel clears a stale startup failure.
+- The app no longer presents a saved public URL as live when the local health endpoint reports that the tunnel is down.
+- ngrok stdout/stderr is retained in bounded tunnel diagnostics and the audit log; configured authtokens are redacted.
+
 ## 0.20.6
 
 ### Fixed

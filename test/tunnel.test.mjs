@@ -54,3 +54,33 @@ test('only tunnels of our port are stopped, by exact name', async () => {
   assert.equal(pidAlive(theirs), true, 'a tunnel of another port keeps running');
   try { process.kill(theirs, 'SIGKILL'); } catch {}
 });
+
+
+test('startup failure preserves ngrok diagnostics and redacts the authtoken', async () => {
+  const ngrok = path.join(bin, 'ngrok');
+  fs.writeFileSync(
+    ngrok,
+    '#!/bin/sh\nprintf "ERR_NGROK_108: authtoken=example-sec" >&2\nsleep 0.1\nprintf "ret-token\\n" >&2\nexit 1\n',
+    { mode: 0o755 },
+  );
+
+  let exitDetails;
+  const tunnel = startTunnel({}, {
+    bin: ngrok,
+    port: 8788,
+    authtoken: 'example-secret-token',
+    restarts: 0,
+    onExit: (code, details) => { exitDetails = { code, ...details }; },
+  });
+
+  const error = await tunnel.urlPromise.then(() => null, (reason) => reason);
+  assert.ok(error, 'the tunnel startup should fail');
+  assert.match(error.message, /ERR_NGROK_108/);
+  assert.doesNotMatch(error.message, /example-secret-token/);
+  assert.match(error.message, /\[REDACTED\]/);
+  assert.equal(exitDetails.code, 1);
+  assert.equal(exitDetails.attempt, 1);
+  assert.match(exitDetails.output, /ERR_NGROK_108/);
+  assert.doesNotMatch(exitDetails.output, /example-secret-token/);
+  tunnel.kill();
+});

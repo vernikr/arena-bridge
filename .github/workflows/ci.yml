@@ -34,7 +34,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Python 3.9 is not yet published for Ubuntu 26.04; keep this matrix on 24.04.
+        os: [ubuntu-24.04, macos-latest]
         python-version: ['3.9', '3.11']
     steps:
       - uses: actions/checkout@v4
