@@ -70,12 +70,12 @@ const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
 
 function redactTunnelOutput(value, authtoken) {
   let text = String(value)
-    .replace(/\\x1B\\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/\\u0000/g, '');
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\u0000/g, '');
   if (authtoken) text = text.split(String(authtoken)).join('[REDACTED]');
   return text
-    .replace(/(--authtoken(?:=|\\s+))\\S+/gi, '$1[REDACTED]')
-    .replace(/(authtoken["']?\\s*[:=]\\s*["']?)[^"'\\s,}]+/gi, '$1[REDACTED]');
+    .replace(/(--authtoken(?:=|\s+))\S+/gi, '$1[REDACTED]')
+    .replace(/(authtoken["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, '$1[REDACTED]');
 }
 
 /**
