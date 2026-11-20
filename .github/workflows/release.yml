@@ -1,3 +1,4 @@
+# Temporary release-branch trigger for v0.20.7; the release itself is tagged by the workflow.
 name: release
 
 on:
