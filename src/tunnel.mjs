@@ -68,6 +68,16 @@ export function killTunnelsForPort(port) {
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
 
+function redactTunnelOutput(value, authtoken) {
+  let text = String(value)
+    .replace(/\\x1B\\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\\u0000/g, '');
+  if (authtoken) text = text.split(String(authtoken)).join('[REDACTED]');
+  return text
+    .replace(/(--authtoken(?:=|\\s+))\\S+/gi, '$1[REDACTED]')
+    .replace(/(authtoken["']?\\s*[:=]\\s*["']?)[^"'\\s,}]+/gi, '$1[REDACTED]');
+}
+
 /**
  * Starts a tunnel and resolves with the public URL it prints.
  * cloudflared: QUIC (UDP/7844) is blocked on many networks, so we default to http2 over TCP/443.
@@ -141,17 +151,14 @@ export function startTunnel(
   });
 
   const onChunk = (chunk) => {
-    let text = chunk.toString()
+    const text = chunk.toString()
       .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
       .replace(/\u0000/g, '');
-    if (authtoken) text = text.replaceAll(String(authtoken), '[REDACTED]');
-    text = text
-      .replace(/(--authtoken(?:=|\s+))\S+/gi, '$1[REDACTED]')
-      .replace(/(authtoken["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, '$1[REDACTED]');
-
     const combined = buffer + text;
     const match = urlPattern.exec(combined);
     buffer = combined.slice(-8192);
+    // Keep the raw bounded tail until chunks have been reassembled. Redaction on
+    // individual chunks can miss a credential split across two stream events.
     diagnosticTail = (diagnosticTail + text).slice(-4000);
     if (!match) return;
     if (!settled) {
@@ -174,7 +181,7 @@ export function startTunnel(
       }
     });
     child.on('close', (code) => {
-      const output = diagnosticTail.trim().slice(-2000);
+      const output = redactTunnelOutput(diagnosticTail.trim(), authtoken).slice(-2000);
       onExit?.(code, { attempt: attempt + 1, output });
       const mine = child;
       if (!settled) {
@@ -184,7 +191,7 @@ export function startTunnel(
           return;
         }
         settled = true;
-        const details = diagnosticTail.trim();
+        const details = redactTunnelOutput(diagnosticTail.trim(), authtoken);
         const suffix = details ? `\nLast output from ${bin}:\n${details}` : '';
         rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared${suffix}`));
         return;
