@@ -319,6 +319,7 @@ final class AppModel: ObservableObject {
            health.0 == 200,
            health.1["has_public_url"] as? Bool == true,
            health.1["tunnel_alive"] as? Bool == true,
+           tools.0 == 200,
            toolCount > 0 {
             operation = nil
             notice = "The bridge recovered and is running."
