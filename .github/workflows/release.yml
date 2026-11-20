@@ -3,7 +3,6 @@ name: release
 on:
   push:
     tags: ['v*']
-  create:
     branches: ['release/v*']
 
 jobs:
