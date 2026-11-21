@@ -76,8 +76,21 @@ arena-bridge setup --root ~/projects --root ~/Documents
 `setup` печатает готовый промпт и публичный URL. Дальше — просто говорите агенту задачу.
 
 Туннель под присмотром: если `cloudflared`/`ngrok` упадёт, мост поднимет его заново и сам
-напечатает новый публичный адрес. Постоянный адрес вместо случайного — `arena-bridge tunnel
---bin ngrok --domain <зарезервированный домен>`.
+напечатает новый публичный адрес. Для уже работающего внешнего именованного туннеля
+(например, Cloudflare Tunnel), который проксирует локальный порт 8787, задайте постоянный адрес:
+
+```bash
+arena-bridge config set fixedPublicUrl https://bridge.example.com
+```
+
+В таком режиме `arena-bridge tunnel` запускает только API и не создаёт Quick Tunnel. Внешний
+туннель остаётся под управлением Cloudflare. Сбросить настройку:
+
+```bash
+arena-bridge config set fixedPublicUrl null
+```
+
+Для ngrok с зарезервированным доменом используйте `arena-bridge tunnel --bin ngrok --domain <domain>`.
 
 Нужен туннель? Поставьте `cloudflared` (`brew install cloudflared` или бинарник в `/usr/local/bin`).
 Можно и через ngrok — `arena-bridge tunnel --bin ngrok`; с сохранённым токеном и зарезервированным

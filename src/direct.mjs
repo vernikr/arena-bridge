@@ -84,9 +84,9 @@ export function createDirectServer(cfg, engine, runtime = null) {
           pending_approvals: pending,
           audit_count: auditCount,
           log_size: logSize,
-          has_public_url: runtime ? !!runtime().public_url : !!cfg.publicUrl,
-          public_url: runtime ? runtime().public_url ?? null : cfg.publicUrl ?? null,
-          tunnel_alive: runtime ? !!runtime().tunnel_alive : null,
+          has_public_url: runtime ? !!runtime().public_url : !!(cfg.fixedPublicUrl || cfg.publicUrl),
+          public_url: runtime ? runtime().public_url ?? null : cfg.fixedPublicUrl || cfg.publicUrl || null,
+          tunnel_alive: runtime ? runtime().tunnel_alive ?? null : null,
         });
       }
 
@@ -118,7 +118,7 @@ export function createDirectServer(cfg, engine, runtime = null) {
       }
 
       if (req.method === 'GET' && p === '/prompt') {
-        const text = buildPrompt(cfgNow, { tool: engine, baseUrl: url.searchParams.get('base') || undefined });
+        const text = buildPrompt(cfgNow, { tool: engine, baseUrl: url.searchParams.get('base') || cfgNow.fixedPublicUrl || cfgNow.publicUrl || undefined });
         return sendText(res, 200, text);
       }
 

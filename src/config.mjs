@@ -14,7 +14,8 @@ export const DEFAULTS = {
   mode: 'direct', // 'direct' = this machine serves the API | 'hub' = relay for many devices
   host: '127.0.0.1',
   port: 8787,
-  publicUrl: null, // public base URL (runtime, stored in state.json; config holds user intent only)
+  publicUrl: null, // public base URL (runtime, stored in state.json)
+  fixedPublicUrl: null, // persistent URL served by an externally managed tunnel
   token: null, // agent token: the cloud agent authenticates with this
   deviceToken: null, // device token: only a device may use this
   hub: null, // hub base URL, when mode=hub

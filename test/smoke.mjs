@@ -71,7 +71,8 @@ const cfg = {
   protected: [path.join(TMP, 'secret')],
   requireApproval: false,
   approvalWaitSec: 5,
-  publicUrl: 'https://example.test',
+  publicUrl: 'https://stale-runtime.example.test',
+  fixedPublicUrl: 'https://bridge.example.test',
 };
 fs.mkdirSync(path.join(TMP, 'secret'), { recursive: true });
 fs.writeFileSync(path.join(TMP, 'secret', 'key.pem'), 'PRIVATE');
@@ -93,6 +94,9 @@ await test('GET /health works without auth', async () => {
   assert.equal(r.status, 200);
   const j = await r.json();
   assert.equal(j.ok, true);
+  assert.equal(j.has_public_url, true);
+  assert.equal(j.public_url, cfg.fixedPublicUrl, 'persistent URL takes precedence over stale runtime state');
+  assert.equal(j.tunnel_alive, null, 'the external tunnel is not owned by the bridge');
 });
 
 await test('GET /health reports the bridge log size', async () => {
@@ -162,7 +166,7 @@ await test('filesystem access is not restricted by legacy roots', async () => {
 await test('GET /prompt contains the base url and the token', async () => {
   const r = await fetch(`${base}/prompt`, { headers: auth });
   const text = await r.text();
-  assert.ok(text.includes('https://example.test'));
+  assert.ok(text.includes(cfg.fixedPublicUrl));
   assert.ok(text.includes(loaded.token));
 });
 

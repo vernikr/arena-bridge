@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.21.1
+
+### Added
+- Support for a persistent public URL served by an externally managed tunnel. The bridge
+  skips creating a second Quick Tunnel when fixedPublicUrl is configured.
+
+### Fixed
+- Health, prompt, CLI URL/status output and the macOS app now consistently prefer the
+  persistent URL over stale runtime tunnel state.
+- The macOS app no longer waits for an externally managed tunnel to stop with the bridge.
+
 ## 0.21.0
 
 ### Removed

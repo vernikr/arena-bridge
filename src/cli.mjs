@@ -84,6 +84,7 @@ export function validateConfig(cfg = {}) {
   integerRange('commandTimeoutSec', Number(cfg.commandTimeoutSec), 1, 1800);
   urlValue('hub', cfg.hub, cfg.mode === 'hub');
   urlValue('publicUrl', cfg.publicUrl);
+  urlValue('fixedPublicUrl', cfg.fixedPublicUrl);
 
   if (!cfg.tunnel || typeof cfg.tunnel !== 'object' || Array.isArray(cfg.tunnel)) add('tunnel must be an object');
   else {
@@ -191,7 +192,7 @@ Common options:
   --port N             listen port (default: 8787)
   --host ADDR          bind address (default: 127.0.0.1)
   --hub URL            hub base URL (for "connect" / init --mode hub)
-  --public-url URL     public base URL the agent should use
+  --public-url URL     persistent URL from an externally managed tunnel (skips quick tunnel)
   --protocol P         tunnel transport: http2 (default, works on locked-down networks) or quic
   --bin PATH           tunnel binary to run (default: cloudflared; "ngrok" is supported too)
   --authtoken TOKEN    ngrok authtoken (keeps the same URL on every restart)
@@ -219,7 +220,7 @@ function cmdInit(args) {
   if (args.flags.port) cfg.port = Number(args.flags.port);
   if (args.flags.host) cfg.host = String(args.flags.host);
   if (args.flags.hub) cfg.hub = String(args.flags.hub);
-  if (args.flags['public-url']) cfg.publicUrl = String(args.flags['public-url']);
+  if (args.flags['public-url']) cfg.fixedPublicUrl = String(args.flags['public-url']);
   cfg.tunnel = { ...(cfg.tunnel || {}),
     ...(args.flags.bin ? { bin: String(args.flags.bin) } : {}),
     ...(args.flags.domain !== undefined ? { domain: String(args.flags.domain) || null } : {}),
@@ -302,7 +303,7 @@ async function cmdStart(args) {
     console.log(`\nExpose it to the cloud agent, e.g.:\n  cloudflared tunnel --url ${local}\n  ngrok http ${cfg.port}\n  tailscale funnel --bg ${cfg.port}\n`);
     console.log(`Then paste this into the agent chat:\n`);
     console.log('-----8<-----');
-    console.log(buildPrompt(cfg, { tool: engine }));
+    console.log(buildPrompt(cfg, { tool: engine, baseUrl: cfg.fixedPublicUrl || cfg.publicUrl || undefined }));
     console.log('-----8<-----');
   });
   writePid('bridge');
@@ -329,11 +330,21 @@ async function cmdTunnel(args) {
   const bin = String(args.flags.bin || cfg.tunnel?.bin || 'cloudflared');
   const authtoken = args.flags.authtoken || cfg.tunnel?.authtoken || undefined;
   const domain = (args.flags.domain !== undefined ? String(args.flags.domain) : cfg.tunnel?.domain) || undefined;
+  const fixedPublicUrl = args.flags['public-url'] !== undefined ? String(args.flags['public-url']) : cfg.fixedPublicUrl || null;
+  if (fixedPublicUrl) {
+    let parsed;
+    try { parsed = new URL(fixedPublicUrl); } catch {}
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || !parsed.host) {
+      console.error('✗ --public-url must be a valid http or https URL');
+      process.exit(1);
+    }
+    cfg.fixedPublicUrl = fixedPublicUrl;
+  }
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
 
   let server = null;
   let tunnel = null;
-  let publicUrl = null;
+  let publicUrl = fixedPublicUrl;
   if (await isPortOpen(port)) {
     // A bridge whose parent died keeps the port and serves forever; only such an orphan is replaced.
     const listener = listenerPid(port);
@@ -351,15 +362,22 @@ async function cmdTunnel(args) {
   } else {
     killStaleTunnel();
     killTunnelsForPort(port);
-    server = createDirectServer(cfg, engine, () => ({
-      tunnel_alive: tunnel.alive(),
-      public_url: tunnel.alive() ? publicUrl : null,
-    }));
+    server = createDirectServer(cfg, engine, () => {
+      if (fixedPublicUrl) return { tunnel_alive: null, public_url: fixedPublicUrl };
+      const alive = !!tunnel?.alive();
+      return { tunnel_alive: alive, public_url: alive ? publicUrl : null };
+    });
     await new Promise((r) => server.listen(port, cfg.host, r));
     bridgeEvent('start', { port });
     console.log(`arena-bridge API on http://${cfg.host}:${port}`);
   }
 
+  if (fixedPublicUrl) {
+    cfg.port = port;
+    cfg.publicUrl = fixedPublicUrl;
+    saveConfig(cfg);
+    console.log('using externally managed public URL: ' + fixedPublicUrl);
+  } else {
   console.log(`starting ${bin} (protocol=${protocol})…`);
   tunnel = startTunnel(cfg, {
     port,
@@ -407,17 +425,19 @@ async function cmdTunnel(args) {
     console.log('Update the base URL in the agent chat (arena-bridge prompt prints a fresh copy).');
   });
 
+  }
+
   console.log(`\npublic URL: ${publicUrl}   (saved for the app and "arena-bridge url")\n`);
   console.log('Paste this into the agent chat:');
   console.log('-----8<-----');
   console.log(buildPrompt(cfg, { tool: engine, baseUrl: publicUrl }));
   console.log('-----8<-----\n');
-  console.log('Ctrl+C stops both the tunnel and the API.');
+  console.log(fixedPublicUrl ? 'Ctrl+C stops the API; the external tunnel remains running.' : 'Ctrl+C stops both the tunnel and the API.');
 
   writePid('bridge');
   const bye = () => {
     bridgeEvent('stop', { reason: 'signal' });
-    tunnel.kill();
+    tunnel?.kill();
     clearPid('bridge', process.pid);
     server?.close();
     setTimeout(() => process.exit(0), 300).unref();
@@ -428,6 +448,7 @@ async function cmdTunnel(args) {
   watchParent(bye);
 
   // Every restart spent: the public URL is a lie from here on, so unpublish it at once.
+  if (tunnel) {
   const spent = setInterval(() => {
     if (!tunnel.spent() || !publicUrl) return;
     clearInterval(spent);
@@ -439,6 +460,7 @@ async function cmdTunnel(args) {
     console.error('  Start again: arena-bridge tunnel   (or Start in the app)');
   }, 1000);
   spent.unref();
+  }
 }
 
 function cmdHub(args) {
@@ -480,7 +502,7 @@ async function cmdConnect(args) {
 function cmdPrompt(args) {
   const cfg = loadConfig();
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
-  const base = args.flags.base || args.flags['public-url'] || cfg.publicUrl;
+  const base = args.flags.base || args.flags['public-url'] || cfg.fixedPublicUrl || cfg.publicUrl;
   console.log(buildPrompt(cfg, { tool: engine, baseUrl: base }));
 }
 
@@ -622,7 +644,7 @@ async function cmdSetup(args) {
 
 function cmdOpen() {
   const cfg = loadConfig();
-  const url = cfg.publicUrl;
+  const url = cfg.fixedPublicUrl || cfg.publicUrl;
   if (!url) {
     console.error('no public URL yet — run "arena-bridge tunnel" or "arena-bridge service install"');
     process.exit(1);
@@ -660,7 +682,8 @@ function cmdStatus(args) {
   const hasConfig = fs.existsSync(path.join(CONFIG_DIR, 'config.json'));
   checks.push({ name: 'config', ok: hasConfig, detail: hasConfig ? CONFIG_DIR : 'missing — run arena-bridge init' });
   checks.push({ name: 'token', ok: !!cfg.token, detail: cfg.token ? 'present' : 'MISSING' });
-  checks.push({ name: 'publicUrl', ok: !!cfg.publicUrl, detail: cfg.publicUrl || 'not set — run arena-bridge tunnel' });
+  const effectivePublicUrl = cfg.fixedPublicUrl || cfg.publicUrl;
+  checks.push({ name: 'publicUrl', ok: !!effectivePublicUrl, detail: effectivePublicUrl || 'not set — run arena-bridge tunnel' });
   try {
     const pending = listApprovals().filter(a => a.status==='pending').length;
     checks.push({ name: 'pending approvals', ok: true, detail: `${pending} pending` });
@@ -671,22 +694,23 @@ function cmdStatus(args) {
     checks.push({ name: 'service', ok: svc.installed, detail: svc.installed ? (svc.running ? 'installed, running' : 'installed, not running') : 'not installed' });
   } catch {}
   if (isJson) {
-    console.log(JSON.stringify({ ok: checks.every(c=>c.ok && c.name!=='pending approvals' && c.name!=='API port'), checks, version: cfg._state?.version || undefined, publicUrl: cfg.publicUrl || null }, null, 2));
+    console.log(JSON.stringify({ ok: checks.every(c=>c.ok && c.name!=='pending approvals' && c.name!=='API port'), checks, version: cfg._state?.version || undefined, publicUrl: effectivePublicUrl || null }, null, 2));
   } else {
     for (const c of checks) console.log(`${c.ok ? '✓' : (c.name==='publicUrl' ? '○' : '✗')} ${c.name.padEnd(18)} ${c.detail}`);
-    console.log(`\nPublic URL: ${cfg.publicUrl || '(not set)'}`);
-    if (!cfg.publicUrl) console.log('Run: arena-bridge tunnel  or  arena-bridge service install');
+    console.log(`\nPublic URL: ${effectivePublicUrl || '(not set)'}`);
+    if (!effectivePublicUrl) console.log('Run: arena-bridge tunnel  or  arena-bridge service install');
   }
 }
 
 function cmdUrl() {
   const cfg = loadConfig();
-  if (!cfg.publicUrl) {
+  const publicUrl = cfg.fixedPublicUrl || cfg.publicUrl;
+  if (!publicUrl) {
     console.log('no public URL yet — run "arena-bridge tunnel" (or "arena-bridge service install")');
     process.exitCode = 1;
     return;
   }
-  console.log(cfg.publicUrl);
+  console.log(publicUrl);
 }
 
 async function cmdVersion() {
@@ -801,7 +825,8 @@ function cmdService(args) {
   const st = serviceStatus();
   console.log(`service: ${st.installed ? 'installed' : 'not installed'} (${st.running ? 'running' : 'not running'})`);
   console.log(`  plist: ${st.plist}`);
-  const current = loadConfig().publicUrl;
+  const currentCfg = loadConfig();
+  const current = currentCfg.fixedPublicUrl || currentCfg.publicUrl;
   if (current) console.log(`  current URL: ${current}`);
   if (st.detail) console.log(`  ${st.detail.split('\n')[0]}`);
   if (!st.installed) console.log('  install it with: arena-bridge service install');
@@ -1150,13 +1175,13 @@ function cmdDoctor(args) {
   checks.push({ name: 'chrome', code: 'chrome', passed: !!chrome, detail: chrome || 'not found in /Applications', hint: 'install Chrome to use browser tools' });
   const ok = checks.every(c => c.passed);
   if (isJson) {
-    try { const t = { cold_start_ms: coldStartMs(), memory: mem(), uptime_sec: uptimeSec() }; console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, telemetry: t, checks }, null, 2)); } catch { console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.publicUrl || null, node: process.version, checks }, null, 2)); }
+    try { const t = { cold_start_ms: coldStartMs(), memory: mem(), uptime_sec: uptimeSec() }; console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.fixedPublicUrl || cfg.publicUrl || null, node: process.version, telemetry: t, checks }, null, 2)); } catch { console.log(JSON.stringify({ ok, version: VERSION, publicUrl: cfg.fixedPublicUrl || cfg.publicUrl || null, node: process.version, checks }, null, 2)); }
   } else {
     for (const c of checks) {
       console.log(`${c.passed ? '✓' : '✗'} ${c.name.padEnd(18)} ${c.detail}`);
     }
     console.log(
-      `\nNode ${process.version} • public URL: ${cfg.publicUrl || '(not set — run with --public-url or set config.publicUrl)'}`,
+      `\nNode ${process.version} • public URL: ${cfg.fixedPublicUrl || cfg.publicUrl || '(not set — set fixedPublicUrl or run tunnel)'}`,
     );
   }
   if (!ok) process.exitCode = 1;

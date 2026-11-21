@@ -6,6 +6,7 @@ struct BridgeConfig {
     var host = "127.0.0.1"
     var port = 8787
     var publicUrl: String? = nil
+    var fixedPublicUrl: String? = nil
     var token: String? = nil
     var localToken: String? = nil
     var device: String? = nil
@@ -33,7 +34,8 @@ struct BridgeConfig {
         cfg.mode = raw["mode"] as? String ?? cfg.mode
         cfg.host = raw["host"] as? String ?? cfg.host
         cfg.port = raw["port"] as? Int ?? cfg.port
-        cfg.publicUrl = raw["publicUrl"] as? String
+        cfg.fixedPublicUrl = raw["fixedPublicUrl"] as? String
+        cfg.publicUrl = cfg.fixedPublicUrl ?? (raw["publicUrl"] as? String)
         if cfg.publicUrl == nil, let state = try? Data(contentsOf: home.appendingPathComponent("state.json")),
            let stateRaw = try? JSONSerialization.jsonObject(with: state) as? [String: Any] {
             cfg.publicUrl = stateRaw["publicUrl"] as? String
@@ -422,6 +424,8 @@ struct Bridge {
     /// The pid file of the bridge is exact; the name search only covers bridges too old to write one,
     /// and matches the tunnel binaries themselves, never the command line of the bridge.
     static func tunnelRunning() -> Bool {
+        // A fixed URL is served by a user-managed tunnel; it deliberately outlives the bridge API.
+        if BridgeConfig.load().fixedPublicUrl != nil { return false }
         let pidFile = BridgeConfig.home.appendingPathComponent("tunnel.pid").path
         if let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
            let pid = Int(text.trimmingCharacters(in: .whitespaces)), pid > 0 {
