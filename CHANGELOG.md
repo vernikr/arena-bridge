@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.21.0
 
 ### Removed
 - Trust window removed completely (Python, Node, macOS app): `trust.py`/`trust.mjs`,
