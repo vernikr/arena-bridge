@@ -14,7 +14,6 @@ import path from 'node:path';
 import { audit, auditPage, auditDir, findEntry, headCursor, lean, readArtifact, tailAudit } from './audit.mjs';
 import { sourceOf, describeSource, admitUnauthorized } from './source.mjs';
 import { errorResponse } from './errors.mjs';
-import { trustState } from './trust.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_QUEUED_PER_DEVICE = 100;
@@ -123,7 +122,6 @@ export function createHubServer(cfg) {
           device: current.device,
           uptime_sec: Math.round(process.uptime()),
           pending_approvals: pending,
-          trust_active: !!trustState().active,
           audit_count: auditCount,
           log_size: logSize,
           has_public_url: !!current.publicUrl,

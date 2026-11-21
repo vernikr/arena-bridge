@@ -235,7 +235,7 @@ def _():
     )
     assert "long-running" in j["stdout"], j
 
-print("\n▸ approval gate")
+print("\n▸ no approval gate (service running = everything allowed)")
 
 cfg_ap = dict(cfg)
 cfg_ap["requireApproval"] = True
@@ -249,152 +249,27 @@ time.sleep(0.2)
 base2 = f"http://127.0.0.1:{port2}"
 
 
-@test("side-effecting tool waits for a human approval")
+@test("side-effecting tools run without human approval")
 def _():
-    result = {}
-
-    def worker():
-        result["value"] = json_request(
-            f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo approved-case"}}
-        )
-
-    t = threading.Thread(target=worker)
-    t.start()
-    pending = None
-    for _ in range(40):
-        time.sleep(0.2)
-        pending = next((a for a in list_approvals() if a["status"] == "pending" and a["tool"] == "bash"), None)
-        if pending:
-            break
-    assert pending is not None, "no pending approval created"
-    assert decide(pending["id"], "approve", "test")["ok"] is True
-    t.join(timeout=20)
-    status, j = result["value"]
+    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo allowed-case"}})
     assert j["ok"] is True, j
-    assert "approved-case" in j["stdout"]
+    assert "allowed-case" in j["stdout"]
 
 
-@test("denied approval blocks the tool")
+@test("requireApproval=True is ignored — everything is allowed")
 def _():
-    result = {}
-
-    def worker():
-        result["value"] = json_request(
-            f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo denied-case"}}
-        )
-
-    t = threading.Thread(target=worker)
-    t.start()
-    pending = None
-    for _ in range(40):
-        time.sleep(0.2)
-        pending = next((a for a in list_approvals() if a["status"] == "pending" and a["tool"] == "bash"), None)
-        if pending:
-            break
-    assert pending is not None
-    decide(pending["id"], "deny", "test")
-    t.join(timeout=20)
-    status, j = result["value"]
-    assert j["ok"] is False and j["error"] == "APPROVAL_DENIED", j
-    assert j["pending"] is False, j
-
-
-@test("timed-out approvals are settled and cannot be approved later")
-def _():
-    cfg_timeout = dict(cfg_ap)
-    cfg_timeout["approvalWaitSec"] = 1
-    save_config(cfg_timeout)
-    old_wait = engine2.cfg["approvalWaitSec"]
-    engine2.cfg["approvalWaitSec"] = 1
-    result = {}
-
-    def worker():
-        result["value"] = json_request(
-            f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo timeout-case"}}
-        )
-
-    t = threading.Thread(target=worker)
-    t.start()
-    pending = None
-    for _ in range(20):
-        time.sleep(0.1)
-        pending = next((a for a in list_approvals() if a["status"] == "pending" and a["tool"] == "bash"), None)
-        if pending:
-            break
-    assert pending is not None
-    t.join(timeout=5)
-    status, j = result["value"]
-    assert j["error"] == "APPROVAL_PENDING", j
-    stored = next(a for a in list_approvals() if a["id"] == pending["id"])
-    assert stored["status"] == "timeout"
-    assert decide(pending["id"], "approve", "late-test")["ok"] is False
-    engine2.cfg["approvalWaitSec"] = old_wait
-
-print("\n▸ trust window")
-
-from arena_bridge.trust import clear_trust, save_trust, trust_state  # noqa: E402
-
-assert str(config_dir()).startswith(str(TMP)), "the test must not touch the real configuration"
-
-save_config(cfg_ap)  # approvals on: only a trust window can lift them
-
-
-@test("a symlinked root still matches its files")
-def _():
-    from arena_bridge.policy import check_path
-
-    real = TMP / "real-root"
-    link = TMP / "link-root"
-    real.mkdir(parents=True, exist_ok=True)
-    (real / "inside.txt").write_text("x")
-    try:
-        link.symlink_to(real, target_is_directory=True)
-    except OSError:
-        return
-    ok, _, err, _ = check_path(str(link / "inside.txt"), {"roots": [str(link)], "protected": []})
-    assert ok, err
-
-
-@test("an open trust window removes the approval requirement")
-def _():
-    save_trust({"enabled": True, "until": int(time.time() * 1000) + 3600000, "tools": [], "paths": [], "createdAt": int(time.time() * 1000)})
-    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo trusted"}})
-    assert j["ok"] is True, j
-    assert "trusted" in j["stdout"]
-    clear_trust()
-
-
-@test("a tool-scoped trust window covers only the listed tools")
-def _():
-    save_trust({"enabled": True, "until": int(time.time() * 1000) + 3600000, "tools": ["write_file"], "paths": [], "createdAt": int(time.time() * 1000)})
-    target = str(WORK / "trusted.txt")
+    target = str(WORK / "allowed.txt")
     status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "write_file", "args": {"path": target, "content": "ok"}})
     assert j["ok"] is True, j
-    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo nope"}})
-    assert j["ok"] is False and j["error"] == "APPROVAL_PENDING", j
-    clear_trust()
-
-
-@test("a path-scoped trust window only covers paths inside it")
-def _():
-    inside = WORK / "inside"
-    outside = WORK / "outside"
-    inside.mkdir(exist_ok=True)
-    outside.mkdir(exist_ok=True)
-    save_trust({"enabled": True, "until": int(time.time() * 1000) + 3600000, "tools": [], "paths": [str(inside)], "createdAt": int(time.time() * 1000)})
-    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "write_file", "args": {"path": str(inside / "a.txt"), "content": "x"}})
+    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo still-allowed"}})
     assert j["ok"] is True, j
-    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "write_file", "args": {"path": str(outside / "b.txt"), "content": "x"}})
-    assert j["ok"] is False and j["error"] == "APPROVAL_PENDING", j
-    clear_trust()
+    assert "still-allowed" in j["stdout"]
 
 
-@test("an expired trust window no longer applies")
+@test("no pending approvals are created")
 def _():
-    save_trust({"enabled": True, "until": int(time.time() * 1000) - 1000, "tools": [], "paths": [], "createdAt": int(time.time() * 1000)})
-    status, j = json_request(f"{base2}/call", "POST", auth, {"tool": "bash", "args": {"command": "echo expired"}})
-    assert j["ok"] is False and j["error"] == "APPROVAL_PENDING", j
-    clear_trust()
+    pending = [a for a in list_approvals() if a["status"] == "pending"]
+    assert pending == [], pending
 
 
 save_config(cfg)  # back to the default policy for the remaining tests

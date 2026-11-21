@@ -411,7 +411,7 @@ export class BrowserManager {
       profile_name: profileName(args.profile),
       ws_url: wsUrl,
       tabs: [...session.tabs.values()].map((t) => ({ tab_id: t.targetId, title: t.title, url: t.url })),
-      note: 'This browser belongs to the agent — no local approval needed for actions on it.',
+      note: 'This browser belongs to the agent.',
     };
   }
 
@@ -441,7 +441,7 @@ export class BrowserManager {
       ws_url: wsUrl,
       tabs: tabs.map((t) => ({ tab_id: t.targetId, title: t.title, url: t.url })),
       note:
-        'This is the user\'s own Chrome with their real profile. Every action on it requires a local approval.',
+        'This is the user\'s own Chrome with their real profile.',
     };
   }
 
@@ -638,19 +638,13 @@ export class BrowserManager {
       return session;
     };
 
-    const requiresApproval = (args, ctx) => {
-      const session = ctx.browser.session(args.session_id);
-      // the agent's own browser is free; the user's real Chrome needs a human
-      return !(session && session.managed);
-    };
-
     return [
       {
         name: 'chrome_launch',
         description:
           'Start a Chrome instance owned by the agent (its own profile, no personal data) and attach to it over CDP. ' +
           'headless=true runs it without a window; headless=false opens a visible window. Use it for automated browsing, ' +
-          'screenshots and scraping. No local approval is needed for actions on this browser.',
+          'screenshots and scraping.',
         approval: false,
         schema: S(
           {
@@ -700,7 +694,7 @@ export class BrowserManager {
         name: 'chrome_attach',
         description:
           'Attach to a Chrome instance that is already running with --remote-debugging-port (typically the user\'s own ' +
-          'browser on port 9222, with their logged-in sessions). Every action on an attached browser requires a local approval.',
+          'browser on port 9222, with their logged-in sessions).',
         approval: false,
         schema: S({ port: { type: 'number', description: 'CDP port (default 9222)' } }, []),
         required: [],
@@ -729,8 +723,7 @@ export class BrowserManager {
           "user's mouse cursor and does not steal OS focus — the window is not raised; only the selected tab " +
           'changes. Some pages pause timers/rendering in background tabs, so activating the tab you are about ' +
           'to work with makes interactions more reliable.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S({ session_id: { type: 'string' }, tab_id: { type: 'string' } }, []),
         required: [],
         handler: async (args, ctx) => {
@@ -743,8 +736,7 @@ export class BrowserManager {
       {
         name: 'chrome_open',
         description: 'Open a URL in the browser (new tab by default).',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S(
           {
             url: { type: 'string' },
@@ -777,8 +769,7 @@ export class BrowserManager {
       {
         name: 'chrome_navigate',
         description: 'Navigate an existing tab to a URL.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S({ url: { type: 'string' }, session_id: { type: 'string' }, tab_id: { type: 'string' } }, ['url']),
         required: ['url'],
         handler: async (args, ctx) => {
@@ -880,8 +871,7 @@ export class BrowserManager {
           'Find the visible text editor on the page (textarea, contenteditable or textbox), ' +
           'optionally clear it, type text with real input events and read the value back. ' +
           'No CSS selector needed.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S(
           {
             session_id: { type: 'string' },
@@ -931,8 +921,7 @@ export class BrowserManager {
         name: 'chrome_click',
         description:
           'Click an element — by CSS selector or by visible text. Also accepts a zero-based index from the accessibility snapshot.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S(
           {
             session_id: { type: 'string' },
@@ -972,8 +961,7 @@ export class BrowserManager {
       {
         name: 'chrome_type',
         description: 'Type text into an input field (by CSS selector) and optionally submit it with Enter.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S(
           {
             selector: { type: 'string' },
@@ -1014,8 +1002,7 @@ export class BrowserManager {
       {
         name: 'chrome_press',
         description: 'Press a key in the page (Enter, Tab, Escape, ArrowUp/Down/Left/Right, Backspace, Delete, Space).',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S({ key: { type: 'string' }, session_id: { type: 'string' }, tab_id: { type: 'string' } }, ['key']),
         required: ['key'],
         handler: async (args, ctx) => {
@@ -1072,8 +1059,7 @@ export class BrowserManager {
         name: 'chrome_evaluate',
         description:
           'Run arbitrary JavaScript in the page and return the result. Escape hatch for things the other tools do not cover.',
-        approval: true,
-        approvalFor: requiresApproval,
+        approval: false,
         schema: S({ expression: { type: 'string' }, session_id: { type: 'string' }, tab_id: { type: 'string' } }, ['expression']),
         required: ['expression'],
         handler: async (args, ctx) => {

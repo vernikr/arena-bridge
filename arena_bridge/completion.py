@@ -3,8 +3,8 @@ COMPLETION_BASH = """# arena-bridge bash completion
 _arena_bridge_complete() {
   local cur prev words cword
   _init_completion || return
-  local cmds="setup init start tunnel hub connect prompt tools approvals approve rotate trust audit config telegram doctor url version update service browser completion help"
-  local flags="--mode --device --root --port --host --hub --public-url --protocol --bin --authtoken --domain --no-approval --no-shell --for --tools --paths --off --status --json --help"
+  local cmds="setup init start tunnel hub connect prompt tools approvals approve rotate audit config telegram doctor url version update service browser completion help"
+  local flags="--mode --device --root --port --host --hub --public-url --protocol --bin --authtoken --domain --no-approval --no-shell --status --json --help"
   if [[ $cword == 1 ]]; then
     COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
     return
@@ -12,7 +12,6 @@ _arena_bridge_complete() {
   local cmd="${words[1]}"
   case "$cmd" in
     config) COMPREPLY=( $(compgen -W "list get set edit" -- "$cur") ) ;;
-    trust) COMPREPLY=( $(compgen -W "--for --tools --paths --off --status --json" -- "$cur") ) ;;
     telegram) COMPREPLY=( $(compgen -W "setup test status inbox poll" -- "$cur") ) ;;
     service) COMPREPLY=( $(compgen -W "install uninstall status" -- "$cur") ) ;;
     browser) COMPREPLY=( $(compgen -W "list login close open" -- "$cur") ) ;;
@@ -44,7 +43,6 @@ _arena_bridge() {
         "tools:Print tool catalog"
         "approvals:List pending approvals"
         "approve:Approve a pending request"
-        "trust:Manage trust window"
         "audit:Show audit log"
         "config:Manage configuration"
         "telegram:Telegram integration"
@@ -61,7 +59,6 @@ _arena_bridge() {
     args)
       case "$words[1]" in
         config) _describe -t subcmd 'config' '(list get set edit)' ;;
-        trust) _arguments "--for[duration]" "--tools[tools]" "--paths[paths]" "--off" "--status" "--json" ;;
         telegram) _describe -t subcmd 'telegram' '(setup test status inbox poll)' ;;
         service) _describe -t subcmd 'service' '(install uninstall status)' ;;
         browser) _describe -t subcmd 'browser' '(list login close open)' ;;
@@ -85,7 +82,6 @@ complete -c arena-bridge -n "__fish_use_subcommand" -a prompt -d "Agent instruct
 complete -c arena-bridge -n "__fish_use_subcommand" -a tools -d "Tool catalog"
 complete -c arena-bridge -n "__fish_use_subcommand" -a approvals -d "List approvals"
 complete -c arena-bridge -n "__fish_use_subcommand" -a approve -d "Approve request"
-complete -c arena-bridge -n "__fish_use_subcommand" -a trust -d "Trust window"
 complete -c arena-bridge -n "__fish_use_subcommand" -a audit -d "Audit log"
 complete -c arena-bridge -n "__fish_use_subcommand" -a config -d "Manage config"
 complete -c arena-bridge -n "__fish_use_subcommand" -a telegram -d "Telegram"

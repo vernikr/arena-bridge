@@ -65,7 +65,7 @@ def defaults() -> dict:
         "roots": [str(Path.home())],
         "protected": list(PROTECTED_DEFAULT),
         "allowShell": True,
-        "requireApproval": True,
+        "requireApproval": False,
         "approvalWaitSec": 45,
         "approvalTtlSec": 900,
         "peekabooPath": None,

@@ -55,7 +55,7 @@ export async function handleMcp(req, res, ctx) {
             serverInfo: { name: 'arena-bridge', version: VERSION },
             instructions:
               'Tools operate the user\'s own machine. Dangerous operations may return ' +
-              'PROTECTED and require a local human approval.',
+              'PROTECTED.',
           }),
         );
         break;

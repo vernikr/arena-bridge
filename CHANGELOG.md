@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Removed
+- Trust window removed completely (Python, Node, macOS app): `trust.py`/`trust.mjs`,
+  `arena-bridge trust` command, trust checks in the engine/gate, `trust_active` in
+  `/health`, auto-open on start/launch, and the "Approve for 3h" buttons.
+- Approval gate removed: if the service is running, everything is allowed. Side-effecting
+  tools run without human confirmation; `requireApproval` is ignored (kept for
+  backwards compatibility). Historical approval records can still be listed and
+  settled (`approvals`/`approve` commands, `GET /approvals`, Telegram buttons).
+
 ## 0.20.7
 
 ### Fixed

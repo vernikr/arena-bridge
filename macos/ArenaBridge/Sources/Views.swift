@@ -282,33 +282,6 @@ struct ActionsCard: View {
             Divider()
             UpdateRow()
             Divider()
-            HStack(spacing: 10) {
-                Image(systemName: "timer")
-                    .foregroundStyle(.secondary)
-                Text("Trust window")
-                    .foregroundStyle(.secondary)
-                if model.trustEnabled {
-                    Text("active — \(model.trustRemainingText) left")
-                        .foregroundStyle(.green)
-                    if !model.trustTools.isEmpty {
-                        Text(model.trustTools.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Button("Close") {
-                        model.closeTrust()
-                    }
-                } else {
-                    Text("closed — every action needs your decision")
-                        .foregroundStyle(.secondary)
-                    Button("Open for 3 h") {
-                        model.openTrust(hours: 3)
-                    }
-                    .help("The agent may act without asking for the next 3 hours")
-                }
-                Spacer()
-            }
-            .font(.callout)
         }
     }
 }
@@ -319,7 +292,7 @@ struct ApprovalsCard: View {
     var body: some View {
         Card(title: model.pendingCount == 0 ? "Approvals" : "Approvals (\(model.pendingCount))", symbol: "hand.raised") {
             if model.approvals.isEmpty {
-                Text("No pending requests. The agent can act freely inside the trusted window.")
+                Text("No pending requests. If the service is running, everything is allowed.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
@@ -346,9 +319,6 @@ struct ApprovalsCard: View {
                                     Button("Deny") { model.decide(approval, approve: false) }
                                         .buttonStyle(.bordered)
                                 }
-                                Button("Approve for 3 h") { model.decide(approval, approve: true, trustHours: 3) }
-                                    .buttonStyle(.bordered)
-                                    .help("Approve and trust this tool for the next 3 hours")
                             }
                         }
                         if approval.id != model.approvals.last?.id { Divider() }
@@ -488,7 +458,6 @@ struct ToolIcon: View {
         if tool.hasPrefix("telegram") || tool == "notify_user" { return ("paperplane", "➤") }
         if tool.hasPrefix("log_") { return ("text.bubble", "✎") }
         if tool.hasPrefix("audit") { return ("list.bullet", "≡") }
-        if tool.hasPrefix("trust") { return ("clock", "◷") }
         if tool.hasPrefix("approval") { return ("hand.raised", "✋") }
         if tool == "bash" || tool == "sysinfo" { return ("terminal", ">") }
         if tool.hasSuffix("_process") || tool.hasSuffix("process_output") { return ("cpu", "▤") }

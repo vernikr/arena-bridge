@@ -79,14 +79,20 @@ test('S5: exposeDeviceInHealth default true but configurable', () => {
   assert.ok(c.exposeDeviceInHealth === true || c.exposeDeviceInHealth === undefined);
 });
 
-test('B2: redact does not mask mac_key key field', async () => {
-  const { settle, decide } = await import('../src/approvals.mjs');
-  // create a pending approval with mac_key tool that has key field
-  const { requestApproval } = await import('../src/approvals.mjs');
-  // Check redact function directly by inspecting stored file
-  const rec = await requestApproval('mac_key', { key: 'cmd+q', modifiers: [] }, { approvalWaitSec: 0, approvalTtlSec: 0 });
-  // rec should have args.key preserved, not masked
-  assert.equal(rec.rec.args.key, 'cmd+q', 'mac_key key should not be redacted');
+test('B2: historical approvals list and decide still work', async () => {
+  const { listApprovals, decide } = await import('../src/approvals.mjs');
+  const { APPROVALS_DIR, ensureDirs } = await import('../src/config.mjs');
+  ensureDirs();
+  const id = 'security-test-approval';
+  const rec = { id, tool: 'mac_key', args: { key: 'cmd+q' }, status: 'pending',
+    createdAt: Date.now(), expiresAt: Date.now() + 600000, decidedAt: null, decidedBy: null };
+  fs.writeFileSync(path.join(APPROVALS_DIR, `${id}.json`), JSON.stringify(rec));
+  const listed = listApprovals().find((a) => a.id === id);
+  assert.ok(listed, 'historical approval is listed');
+  assert.equal(listed.args.key, 'cmd+q', 'mac_key key is preserved in history');
+  const decided = decide(id, 'approve', 'test');
+  assert.equal(decided.ok, true);
+  assert.equal(decided.approval.status, 'approved');
 });
 
 test('S4: allowedChat only allowed chat passes', () => {

@@ -25,8 +25,8 @@ export function toolCatalog() {
       name: 'bash',
       description:
         'Run a shell command on the remote machine. Returns stdout, stderr and the exit code. ' +
-        'Use absolute paths; the working directory defaults to the configured base directory. This is a side-effecting operation and may require human approval.',
-      approval: true,
+        'Use absolute paths; the working directory defaults to the configured base directory. This is a side-effecting operation.',
+      approval: false,
       schema: S({
         command: { type: 'string', description: 'Shell command to execute' },
         cwd: { type: 'string', description: 'Working directory (must be at the requested path)' },
@@ -86,8 +86,8 @@ export function toolCatalog() {
     },
     {
       name: 'write_file',
-      description: 'Create or overwrite a text file. May require human approval.',
-      approval: true,
+      description: 'Create or overwrite a text file.',
+      approval: false,
       schema: S({
         path: { type: 'string' },
         content: { type: 'string' },
@@ -115,7 +115,7 @@ export function toolCatalog() {
     {
       name: 'edit_file',
       description: 'Replace an exact string inside a file (old_text must appear exactly once unless replace_all is true).',
-      approval: true,
+      approval: false,
       schema: S({
         path: { type: 'string' },
         old_text: { type: 'string' },
@@ -284,8 +284,8 @@ export function toolCatalog() {
     },
     {
       name: 'delete_path',
-      description: 'Delete a file or directory (recursively) on the remote machine. Requires approval.',
-      approval: true,
+      description: 'Delete a file or directory (recursively) on the remote machine.',
+      approval: false,
       schema: S({ path: { type: 'string' } }),
       required: ['path'],
       handler: async (args, ctx) => {
@@ -316,8 +316,8 @@ export function toolCatalog() {
     },
     {
       name: 'file_put',
-      description: 'Upload a binary file (base64 payload). Requires approval.',
-      approval: true,
+      description: 'Upload a binary file (base64 payload).',
+      approval: false,
       schema: S({ path: { type: 'string' }, data_base64: { type: 'string' } }),
       required: ['path', 'data_base64'],
       handler: async (args, ctx) => {
@@ -446,7 +446,7 @@ export function toolCatalog() {
       name: 'start_process',
       description:
         'Start a long-running background process (dev server, watcher, REPL). Returns a session_id to poll with read_process_output.',
-      approval: true,
+      approval: false,
       schema: S({
         command: { type: 'string' },
         cwd: { type: 'string' },
@@ -586,8 +586,8 @@ export function toolCatalog() {
     },
     {
       name: 'kill_process',
-      description: 'Terminate a running process session. Requires approval.',
-      approval: true,
+      description: 'Terminate a running process session. ',
+      approval: false,
       schema: S({
         session_id: { type: 'string' },
         signal: { type: 'string', description: 'SIGTERM (default) or SIGKILL' },

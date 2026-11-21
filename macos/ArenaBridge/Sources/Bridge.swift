@@ -314,28 +314,6 @@ struct Bridge {
         }
     }
 
-    /// The trust window state, read from ~/.arena-bridge/trust.json.
-    static func trustStatus() -> (enabled: Bool, remainingSec: Int, tools: [String]) {
-        let url = BridgeConfig.home.appendingPathComponent("trust.json")
-        if let data = try? Data(contentsOf: url),
-           let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            let until = (raw["until"] as? Double) ?? 0
-            let left = Int(max(0, until - Date().timeIntervalSince1970 * 1000) / 1000)
-            let enabled = (raw["enabled"] as? Bool ?? true) && left > 0
-            return (enabled, left, raw["tools"] as? [String] ?? [])
-        }
-        let result = run(["trust", "--status", "--json"])
-        guard result.code == 0,
-              let data = result.output.data(using: .utf8),
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return (false, 0, []) }
-        return (
-            raw["enabled"] as? Bool ?? false,
-            raw["remaining_sec"] as? Int ?? 0,
-            raw["tools"] as? [String] ?? []
-        )
-    }
-
     /// The path of the bridge command line tool.
     static func cliPath() -> String? {
         var candidates = [

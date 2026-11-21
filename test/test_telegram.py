@@ -180,29 +180,23 @@ def _():
     assert tg.parse_command("привет") is None
 
 
-@test("a pending approval is announced in Telegram")
+@test("side-effecting tools run without approval (no Telegram message)")
 def _():
     before = len(SENT)
     gate = Engine({**cfg, "requireApproval": True, "approvalWaitSec": 2}, base=str(WORK))
     r = gate.call("bash", {"command": "echo hi"}, cfg={**cfg, "requireApproval": True, "approvalWaitSec": 2})
-    assert r["ok"] is False
-    assert r["error"] == "APPROVAL_PENDING"
-    assert len(SENT) == before + 1, "the user is told about the request"
-    assert "/approve" in SENT[-1]["text"]
+    assert r["ok"] is True
+    assert "hi" in r["stdout"]
+    assert len(SENT) == before, "no approval message is sent"
 
 
-@test("the approval message carries the inline buttons")
+@test("the historical approval keyboard carries approve/deny buttons")
 def _():
-    before = len(SENT)
-    gate = Engine({**cfg, "requireApproval": True, "approvalWaitSec": 2}, base=str(WORK))
-    r = gate.call("bash", {"command": "echo hi"}, cfg={**cfg, "requireApproval": True, "approvalWaitSec": 2})
-    assert r["ok"] is False
-    keyboard = (SENT[-1].get("reply_markup") or {}).get("inline_keyboard")
+    keyboard = tg.approval_keyboard("test-id")
     assert keyboard, "the message has a keyboard"
     labels = [b["text"] for row in keyboard for b in row]
-    assert labels == ["Approve once", "Approve for 3h", "Deny"], labels
+    assert labels == ["Approve once", "Deny"], labels
     assert keyboard[0][0]["callback_data"].startswith("approve:")
-    assert keyboard[0][1]["callback_data"].startswith("approve3h:")
     assert keyboard[1][0]["callback_data"].startswith("deny:")
 
 
@@ -212,10 +206,9 @@ def _callback_handler():
 
     def handle(item):
         action, _, aid = str(item.get("data") or "").partition(":")
-        if action not in ("approve", "approve3h", "deny") or not aid:
+        if action not in ("approve", "deny") or not aid:
             return
-        trust_sec = 3 * 3600 if action == "approve3h" else 0
-        res = settle(aid, "deny" if action == "deny" else "approve", "telegram", trust_sec)
+        res = settle(aid, "deny" if action == "deny" else "approve", "telegram")
         text = "Approved {}".format(aid) if res.get("ok") else "Cannot {}".format(action)
         answer_callback(cfg, item.get("callback_id"), "Done")
         edit_message_text(cfg, item.get("chat_id"), item.get("message_id"), text)
@@ -223,7 +216,7 @@ def _callback_handler():
     return handle
 
 
-@test("a button press settles the request and trusts the tool for 3 hours")
+@test("a button press settles the request")
 def _():
     from arena_bridge.approvals import list_approvals
 
@@ -249,7 +242,7 @@ def _():
             "update_id": 9,
             "callback_query": {
                 "id": "cb-1",
-                "data": "approve3h:" + aid,
+                "data": "approve:" + aid,
                 "from": {"username": "me"},
                 "message": {"message_id": 77, "chat": {"id": 42}, "date": 1},
             },
@@ -266,10 +259,6 @@ def _():
         poller["stop"]()
     rec = json.loads(path.read_text())
     assert rec["status"] == "approved", "the button settles the request"
-    trust = json.loads((HOME / "trust.json").read_text())
-    assert trust["tools"] == [], trust  # blanket per user request
-    assert trust["paths"] == [], trust
-    assert trust["until"] > int(time.time() * 1000) + 2 * 3600 * 1000
     edited = [m for m in SENT if m.get("method") == "editMessageText"][-1]
     assert "Approved" in edited["payload"]["text"]
     assert edited["payload"]["reply_markup"]["inline_keyboard"] == []

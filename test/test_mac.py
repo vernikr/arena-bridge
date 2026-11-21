@@ -264,15 +264,12 @@ def _():
 print("\n▸ approvals")
 
 
-@test("a pending approval is reported clearly instead of hanging")
+@test("mac tools run without approval (no trust window needed)")
 def _():
     save_config({**cfg, "requireApproval": True, "approvalWaitSec": 1})
     engine3 = Engine(load_config(), base=str(WORK))
     r = engine3.call("mac_click", {"on": "B1"})
-    assert r["ok"] is False
-    assert r["error"] == "APPROVAL_PENDING"
-    assert r["pending"] is True
-    assert r["approval_id"]
+    assert r.get("error") != "APPROVAL_PENDING", "mac_click must not be blocked by an approval gate"
     save_config(cfg)
 
 

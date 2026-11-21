@@ -8,19 +8,18 @@ Keep it short; details go to `docs/reference/`.
 | Path | Purpose | Notes |
 |------|---------|-------|
 | `src/catalog.mjs` `src/engine_helpers.mjs` `arena_bridge/catalog.py` | `toolCatalog()` single source + `clip`/`runShell` shared helpers | Core tools (bash/read_file/write_file/edit_file/list_dir/search_files/delete_path/file_get/file_put/audit_log/audit_artifact/sysinfo/process) — engine imports from `catalog.mjs`. Browser/desktop/telegram joined via `engine.catalog()`. |
-| `src/engine.mjs` `arena_bridge/engine.py` | `Engine.call()` gate + `catalog()` join | Imports `toolCatalog` from `catalog.mjs`, `clip`/`runShell` from `engine_helpers.mjs`; approval/trust/audit pipeline, `mcpTools()`. |
-| `src/gate.mjs` `arena_bridge/gate.py` | `authorize(tool,args,cfg)` | Single source for `PUT/DELETE /files` + `POST /call` gate: trust → requireApproval → requestApproval, 202 vs 403. |
+| `src/engine.mjs` `arena_bridge/engine.py` | `Engine.call()` + `catalog()` join | Imports `toolCatalog` from `catalog.mjs`, `clip`/`runShell` from `engine_helpers.mjs`; audit pipeline, `mcpTools()`. No approval gate: if the service is running, everything is allowed. |
+| `src/gate.mjs` | `authorize(tool,args,cfg)` | Always-allow stub kept so `PUT/DELETE /files` + `POST /call` share one code path. No trust window, no approvals. |
 | `src/policy.mjs` `arena_bridge/policy.py` | `resolveTarget`/`checkPath` + `isInside` | lstat-based symlink handling (B1). Single source for path policy. |
 | `src/config.mjs` `arena_bridge/config.py` `src/state.mjs` | `loadConfig`/`saveConfig` + `DEFAULTS` + `loadState`/`saveState` (`STATE_PATH`) + pid files (`bridge.pid`, `tunnel.pid`) and process helpers | `config.json` = user intent, `state.json` = runtime (`publicUrl`). Atomic tmp+rename. |
 | `src/audit.mjs` `arena_bridge/audit.py` | `audit()`/`tailAudit()`/`readArtifact()`/`levelFor()` | JSON-lines, reverse-read, 5–10MB rotation. Parameters kept whole, >64 KB overflow to `args.json` artifact. Levels info/notice/warning/alert. |
 | `src/source.mjs` | `describeSource()`/`sourceOf()`/`admitUnauthorized()` | Caller identity from the tunnel's `Cf-Connecting-IP`, reverse-DNS host (250 ms budget, cached), 401 rate limit per address. Node only. |
-| `src/approvals.mjs` `arena_bridge/approvals.py` | `requestApproval()` file-based | 400ms poll, TTL vs wait, `trust.json` blanket window. |
-| `src/trust.mjs` `arena_bridge/trust.py` | `trustState()`/`trustAllows()` + `pruneExpiredTrust()` | Blanket `tools:[]` = all tools, auto-prune expired on status. |
-| `src/direct.mjs` `arena_bridge/server.py` | HTTP API (`/call`, `/files`, `/health`) | `PUT/DELETE /files` via gate + audit. 202 for pending. `/health` → `pending_approvals`, `trust_active`, `audit_count`, `log_size`. |
+| `src/approvals.mjs` `arena_bridge/approvals.py` | `listApprovals()`/`decide()`/`settle()`/`pruneApprovals()` | Historical approval records only (no new approvals are created). |
+| `src/direct.mjs` `arena_bridge/server.py` | HTTP API (`/call`, `/files`, `/health`) | `PUT/DELETE /files` with audit, no gate. `/health` → `pending_approvals`, `audit_count`, `log_size`. |
 | `src/browser.mjs` `arena_bridge/browser.py` | `BrowserManager` + CDP | Plain launch for login, DevTools keepalive, `chrome_activate`. |
 | `src/mac.mjs` `arena_bridge/mac.py` | Peekaboo desktop control | Screen, mouse, keyboard, app control. |
 | `src/telegram.mjs` `arena_bridge/telegram.py` | Poller + `allowedChat` filter | Prompt-injection guard, inbox `readInbox()`. |
-| `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (23 cmds: `init/setup/start/tunnel/stop/hub/connect/prompt/tools/approvals/approve/trust/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `trust --extend/--history`, `browser clean`, `service logs`. |
+| `src/cli.mjs` `src/cli/browser.mjs` `arena_bridge/cli.py` | CLI (22 cmds: `init/setup/start/tunnel/stop/hub/connect/prompt/tools/approvals/approve/rotate/audit/logs/cleanup/config/telegram/doctor/status/url/open/version/update/service/browser/completion/restart`) | `parseArgs` handles `-n`/`--n`, `--json` everywhere, `doctor --fix/status`, `audit --tool/--since/--from/--to`, `config validate/diff`, `browser clean`, `service logs`. |
 | `src/log.mjs` `arena_bridge/log.py` | `bridge.log` structured logs | `LOG_LEVEL`, 5MB rotation. |
 | `macos/ArenaBridge/` | SwiftUI app: `Bridge.swift` (API client, log record parsing), `Model.swift` (state, log paging, start/stop steps), `Views.swift` (cards, log panel, detail sheet) | Log: cursor reads with `after` (bridge segment+byte cursor, paged), 5 000-row window, timeline order, level filter, clear view. Start/stop: numbered steps via `run(starting:_:)`. macOS 15 minimum. `Info.plist` version from `package.json`. |
 
@@ -49,14 +48,14 @@ Telegram tests are in CI (T1) — don't remove them. Release `if: success()` not
 
 - Source: `package.json` `version` is authority.
 - Python `pyproject.toml` + `__init__.py` + `mcp.mjs`/`hub.mjs`/`Info.plist` must match. CI `version-check` enforces.
-- `0.8.x` is breaking per owner: `trust --for` without `--tools` errors, `GET /health` `device` optional via `exposeDeviceInHealth`.
+- `0.8.x` is breaking per owner: `GET /health` `device` optional via `exposeDeviceInHealth`. (Trust window and approval gate removed: if the service is running, everything is allowed.)
 - Tag `v*` triggers `release.yml`: npm → pypi → GitHub Release → macos apps. `SHA256SUMS` verified in `install.sh`.
 
 ## Security boundaries (do not regress)
 
 - `audit_artifact` traversal via `basename` + `isInside` audit dir.
 - `search_files`/`list_dir` per-element `checkPath` keeps protected locations blocked; configured roots are legacy and do not restrict paths.
-- `PUT/DELETE /files` through `authorize()` + audit.
+- `PUT/DELETE /files` with audit (no approval gate).
 - `allowedChat` before `append_inbox` and `/approve`.
 - Token compare via `timingSafeEqual`/`hmac.compare_digest`.
 - `edit_file` preserves UTF-8, literal `$&` handling, atomic writes.

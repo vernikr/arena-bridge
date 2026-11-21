@@ -111,14 +111,12 @@ export function rateOk(limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS) {
 }
 
 /**
- * The inline keyboard under an approval message: approve once, approve for 3 hours, deny.
+ * The inline keyboard under a historical approval message: approve once, deny.
+ * (There is no trust window — if the service is running, everything is allowed.)
  */
 export function approvalKeyboard(id) {
   return [
-    [
-      { text: 'Approve once', callback_data: `approve:${id}` },
-      { text: 'Approve for 3h', callback_data: `approve3h:${id}` },
-    ],
+    [{ text: 'Approve once', callback_data: `approve:${id}` }],
     [{ text: 'Deny', callback_data: `deny:${id}` }],
   ];
 }

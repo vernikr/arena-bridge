@@ -127,23 +127,14 @@
   - Фоновая доставка: действия идут в нужное окно без перехвата фокуса и курсора
   - Вне macOS инструменты десктопа сообщают «не установлено» и не ломают остальное
 
-## Политика доступа и подтверждения
+## Политика доступа
 
-- Кто требует подтверждения: запись, удаление, шелл, управление вашим браузером и десктопом
-- Гейт
-  - Запрос: файл в `~/.arena-bridge/approvals/` (0600), ожидание `approvalWaitSec`
-  - Ответ агенту: `APPROVAL_PENDING` с `approval_id`; после `timeout`/`expired` запрос закрыт
-  - Тайм-аут сохраняется на диск; старые pending-записи истекают при чтении списка или решении
-  - Позднее подтверждение отклоняется, включая «Approve for 3h»; для продолжения нужен новый вызов или окно доверия
-  - Решения: `arena-bridge approve|deny <id>`, `/approve` `/deny` в Telegram, кнопки в приложении
-  - Запрос в Telegram с кнопками: Approve once, Approve for 3h, Deny; после нажатия сообщение
-    переписывается на итог
-- Окно доверия
-  - `arena-bridge trust --for 2h [--tools a,b] [--paths p1,p2]`, `--status [--json]`, `--off`, `--history [--json]`, `--extend [--for DUR]` (+ auto-prune expired `trustState`)
-  - Снимает только требование подтверждения; политика путей остаётся
-  - `--paths` не покрывает `bash` — для команд нужно указать `--tools bash`
-  - «Approve for 3h» открывает окно на 3 часа для того же инструмента
-  - Приложение открывает окно на 3 часа при каждом запуске; событие открытия окна пишется в журнал с источником `launch`
+- Подтверждений нет: если служба запущена, всё разрешено (запись, удаление, шелл,
+  управление вашим браузером и десктопом выполняются без подтверждений)
+- Окна доверия нет: команда `trust`, файлы `trust.json`/`trust.mjs`/`trust.py` удалены
+- Исторические подтверждения (из старых версий) только читаются и завершаются:
+  `arena-bridge approve|deny <id>`, `/approve` `/deny` в Telegram, кнопки в приложении
+  (Approve once, Deny); новых запросов не создаётся
 - Токены
   - Агент не одобряет сам себя: `POST /approvals/:id` требует `localToken`
   - `arena-bridge rotate` (агентский), `arena-bridge rotate --device` (девайсный) — действуют мгновенно
@@ -151,9 +142,9 @@
 
 ## Журнал и артефакты
 
-- `~/.arena-bridge/audit.log` — JSONL: кто, что, когда, с аргументами и статусом; `/health` → `pending_approvals/trust_active/audit_count/log_size/has_public_url`
+- `~/.arena-bridge/audit.log` — JSONL: кто, что, когда, с аргументами и статусом; `/health` → `pending_approvals/audit_count/log_size/has_public_url`
 - Время: в файле — UTC; в окне приложения — системный пояс, формат 12/24 ч по настройкам системы
-- События моста (старт, остановка, туннель, доверенное окно, подтверждения) пишутся как записи журнала
+- События моста (старт, остановка, туннель, подтверждения) пишутся как записи журнала
 - Маскирование: токены Telegram, GitHub, npm, PyPI, API-ключи — `***`
 - Артефакты: `~/.arena-bridge/audit/<entry>/` — `screen.png`, `ax-tree.json`
   - Запись: `ctx.artifact` на вызовах `mac_see`
@@ -177,17 +168,15 @@
   - Жизненный цикл: `init`, `setup`, `start`, `tunnel`, `hub`, `connect`, `service install|uninstall|status|logs|restart`, `restart` (alias)
   - Наблюдение: `approvals [--json] [prune]`, `approve <id>`, `audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json]`, `doctor [--fix] [--json]`, `status [--json]`, `url`/`open`, `version`, `tools`, `prompt`, `logs [-n N] [--json]`, `cleanup [--days N]`, `completion bash|zsh|fish`
   - Конфиг: `config get|set|edit|list|validate|diff [--json]`
-  - Доверие: `trust [--for DUR] [--tools a,b] [--paths p1,p2] [--off|--status|--history|--extend] [--json]`; связь: `telegram`; браузер: `browser list|login <name>|close <name>|clean [--days N] [--json]`
+  - Связь: `telegram`; браузер: `browser list|login <name>|close <name>|clean [--days N] [--json]`
   - Общие флаги: `--mode`, `--device`, `--root` (повторяемый), `--port`, `--host`, `--hub`,
     `--public-url`, `--protocol`, `--bin`, `--authtoken`, `--domain`, `--no-approval`, `--no-shell`
 - Нативное приложение macOS
   - Статус: состояние, версия, режим, число инструментов, публичный адрес, уведомления, Telegram
   - Управление: запуск, остановка, первичная настройка, копирование промпта агенту
-  - Доверенное окно: открыть на 3 ч, закрыть, «действует ещё h:mm»
-  - Подтверждения: Approve, Approve for 3 h, Deny; обновление каждые 6 секунд
+  - Подтверждения (исторические): Approve, Deny; обновление каждые 6 секунд
   - Журнал: команды с аргументами, клик по скриншоту или ax-tree открывает его целиком
     (дерево или исходный JSON), «Сохранить…» — файл с ax-tree и папкой скриншотов
-  - Уведомление macOS «Approval needed» при появлении запроса
   - Первичная настройка: туннель и домен, authtoken, папки агента, токен бота и chat id
 
 ## Эксплуатация
@@ -196,7 +185,7 @@
 - Отдельные «кабинеты» браузера: именованные профили, один вход пользователя, `browser login <name>`
 - Не мешает работе: агент по умолчанию в фоне, окно можно уменьшить и прижать в угол,
   рабочий стол агента — отдельный Space macOS; виртуальная машина не используется
-- Диагностика: `arena-bridge doctor [--fix] [--json]` (интегрирует `config validate` + `service health`), `arena-bridge status [--json]` (config/token/url/trust/pending/port/service), `arena-bridge config validate|diff`, `arena-bridge service logs/status/restart` (real `launchctl kickstart`), `mac_permissions`, логи туннеля и службы
+- Диагностика: `arena-bridge doctor [--fix] [--json]` (интегрирует `config validate` + `service health`), `arena-bridge status [--json]` (config/token/url/pending/port/service), `arena-bridge config validate|diff`, `arena-bridge service logs/status/restart` (real `launchctl kickstart`), `mac_permissions`, логи туннеля и службы
 
 ## Ограничения
 

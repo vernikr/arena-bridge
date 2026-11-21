@@ -330,7 +330,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_click',
       description: 'Click on the screen: an element id from mac_see, a visible text, or coordinates.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           on: { type: 'string', description: 'element id from mac_see' },
@@ -369,7 +369,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_type',
       description: 'Type text into the focused element of an app window.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           text: { type: 'string' },
@@ -401,7 +401,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_key',
       description: 'Press a key or a chord in an app: Return, Tab, Escape, cmd+s, cmd+shift+p, arrows, etc.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           key: { type: 'string', description: 'key name or chord, e.g. "cmd+s"' },
@@ -431,7 +431,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_scroll',
       description: 'Scroll up/down in the focused app or on a given element.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           direction: { type: 'string', description: 'up or down' },
@@ -464,7 +464,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_move',
       description: 'Move the mouse pointer to coordinates (no click).',
-      approval: true,
+      approval: false,
       schema: S({ x: { type: 'number' }, y: { type: 'number' } }, ['x', 'y']),
       required: ['x', 'y'],
       handler: async (args) => {
@@ -484,7 +484,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_drag',
       description: 'Drag from one point to another (sliders, files, text selection).',
-      approval: true,
+      approval: false,
       schema: S({ from_x: { type: 'number' }, from_y: { type: 'number' }, to_x: { type: 'number' }, to_y: { type: 'number' } }),
       required: ['from_x', 'from_y', 'to_x', 'to_y'],
       handler: async (args) => {
@@ -560,7 +560,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_app_launch',
       description: 'Launch an application by name.',
-      approval: true,
+      approval: false,
       schema: S({ name: { type: 'string' } }, ['name']),
       required: ['name'],
       handler: async (args) => {
@@ -580,7 +580,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_app_focus',
       description: 'Bring an application to the front.',
-      approval: true,
+      approval: false,
       schema: S({ name: { type: 'string' } }, ['name']),
       required: ['name'],
       handler: async (args) => {
@@ -600,7 +600,7 @@ export function macTools(cfg = {}) {
     {
       name: 'mac_app_quit',
       description: 'Quit an application.',
-      approval: true,
+      approval: false,
       schema: S({ name: { type: 'string' } }, ['name']),
       required: ['name'],
       handler: async (args) => {
@@ -659,7 +659,7 @@ export function macTools(cfg = {}) {
       name: 'mac_set',
       description:
         'Set the value of an element directly through the accessibility API — fills a field without focusing the window and without simulated keystrokes.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           on: { type: 'string', description: 'element id from mac_see / mac_element' },
@@ -723,7 +723,7 @@ export function macTools(cfg = {}) {
       name: 'mac_menu_click',
       description:
         'Trigger a menu item by name (e.g. "Save", "Copy Link") or a nested path ("File > Export") — no pointer, no coordinates.',
-      approval: true,
+      approval: false,
       schema: S(
         {
           item: { type: 'string', description: 'name of the menu item' },
@@ -795,7 +795,7 @@ export function macTools(cfg = {}) {
       name: 'mac_space_switch',
       description:
         'Move to another Space so the agent works on a separate virtual desktop and the user keeps the screen they are on.',
-      approval: true,
+      approval: false,
       schema: S({ to: { type: 'string', description: 'space id or index from mac_spaces' } }, ['to']),
       required: ['to'],
       handler: async (args, ctx) => {

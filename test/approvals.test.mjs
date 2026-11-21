@@ -14,11 +14,9 @@ after(() => {
 });
 
 const { CONFIG_DIR, APPROVALS_DIR, ensureDirs } = await import('../src/config.mjs');
-const { requestApproval, listApprovals, decide, settle } = await import('../src/approvals.mjs');
-const { TRUST_PATH } = await import('../src/trust.mjs');
+const { listApprovals, decide, settle } = await import('../src/approvals.mjs');
 assert.equal(CONFIG_DIR, home);
 assert.equal(APPROVALS_DIR, path.join(home, 'approvals'));
-assert.equal(TRUST_PATH, path.join(home, 'trust.json'));
 ensureDirs();
 
 const read = (id) => JSON.parse(fs.readFileSync(path.join(APPROVALS_DIR, `${id}.json`), 'utf8'));
@@ -35,21 +33,6 @@ function systemDecision(rec, status) {
   assert.ok(Number.isInteger(rec.decidedAt) && rec.decidedAt >= rec.createdAt);
 }
 
-test('wait=0 with TTL=900 persists timeout', async () => {
-  const result = await requestApproval('shell', {}, { approvalWaitSec: 0, approvalTtlSec: 900 });
-  assert.equal(result.approved, false);
-  systemDecision(result.rec, 'timeout');
-  assert.equal(result.rec.expiresAt - result.rec.createdAt, 900000);
-  assert.deepEqual(read(result.rec.id), result.rec);
-});
-
-test('TTL=0 returns and persists expired', async () => {
-  const result = await requestApproval('shell', {}, { approvalWaitSec: 0, approvalTtlSec: 0 });
-  assert.equal(result.approved, false);
-  assert.deepEqual(read(result.rec.id), result.rec);
-  systemDecision(result.rec, 'expired');
-});
-
 test('list lazily persists expiry of pending records', () => {
   seed('list-expired');
   const rec = listApprovals().find((item) => item.id === 'list-expired');
@@ -63,13 +46,11 @@ test('decide rejects expired pending without listing first', () => {
   systemDecision(read('decide-expired'), 'expired');
 });
 
-test('settle rejects expired pending and does not create trust', () => {
+test('settle rejects expired pending', () => {
   seed('settle-expired');
-  assert.equal(fs.existsSync(TRUST_PATH), false);
-  assert.deepEqual(settle('settle-expired', 'approve', 'test', { trustSec: 900 }),
+  assert.deepEqual(settle('settle-expired', 'approve', 'test'),
     { ok: false, error: 'already expired' });
   systemDecision(read('settle-expired'), 'expired');
-  assert.equal(fs.existsSync(TRUST_PATH), false);
 });
 
 for (const [decision, status] of [['approve', 'approved'], ['deny', 'denied']]) {

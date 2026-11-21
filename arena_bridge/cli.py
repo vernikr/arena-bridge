@@ -34,6 +34,19 @@ def _base_dir(cfg):
     return roots[0]
 
 
+def _parse_duration_ms(value) -> int:
+    """'30m' | '2h' | '1d' | '90' (minutes) -> milliseconds."""
+    import re
+    if value is None or value is True:
+        return 60 * 60 * 1000
+    raw = str(value).strip().lower()
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(s|m|h|d)?$", raw)
+    if not m:
+        raise ValueError(f"cannot parse duration: {value}")
+    factor = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}[m.group(2) or "m"]
+    return int(float(m.group(1)) * factor)
+
+
 def cmd_init(args):
     ensure_dirs()
     cfg = load_config() if config_path().exists() else defaults()
@@ -66,7 +79,7 @@ def cmd_init(args):
     print(f"  device token: {cfg['deviceToken']}")
     print(f"  device name : {cfg['device']}")
     print(f"  roots       : {', '.join(cfg['roots'])}")
-    print(f"  approval    : {'required for side-effecting tools' if cfg.get('requireApproval', True) else 'DISABLED'}")
+    print(f"  approval    : DISABLED (if the service is running, everything is allowed)")
     print("\nNext: arena-bridge start   (then expose it with a tunnel)")
 
 
@@ -78,17 +91,6 @@ def cmd_start(args):
     if args.public_url:
         cfg["publicUrl"] = args.public_url
         save_config(cfg)
-    # Auto-open blanket trust window on start (3h, all tools, any agent)
-    try:
-        from .trust import save_trust, trust_state
-        st = trust_state()
-        if not st.get("active"):
-            import time
-            now = int(time.time() * 1000)
-            save_trust({"enabled": True, "until": now + 3*3600*1000, "tools": [], "paths": [], "createdAt": now})
-            print("✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed")
-    except Exception:
-        pass
     from .server import serve
 
     engine = Engine(cfg, _base_dir(cfg))
@@ -127,17 +129,6 @@ def cmd_tunnel(args):
     port = args.port or int(cfg.get("port") or 8787)
     protocol = args.protocol or "http2"
     binary = args.bin or "cloudflared"
-    # Auto-open blanket trust window on start (3h, all tools, any agent)
-    try:
-        from .trust import save_trust, trust_state
-        st = trust_state()
-        if not st.get("active"):
-            import time
-            now = int(time.time() * 1000)
-            save_trust({"enabled": True, "until": now + 3*3600*1000, "tools": [], "paths": [], "createdAt": now})
-            print("✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed")
-    except Exception:
-        pass
     engine = Engine(cfg, _base_dir(cfg))
 
     server = None
@@ -295,79 +286,6 @@ def cmd_approve(args):
         print(f"✗ {r.get('error')}", file=sys.stderr)
         sys.exit(1)
     print(f"✓ {r['approval']['tool']} {r['approval']['status']} ({args.approval_id})")
-
-
-def cmd_trust(args):
-    from .trust import clear_trust, parse_duration, save_trust, trust_state
-
-    state = trust_state()
-    if getattr(args, 'extend', False):
-        st = trust_state()
-        if not st.get("active"):
-            print("no active trust window to extend — use arena-bridge trust --for 2h", file=sys.stderr); sys.exit(1)
-        try: ms = parse_duration(getattr(args, 'for_', None) or getattr(args, 'extend', '1h') or '1h')
-        except: ms = 3600000
-        saved = save_trust({**st, "until": st["until"] + ms, "enabled": True})
-        when = __import__('datetime').datetime.fromtimestamp(saved["until"]/1000).strftime("%Y-%m-%d %H:%M:%S")
-        print(f"✓ trust window extended: until {when} (+{round(ms/60000)} min)")
-        return
-    if getattr(args, 'history', False):
-        from pathlib import Path as _P
-        from .config import config_dir
-        hist = config_dir() / "trust.history.json"
-        if not hist.exists(): print("no trust history yet"); return
-        try:
-            data = __import__('json').loads(hist.read_text())
-            if getattr(args, 'json', False): print(__import__('json').dumps(data, indent=2, default=str))
-            else:
-                for h in data[-20:]: print(f"{h.get('until')} {','.join(h.get('tools') or []) or 'all'} {','.join(h.get('paths') or [])} {h.get('by','')}")
-        except Exception as e: print(f"cannot read history: {e}", file=sys.stderr)
-        return
-    if args.off:
-        clear_trust()
-        print("✓ trust window cleared — every side-effecting action needs approval again")
-        return
-    if args.status or not (args.for_ or args.tools or args.paths):
-        if args.json:
-            remaining = int(max(0, (state.get("until") - int(time.time() * 1000)) / 1000)) if state.get("active") else 0
-            print(
-                json.dumps(
-                    {
-                        "enabled": bool(state.get("active")),
-                        "until": state.get("until") if state.get("active") else None,
-                        "remaining_sec": remaining,
-                        "tools": state.get("tools") or [],
-                        "paths": state.get("paths") or [],
-                    }
-                )
-            )
-            return
-        if not state.get("active"):
-            print("no active trust window (every side-effecting action needs approval)")
-        else:
-            when = datetime.fromtimestamp(state["until"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-            print(f"✓ trust window active until {when}")
-            print(f"  tools: {', '.join(state['tools']) if state['tools'] else 'all side-effecting tools'}")
-            print(f"  paths: {', '.join(state['paths']) if state['paths'] else 'no path restriction'}")
-        return
-
-    ms = parse_duration(args.for_ or "1h")
-    tools = [t.strip() for t in (args.tools or "").split(",") if t.strip()]
-    paths = [str(Path(expand_home(p.strip())).resolve()) for p in (args.paths or "").split(",") if p.strip()]
-    saved = save_trust(
-        {
-            "enabled": True,
-            "until": int(time.time() * 1000) + ms,
-            "tools": tools,
-            "paths": paths,
-            "createdAt": int(time.time() * 1000),
-        }
-    )
-    when = datetime.fromtimestamp(saved["until"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"✓ trust window: until {when} ({round(ms / 60000)} min)")
-    print(f"  tools: {', '.join(tools) if tools else 'all side-effecting tools'}")
-    print(f"  paths: {', '.join(paths) if paths else 'no path restriction'}")
-    print('  the agent can now act without asking; run "arena-bridge trust --off" to stop')
 
 
 def cmd_setup(args):
@@ -707,8 +625,7 @@ def cmd_audit(args):
     entries = tail_audit(min(args.n*5, 500))
     if getattr(args, 'since', None):
         try:
-            from .trust import parse_duration
-            ms = parse_duration(str(args.since))
+            ms = _parse_duration_ms(str(args.since))
             cutoff = __import__('time').time()*1000 - ms
             def _ts(e):
                 ts = e.get('ts')
@@ -942,7 +859,7 @@ def cmd_doctor(args):
         ("device token", bool(cfg.get("deviceToken")), "present" if cfg.get("deviceToken") else "MISSING — run init"),
         ("mode", bool(cfg.get("mode")), str(cfg.get("mode"))),
         ("filesystem paths", True, "not restricted by configured roots"),
-        ("approval gate", cfg.get("requireApproval", True) is not False, "on" if cfg.get("requireApproval", True) else "OFF (dangerous)"),
+        ("approval gate", True, "disabled — if the service is running, everything is allowed"),
         ("shell", cfg.get("allowShell", True) is not False, "on" if cfg.get("allowShell", True) else "off"),
         ("protected paths", bool(cfg.get("protected")), f"{len(cfg.get('protected') or [])} entries"),
     ]
@@ -1005,17 +922,12 @@ def cmd_doctor(args):
 def cmd_status(args):
     import json as _j
     from .config import config_dir, config_path, load_config
-    from .trust import trust_state
     from .approvals import list_approvals
     cfg = load_config()
     checks=[]
     checks.append(("config", config_path().exists(), str(config_dir()) if config_path().exists() else "missing — run arena-bridge init"))
     checks.append(("token", bool(cfg.get("token")), "present" if cfg.get("token") else "MISSING"))
     checks.append(("publicUrl", bool(cfg.get("publicUrl")), cfg.get("publicUrl") or "not set — run arena-bridge tunnel"))
-    try:
-        st=trust_state()
-        checks.append(("trust window", bool(st.get("active")), f"active until {st.get('until')}" if st.get("active") else "none (approvals required)"))
-    except Exception: pass
     try:
         pending=len([a for a in list_approvals() if a.get("status")=="pending"])
         checks.append(("pending approvals", True, f"{pending} pending"))
@@ -1039,10 +951,10 @@ def cmd_status(args):
     except Exception: pass
     is_json=bool(getattr(args,'json',False))
     if is_json:
-        print(_j.dumps({"ok": all(c[1] for c in checks if c[0] not in ("trust window","pending approvals","API port","service")), "checks": [{"name":n,"passed":bool(ok),"detail":d} for n,ok,d in checks], "publicUrl": cfg.get("publicUrl")}, indent=2))
+        print(_j.dumps({"ok": all(c[1] for c in checks if c[0] not in ("pending approvals","API port","service")), "checks": [{"name":n,"passed":bool(ok),"detail":d} for n,ok,d in checks], "publicUrl": cfg.get("publicUrl")}, indent=2))
     else:
         for n,ok,d in checks:
-            mark="✓" if ok else ("○" if n in ("trust window","publicUrl") else "✗")
+            mark="✓" if ok else ("○" if n in ("publicUrl",) else "✗")
             print(f"{mark} {n:18} {d}")
         print(f"\nPublic URL: {cfg.get('publicUrl') or '(not set)'}")
         if not cfg.get("publicUrl"): print("Run: arena-bridge tunnel  or  arena-bridge service install")
@@ -1060,7 +972,7 @@ def build_parser():
     init.add_argument("--host")
     init.add_argument("--hub")
     init.add_argument("--public-url")
-    init.add_argument("--no-approval", action="store_true", help="disable the human approval gate")
+    init.add_argument("--no-approval", action="store_true", help="(deprecated, no-op) approvals are disabled — if the service is running, everything is allowed")
     init.add_argument("--no-shell", action="store_true", help="disable shell execution")
     init.set_defaults(func=cmd_init)
 
@@ -1101,17 +1013,6 @@ def build_parser():
     approve.add_argument("approval_id")
     approve.add_argument("--deny", action="store_true")
     approve.set_defaults(func=cmd_approve)
-
-    trust = sub.add_parser("trust", help="open a trust window so the agent needs no approvals")
-    trust.add_argument("--for", dest="for_", help="duration: 30m, 2h, 1d (default 1h)")
-    trust.add_argument("--tools", help="comma separated list of tools to trust (default: all)")
-    trust.add_argument("--paths", help="comma separated list of paths to trust (bash is not covered)")
-    trust.add_argument("--off", action="store_true", help="close the trust window")
-    trust.add_argument("--extend", nargs="?", const="1h", help="extend current trust window (--for 1h)")
-    trust.add_argument("--history", action="store_true", help="show past trust windows")
-    trust.add_argument("--status", action="store_true", help="show the current trust window")
-    trust.add_argument("--json", action="store_true", help="print the trust window as JSON")
-    trust.set_defaults(func=cmd_trust)
 
     rotate = sub.add_parser("rotate", help="generate a new agent token")
     rotate.add_argument("--device", action="store_true", help="rotate the device token instead")
@@ -1177,7 +1078,7 @@ def build_parser():
     setup.add_argument("--authtoken")
     setup.add_argument("--domain")
     setup.add_argument("--public-url")
-    setup.add_argument("--no-approval", action="store_true")
+    setup.add_argument("--no-approval", action="store_true", help="(deprecated, no-op)")
     setup.add_argument("--no-shell", action="store_true")
     setup.set_defaults(func=cmd_setup)
 

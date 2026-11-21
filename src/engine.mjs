@@ -4,11 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkPath, resolveTarget, isInside } from './policy.mjs';
 import { audit, saveArtifact, tailAudit, readArtifact, auditDir } from './audit.mjs';
-import { requestApproval } from './approvals.mjs';
 import { loadConfig, CONFIG_PATH } from './config.mjs';
 import { BrowserManager, cleanupOrphanChromes } from './browser.mjs';
 import { macTools } from './mac.mjs';
-import { trustState, trustAllows } from './trust.mjs';
 import { errorResponse } from './errors.mjs';
 import { validateArgs } from './schema.mjs';
 import { telegramTools } from './telegram.mjs';
@@ -79,7 +77,6 @@ export class Engine {
       return errorResponse('INVALID_ARGS', { message: valid.message, field: valid.field });
     }
     const started = Date.now();
-    let approval = null;
     const entryId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(name).replace(/[^\w.-]/g, '_')}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
@@ -93,43 +90,13 @@ export class Engine {
       return saved;
     };
 
-    let needApproval = tool.approvalFor ? !!tool.approvalFor(args, this) : !!tool.approval;
-    if (this.cfg.requireApproval === false) needApproval = false;
-    if (requireApproval === true) needApproval = true;
-    else if (requireApproval === false) needApproval = false;
+    // No approval gate: if the service is running, everything is allowed.
+    // The requireApproval option is kept for backwards compatibility and ignored.
+    void requireApproval;
 
     const artifactsOf = () => (ctx.artifacts.length ? ctx.artifacts : undefined);
 
-    if (needApproval) {
-      const trust = trustState();
-      if (trustAllows(trust, tool.name, args, this.cfg)) {
-        const res = await tool.handler(args, ctx);
-        record({ id: entryId, status: res.ok ? 'ok' : 'error', duration_ms: Date.now() - started, via: 'trust_window', exit_code: res.exit_code, error: res.ok ? undefined : res.error, artifacts: artifactsOf() });
-        return res;
-      }
-      approval = await requestApproval(tool.name, args, this.cfg);
-      if (!approval.approved) {
-        const status = approval.rec?.status || 'denied';
-        const pending = status === 'pending' || status === 'timeout' || status === 'expired';
-        const code = pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED';
-        record({ id: entryId, status: 'approval_denied', approval_status: status, error: code, via: 'approval', duration_ms: Date.now() - started });
-        return {
-          ok: false,
-          error: code,
-          status,
-          pending,
-          reason: pending
-            ? `approval wait ended (${status}) for tool "${tool.name}"; this request is closed`
-            : `human ${status} tool "${tool.name}"`,
-          approval_id: approval.rec?.id || null,
-          hint: pending
-            ? 'This approval_id is closed and cannot be approved. Ask the user to open a trust window: arena-bridge trust --for 1h. Then retry the call once, or arrange a fresh call for approval while it is waiting.'
-            : 'The user declined this action. Do not retry it; ask what to do instead.',
-        };
-      }
-    }
-
-    const via = approval ? 'approval' : 'direct';
+    const via = 'direct';
     try {
       const res = await tool.handler(args, ctx);
       record({

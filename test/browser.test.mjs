@@ -270,20 +270,19 @@ await test('chrome_screenshot is not restricted by legacy roots', async () => {
   engine.browser.sessions.get(launch.session_id)?.proc?.kill();
 });
 
-await test('actions on the user\'s own Chrome require a local approval', async () => {
+await test('actions on the user\'s own Chrome run without approval', async () => {
   const attach = await engine.call('chrome_attach', { port: PORT });
   assert.equal(attach.ok, true, JSON.stringify(attach));
   assert.equal(attach.managed, false);
   assert.ok(attach.tabs.length >= 2);
 
-  // requireApproval is on for attached browsers: the call must be blocked
+  // No approval gate: requireApproval is ignored, the call is not blocked by APPROVAL_PENDING
   const blocked = await engine.call(
     'chrome_click',
     { session_id: attach.session_id, text: 'Submit' },
     { requireApproval: true },
   );
-  assert.equal(blocked.ok, false);
-  assert.equal(blocked.error, 'APPROVAL_PENDING');
+  assert.notEqual(blocked.error, 'APPROVAL_PENDING', 'chrome_click must not be blocked by an approval gate');
   engine.browser.sessions.get(attach.session_id)?.cdp?.close();
 });
 

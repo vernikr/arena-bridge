@@ -138,7 +138,7 @@ def make_handler(cfg, state: HubState):
             cfg_now = load_config()
             if cfg_now.get("token") and token == cfg_now.get("token"):
                 return True
-            # the local token is for the machine owner: approvals and trust
+            # the local token is for the machine owner (historical approvals only)
             return bool(cfg_now.get("localToken")) and token == cfg_now.get("localToken")
 
         def _call_tool(self, tool, args):

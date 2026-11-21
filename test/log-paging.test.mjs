@@ -1,5 +1,5 @@
 /**
- * Work log lifecycle and paging: trust and service events, cursor paging over 100 000 records,
+ * Work log lifecycle and paging: service events, cursor paging over 100 000 records,
  * rotation and retention, HTTP routes. Run with: node --test test/log-paging.test.mjs
  */
 import assert from 'node:assert/strict';
@@ -17,31 +17,10 @@ after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const { saveConfig, loadConfig, DEFAULTS } = await import('../src/config.mjs');
 const { Engine } = await import('../src/engine.mjs');
 const { createDirectServer } = await import('../src/direct.mjs');
-const { openTrust, closeTrust, reconcileTrust, TRUST_PATH } = await import('../src/trust.mjs');
 const { bridgeEvent, tunnelEvent } = await import('../src/lifecycle.mjs');
 const {
   audit, auditPage, auditPath, segments, startCursor, headCursor, tailAudit, findEntry, lean, rotateAudit, pruneAudit,
 } = await import('../src/audit.mjs');
-
-const trustEvents = () => tailAudit(10_000).filter((e) => e.kind === 'trust').map((e) => `${e.status}:${e.via}`);
-
-test('trust logs keep user actions and omit automatic launch/expiry events', () => {
-  const now = Date.now();
-  openTrust({ until: now + 3_600_000, tools: [], paths: [] }, { via: 'launch', source: { channel: 'local' } });
-  openTrust({ until: now + 7_200_000, tools: [], paths: [] }, { via: 'cli' });
-  closeTrust({ via: 'cli' });
-  openTrust({ until: now + 60_000, tools: [], paths: [] }, { via: 'approval' });
-  assert.equal(reconcileTrust(now + 3_600_000), true);
-  assert.equal(reconcileTrust(now + 3_600_000), false);
-  fs.writeFileSync(TRUST_PATH, JSON.stringify({ enabled: true, until: now + 3_600_000, tools: [], paths: [] }));
-  reconcileTrust();
-  reconcileTrust();
-  fs.rmSync(TRUST_PATH);
-  reconcileTrust();
-  assert.deepEqual(trustEvents(), [
-    'extend:cli', 'close:cli', 'open:approval', 'open:external', 'close:external',
-  ]);
-});
 
 test('automatic bridge and tunnel lifecycle events are not audit entries', () => {
   delete process.env.XPC_SERVICE_NAME;

@@ -25,13 +25,11 @@ def cleanup():
 
 atexit.register(cleanup)
 
-from arena_bridge.approvals import decide, list_approvals, request_approval, settle
+from arena_bridge.approvals import decide, list_approvals, settle
 from arena_bridge.config import approvals_dir, config_dir, ensure_dirs
-from arena_bridge.trust import trust_path
 
 assert config_dir() == _home
 assert approvals_dir() == _home / "approvals"
-assert trust_path() == _home / "trust.json"
 ensure_dirs()
 
 
@@ -54,19 +52,6 @@ class ApprovalsTests(unittest.TestCase):
         self.assertIsInstance(rec["decidedAt"], int)
         self.assertGreaterEqual(rec["decidedAt"], rec["createdAt"])
 
-    def test_wait_zero_persists_timeout(self):
-        result = request_approval("shell", {}, {"approvalWaitSec": 0, "approvalTtlSec": 900})
-        self.assertFalse(result["approved"])
-        self.assert_system_decision(result["rec"], "timeout")
-        self.assertEqual(result["rec"]["expiresAt"] - result["rec"]["createdAt"], 900000)
-        self.assertEqual(read(result["rec"]["id"]), result["rec"])
-
-    def test_ttl_zero_returns_and_persists_expired(self):
-        result = request_approval("shell", {}, {"approvalWaitSec": 0, "approvalTtlSec": 0})
-        self.assertFalse(result["approved"])
-        self.assertEqual(read(result["rec"]["id"]), result["rec"])
-        self.assert_system_decision(result["rec"], "expired")
-
     def test_list_persists_expiry(self):
         seed("list-expired")
         rec = next(rec for rec in list_approvals() if rec["id"] == "list-expired")
@@ -79,13 +64,11 @@ class ApprovalsTests(unittest.TestCase):
                          {"ok": False, "error": "already expired"})
         self.assert_system_decision(read("decide-expired"), "expired")
 
-    def test_settle_rejects_expired_without_creating_trust(self):
+    def test_settle_rejects_expired(self):
         seed("settle-expired")
-        self.assertFalse(trust_path().exists())
-        self.assertEqual(settle("settle-expired", "approve", "test", trust_sec=900),
+        self.assertEqual(settle("settle-expired", "approve", "test"),
                          {"ok": False, "error": "already expired"})
         self.assert_system_decision(read("settle-expired"), "expired")
-        self.assertFalse(trust_path().exists())
 
     def assert_live_decision(self, decision, status):
         approval_id = f"live-{decision}"

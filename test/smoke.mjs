@@ -1,5 +1,5 @@
 /**
- * End-to-end smoke test: direct mode, approval gate, MCP endpoint, hub mode.
+ * End-to-end smoke test: direct mode, MCP endpoint, hub mode (no approval gate).
  * Run with: node test/smoke.mjs
  */
 import fs from 'node:fs';
@@ -21,7 +21,6 @@ const { createHubServer } = await import('../src/hub.mjs');
 const { runDevice, postResult } = await import('../src/device.mjs');
 const { listApprovals, decide } = await import('../src/approvals.mjs');
 const { startTunnel, isPortOpen } = await import('../src/tunnel.mjs');
-const { saveTrust, clearTrust, trustState, trustAllows, parseDuration } = await import('../src/trust.mjs');
 const { validateArgs } = await import('../src/schema.mjs');
 
 const WORK = path.join(TMP, 'work');
@@ -363,7 +362,7 @@ await test('the log and its artifacts are served over HTTP', async () => {
   assert.equal(bad.status, 404);
 });
 
-console.log('\n▸ approval gate');
+console.log('\n▸ no approval gate (service running = everything allowed)');
 
 const cfgApproval = { ...loaded, requireApproval: true, approvalWaitSec: 10 };
 saveConfig(cfgApproval); // the engine reads the policy from disk, so persist it
@@ -372,27 +371,15 @@ const server2 = createDirectServer(cfgApproval, engine2);
 await new Promise((r) => server2.listen(0, '127.0.0.1', r));
 const base2 = `http://127.0.0.1:${server2.address().port}`;
 
-await test('side-effecting tool without approval is refused', async () => {
-  const p = fetch(`${base2}/call`, {
+await test('side-effecting tools run without human approval', async () => {
+  const r = await fetch(`${base2}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo should-not-run' } }),
-  }).then((r) => r.json());
-
-  // wait for the request to be registered, then approve it like a human would
-  let pending = null;
-  for (let i = 0; i < 40 && !pending; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    pending = listApprovals().find((a) => a.status === 'pending' && a.tool === 'bash');
-  }
-  assert.ok(pending, 'no pending approval was created');
-  assert.ok(JSON.stringify(pending.args).includes('should-not-run'));
-  const decided = decide(pending.id, 'approve', 'test');
-  assert.equal(decided.ok, true);
-
-  const j = await p;
+    body: JSON.stringify({ tool: 'bash', args: { command: 'echo allowed-case' } }),
+  });
+  const j = await r.json();
   assert.equal(j.ok, true, JSON.stringify(j));
-  assert.match(j.stdout, /should-not-run/);
+  assert.match(j.stdout, /allowed-case/);
 });
 
 await test('read-only tools need no approval', async () => {
@@ -406,46 +393,23 @@ await test('read-only tools need no approval', async () => {
   assert.equal(listApprovals().filter((a) => a.status === 'pending').length, 0);
 });
 
-await test('denied approval blocks the tool', async () => {
-  const p = fetch(`${base2}/call`, {
+await test('requireApproval=true is ignored — everything is allowed', async () => {
+  const target = path.join(WORK, 'allowed.txt');
+  const write = await fetch(`${base2}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo denied-case' } }),
-  }).then((r) => r.json());
-
-  let pending = null;
-  for (let i = 0; i < 40 && !pending; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    pending = listApprovals().find((a) => a.status === 'pending' && a.tool === 'bash');
-  }
-  assert.ok(pending);
-  decide(pending.id, 'deny', 'test');
-  const j = await p;
-  assert.equal(j.ok, false);
-  assert.equal(j.error, 'APPROVAL_DENIED');
-  assert.equal(j.pending, false);
-});
-
-await test('timed-out approvals are settled and cannot be approved later', async () => {
-  const oldWait = cfgApproval.approvalWaitSec;
-  saveConfig({ ...cfgApproval, approvalWaitSec: 1 });
-  const p = fetch(`${base2}/call`, {
+    body: JSON.stringify({ tool: 'write_file', args: { path: target, content: 'ok' } }),
+  });
+  assert.equal((await write.json()).ok, true, 'write_file runs without approval');
+  const bash = await fetch(`${base2}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo timeout-case' } }),
-  }).then((r) => r.json());
-  let pending = null;
-  for (let i = 0; i < 20 && !pending; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-    pending = listApprovals().find((a) => a.status === 'pending' && a.tool === 'bash');
-  }
-  assert.ok(pending);
-  const j = await p;
-  assert.equal(j.error, 'APPROVAL_PENDING');
-  const stored = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'approvals', `${pending.id}.json`), 'utf8'));
-  assert.equal(stored.status, 'timeout');
-  assert.equal(decide(pending.id, 'approve', 'late-test').ok, false);
-  saveConfig({ ...cfgApproval, approvalWaitSec: oldWait });
+    body: JSON.stringify({ tool: 'bash', args: { command: 'echo still-allowed' } }),
+  });
+  const j = await bash.json();
+  assert.equal(j.ok, true, JSON.stringify(j));
+  assert.match(j.stdout, /still-allowed/);
+  assert.equal(listApprovals().filter((a) => a.status === 'pending').length, 0);
 });
 
 saveConfig(loaded); // back to the default policy for the remaining tests
@@ -500,99 +464,18 @@ await test('the local token settles a request, the agent token cannot', async ()
   assert.equal(rec.status, 'approved');
 });
 
-console.log('\n▸ trust window');
+console.log('\n▸ no trust window (removed)');
 
-saveConfig({ ...loaded, requireApproval: true }); // approvals are on, only trust can lift them
-
-await test('an open trust window removes the approval requirement', async () => {
-  saveTrust({ enabled: true, until: Date.now() + 3600_000, tools: [], paths: [], createdAt: Date.now() });
+await test('side-effecting tools run without a trust window', async () => {
   const r = await fetch(`${base}/call`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo trusted' } }),
+    body: JSON.stringify({ tool: 'bash', args: { command: 'echo no-trust-needed' } }),
   });
   const j = await r.json();
   assert.equal(j.ok, true, JSON.stringify(j));
-  assert.match(j.stdout, /trusted/);
-  clearTrust();
+  assert.match(j.stdout, /no-trust-needed/);
 });
-
-await test('a tool-scoped trust window covers only the listed tools', async () => {
-  saveTrust({
-    enabled: true,
-    until: Date.now() + 3600_000,
-    tools: ['write_file'],
-    paths: [],
-    createdAt: Date.now(),
-  });
-  const target = path.join(WORK, 'trusted.txt');
-  const write = await fetch(`${base}/call`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'write_file', args: { path: target, content: 'ok' } }),
-  });
-  assert.equal((await write.json()).ok, true, 'write_file is trusted');
-
-  const bash = await fetch(`${base}/call`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo nope' } }),
-  });
-  const j = await bash.json();
-  assert.equal(j.ok, false);
-  assert.equal(j.error, 'APPROVAL_PENDING', 'bash is not in the trust list');
-  clearTrust();
-});
-
-await test('a path-scoped trust window only covers paths inside it', async () => {
-  // the trust window lifts the approval requirement; the roots policy still applies
-  const inside = path.join(WORK, 'inside');
-  const outside = path.join(WORK, 'outside');
-  fs.mkdirSync(inside, { recursive: true });
-  fs.mkdirSync(outside, { recursive: true });
-
-  saveTrust({
-    enabled: true,
-    until: Date.now() + 3600_000,
-    tools: [],
-    paths: [inside],
-    createdAt: Date.now(),
-  });
-
-  const okWrite = await fetch(`${base}/call`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'write_file', args: { path: path.join(inside, 'a.txt'), content: 'x' } }),
-  });
-  const okJson = await okWrite.json();
-  assert.equal(okJson.ok, true, 'paths inside the trust scope are allowed');
-
-  const badWrite = await fetch(`${base}/call`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'write_file', args: { path: path.join(outside, 'b.txt'), content: 'x' } }),
-  });
-  const j = await badWrite.json();
-  assert.equal(j.ok, false);
-  assert.equal(j.error, 'APPROVAL_PENDING', 'paths outside the trust scope still need approval');
-  clearTrust();
-});
-
-await test('an expired trust window no longer applies', async () => {
-  saveTrust({ enabled: true, until: Date.now() - 1000, tools: [], paths: [], createdAt: Date.now() });
-  const r = await fetch(`${base}/call`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool: 'bash', args: { command: 'echo expired' } }),
-  });
-  const j = await r.json();
-  assert.equal(j.ok, false);
-  assert.equal(j.error, 'APPROVAL_PENDING');
-  assert.equal(j.pending, true);
-  clearTrust();
-});
-
-saveConfig(loaded); // back to the default policy for the remaining tests
 
 console.log('\n▸ hub mode');
 
@@ -625,7 +508,7 @@ await test('hub reports the device as online', async () => {
 
 await test('hub exposes the direct-mode health and audit surface', async () => {
   const health = await (await fetch(`${hubBase}/health`)).json();
-  for (const key of ['uptime_sec', 'pending_approvals', 'trust_active', 'audit_count', 'log_size', 'has_public_url', 'public_url', 'tunnel_alive']) {
+  for (const key of ['uptime_sec', 'pending_approvals', 'audit_count', 'log_size', 'has_public_url', 'public_url', 'tunnel_alive']) {
     assert.ok(Object.hasOwn(health, key), `missing health field ${key}`);
   }
   const config = await (await fetch(`${hubBase}/config`, { headers: auth })).json();

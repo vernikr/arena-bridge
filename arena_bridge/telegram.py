@@ -140,7 +140,6 @@ def approval_keyboard(approval_id: str):
     return [
         [
             {"text": "Approve once", "callback_data": f"approve:{approval_id}"},
-            {"text": "Approve for 3h", "callback_data": f"approve3h:{approval_id}"},
         ],
         [{"text": "Deny", "callback_data": f"deny:{approval_id}"}],
     ]

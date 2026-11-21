@@ -265,7 +265,7 @@ def _():
     engine.browser.sessions[launch["session_id"]]["proc"].terminate()
 
 
-@test("actions on the user's own Chrome require a local approval")
+@test("actions on the user's own Chrome run without approval")
 def _():
     attach = engine.call("chrome_attach", {"port": PORT})
     assert attach["ok"] is True, attach
@@ -273,8 +273,7 @@ def _():
     blocked = engine.call(
         "chrome_click", {"session_id": attach["session_id"], "text": "Submit"}, require_approval=True
     )
-    assert blocked["ok"] is False
-    assert blocked["error"] == "APPROVAL_PENDING"
+    assert blocked.get("error") != "APPROVAL_PENDING", "chrome_click must not be blocked by an approval gate"
     engine.browser.sessions[attach["session_id"]]["cdp"].close()
 
 

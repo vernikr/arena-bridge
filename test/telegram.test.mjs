@@ -158,34 +158,26 @@ await test('a chat command is parsed', () => {
   assert.equal(tg.parseCommand('привет'), null);
 });
 
-await test('a pending approval is announced in Telegram', async () => {
+await test('side-effecting tools run without approval (no Telegram message)', async () => {
   const before = sent.length;
   saveConfig({ ...cfg, requireApproval: true, approvalWaitSec: 2 });
   const r = await engine.call('bash', { command: 'echo hi' });
   saveConfig(cfg);
-  assert.equal(r.ok, false);
-  assert.equal(r.error, 'APPROVAL_PENDING');
-  assert.equal(sent.length, before + 1, 'the user is told about the request');
-  assert.match(sent.at(-1).text, /\/approve/);
+  assert.equal(r.ok, true);
+  assert.match(r.stdout, /hi/);
+  assert.equal(sent.length, before, 'no approval message is sent');
 });
 
-await test('the approval message carries the inline buttons', async () => {
-  const before = sent.length;
-  saveConfig({ ...cfg, requireApproval: true, approvalWaitSec: 2 });
-  const r = await engine.call('bash', { command: 'echo hi' });
-  saveConfig(cfg);
-  assert.equal(r.ok, false);
-  const message = sent.at(-1);
-  const keyboard = message.reply_markup?.inline_keyboard;
+await test('the historical approval keyboard carries approve/deny buttons', async () => {
+  const keyboard = tg.approvalKeyboard('test-id');
   assert.ok(keyboard, 'the message has a keyboard');
   const labels = keyboard.flat().map((b) => b.text);
-  assert.deepEqual(labels, ['Approve once', 'Approve for 3h', 'Deny']);
+  assert.deepEqual(labels, ['Approve once', 'Deny']);
   assert.match(keyboard.flat()[0].callback_data, /^approve:/);
-  assert.match(keyboard.flat()[1].callback_data, /^approve3h:/);
-  assert.match(keyboard.flat()[2].callback_data, /^deny:/);
+  assert.match(keyboard.flat()[1].callback_data, /^deny:/);
 });
 
-await test('a button press settles the request and trusts the tool for 3 hours', async () => {
+await test('a button press settles the request', async () => {
   const id = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
   const dir = path.join(CONFIG_DIR, 'approvals');
   fs.mkdirSync(dir, { recursive: true });
@@ -206,7 +198,7 @@ await test('a button press settles the request and trusts the tool for 3 hours',
     update_id: 9,
     callback_query: {
       id: 'cb-1',
-      data: `approve3h:${id}`,
+      data: `approve:${id}`,
       from: { username: 'me' },
       message: { message_id: 77, chat: { id: 42 }, date: 1 },
     },
@@ -220,10 +212,6 @@ await test('a button press settles the request and trusts the tool for 3 hours',
   }
   await new Promise((r) => server.close(r));
   assert.equal(status, 'approved', 'the button settles the request');
-  const trust = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'trust.json'), 'utf8'));
-  assert.deepEqual(trust.tools, [], 'blanket trust (all tools) per user request');
-  assert.deepEqual(trust.paths, [], 'no path restriction');
-  assert.ok(trust.until > Date.now() + 2 * 3600_000, 'the window lasts about 3 hours');
   const edited = sent.filter((m) => m.method === 'editMessageText').at(-1);
   assert.match(edited.payload.text, /Approved/);
   assert.deepEqual(edited.payload.reply_markup.inline_keyboard, [], 'the buttons are gone');

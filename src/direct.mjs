@@ -9,7 +9,6 @@ import { listApprovals, decide, settle } from './approvals.mjs';
 import { checkPath } from './policy.mjs';
 import { loadConfig, CONFIG_DIR } from './config.mjs';
 import { tailAudit, readArtifact, auditDir, audit, auditPage, findEntry, lean, headCursor, LEVELS, pruneAudit, pruneArtifacts } from './audit.mjs';
-import { reconcileTrust } from './trust.mjs';
 import { describeSource, sourceOf, admitUnauthorized } from './source.mjs';
 import { errorResponse } from './errors.mjs';
 import { startPoller, parseCommand, sendTelegram, answerCallback, editMessageText } from './telegram.mjs';
@@ -46,20 +45,16 @@ export function createDirectServer(cfg, engine, runtime = null) {
   const handleTelegramCallback = async (cb) => {
     const current = loadConfig();
     const [action, id] = String(cb.data || '').split(':');
-    if (!id || !['approve', 'approve3h', 'deny'].includes(action)) {
+    if (!id || !['approve', 'deny'].includes(action)) {
       await answerCallback(current, cb.callback_id, 'Unknown action');
       return;
     }
-    const trustSec = action === 'approve3h' ? 3 * 3600 : 0;
-    const res = settle(id, action === 'deny' ? 'deny' : 'approve', 'telegram', { trustSec });
-    const tool = res.approval?.tool || 'the tool';
+    const res = settle(id, action === 'deny' ? 'deny' : 'approve', 'telegram');
     const text = !res.ok
       ? `Cannot ${action}: ${res.error || 'unknown error'}`
       : action === 'deny'
         ? `Denied ${id}`
-        : trustSec
-          ? `Approved ${id} — ${tool} is trusted for the next 3 hours`
-          : `Approved ${id}`;
+        : `Approved ${id}`;
     await answerCallback(current, cb.callback_id, res.ok ? 'Done' : 'Error');
     await editMessageText(current, { chatId: cb.chat_id, messageId: cb.message_id, text });
   };
@@ -76,9 +71,8 @@ export function createDirectServer(cfg, engine, runtime = null) {
     try {
       if (p === '/health') {
         const expose = cfg.exposeDeviceInHealth !== false;
-        let pending = 0, trustActive = false, auditCount = 0, logSize = 0;
+        let pending = 0, auditCount = 0, logSize = 0;
         try { pending = listApprovals().filter(a => a.status === 'pending').length; } catch {}
-        try { const { trustState } = await import('./trust.mjs'); trustActive = !!trustState().active; } catch {}
         try { const { tailAudit } = await import('./audit.mjs'); auditCount = tailAudit(500).length; } catch {}
         try { const fs2 = await import('node:fs'); const p2 = path.join(CONFIG_DIR, 'logs', 'bridge.log'); if (fs2.existsSync(p2)) logSize = fs2.statSync(p2).size; } catch {}
         return sendJson(res, 200, {
@@ -88,7 +82,6 @@ export function createDirectServer(cfg, engine, runtime = null) {
           version: VERSION,
           uptime_sec: Math.round(process.uptime()),
           pending_approvals: pending,
-          trust_active: trustActive,
           audit_count: auditCount,
           log_size: logSize,
           has_public_url: runtime ? !!runtime().public_url : !!cfg.publicUrl,
@@ -180,7 +173,7 @@ export function createDirectServer(cfg, engine, runtime = null) {
       }
 
       if (req.method === 'POST' && p === '/log/event') {
-        // Interface steps only: trust and service events are written by their own modules.
+        // Interface steps only: service events are written by their own modules.
         const body = await readJson(req, 16 * 1024);
         const tool = typeof body.tool === 'string' ? body.tool : 'gui';
         const level = body.level ?? 'notice';
@@ -276,21 +269,7 @@ export function createDirectServer(cfg, engine, runtime = null) {
           audit({ tool: toolName, args: { path: target }, status: 'error', error: chk.error, via: 'files_api', actor, source });
           return sendJson(res, 403, { ok: false, error: chk.error, reason: chk.reason });
         }
-        // PUT/DELETE must go through the approval gate and audit, like the tools
-        if (req.method !== 'GET') {
-          const { authorize } = await import('./gate.mjs');
-          const resAuth = await authorize(toolName, { path: target }, cfgNow, source, actor);
-          if (!resAuth.ok) {
-            const status = resAuth.status || 'denied';
-            const pending = resAuth.pending;
-            return sendJson(res, pending ? 202 : 403, {
-              ok: false,
-              error: pending ? 'APPROVAL_PENDING' : 'APPROVAL_DENIED',
-              status,
-              approval_id: resAuth.approval_id || null,
-            });
-          }
-        }
+        // No approval gate: if the service is running, everything is allowed.
         try {
           if (req.method === 'GET') {
             const buf = await fsp.readFile(chk.abs);
@@ -376,8 +355,8 @@ export function createDirectServer(cfg, engine, runtime = null) {
   });
 
   const poller = startPoller(cfg, { onMessage: handleTelegramMessage, onCallback: handleTelegramCallback });
-  try { reconcileTrust(); pruneAudit(); pruneArtifacts(); } catch {}
-  const maint = setInterval(() => { try { reconcileTrust(); } catch {} }, 5000);
+  try { pruneAudit(); pruneArtifacts(); } catch {}
+  const maint = setInterval(() => { try { pruneAudit(); pruneArtifacts(); } catch {} }, 3600000);
   const sweep = setInterval(() => { try { pruneAudit(); pruneArtifacts(); } catch {} }, 3600000);
   maint.unref();
   sweep.unref();

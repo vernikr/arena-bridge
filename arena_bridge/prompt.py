@@ -1,8 +1,5 @@
 """Builds the ready-to-paste instruction block for a cloud agent."""
 
-from datetime import datetime
-
-from .trust import trust_state
 
 
 def build_prompt(cfg, base_url=None, tools=None) -> str:
@@ -15,17 +12,10 @@ def build_prompt(cfg, base_url=None, tools=None) -> str:
         first = (t.get("description") or "").split(".")[0]
         tool_lines.append(f"- `{t['name']}` — {first}.")
 
-    trust = trust_state()
-    if trust.get("active"):
-        until = datetime.fromtimestamp(trust["until"] / 1000).strftime("%Y-%m-%d %H:%M")
-        trust_line = (
-            f"- A trust window is open until {until}: side-effecting actions run without confirmation."
-        )
-    else:
-        trust_line = (
-            "- Side-effecting actions (bash, writes, the user's own Chrome, desktop control) "
-            "need a local approval."
-        )
+    access_line = (
+        "- If the service is running, everything is allowed: side-effecting actions "
+        "(bash, writes, the user's own Chrome, desktop control) run without confirmation."
+    )
 
     _n_tools = len(tools or [])
     tools_line = (
@@ -95,7 +85,7 @@ The token is: {token}
 2. Then `chrome_open` → `chrome_activate` (makes the tab active without touching the user's cursor or OS focus — background tabs may pause rendering) → `chrome_observe` → `chrome_click` by ref / `chrome_fill_editor` → verify with `expect`.
    `chrome_snapshot` with `{{"mode": "ax"}}` returns roles, names and element states; `chrome_screenshot` is for when the DOM is ambiguous.
 3. `chrome_attach` connects to the user's own Chrome (default port 9222, with their logged-in sessions).
-   Actions on an attached browser require a local approval — ask for it instead of retrying.
+   Actions on an attached browser run without confirmation while the service is running.
 4. Screenshots: pass `{{"path": "shot.png"}}` to save the PNG at the requested path, then read it with `file_get`.
 5. Named profiles keep their logins between runs: `chrome_launch {{"profile":"work"}}` opens
    `~/.arena-bridge/chrome-profiles/work`. `chrome_profiles` lists them. The user logs in once with
@@ -133,23 +123,18 @@ When Telegram is configured for this bridge, you can reach the user outside this
   Add `{{"wait_for_reply": true}}` to keep the call open until the user answers in Telegram.
 - `telegram_inbox` — read the messages the user sent in Telegram (answers, requests, corrections).
 - `telegram_status` — the bot, the allowed chats, the number of unread messages.
-- The user can settle a pending approval from Telegram: `/approve <approval_id>` or `/deny <approval_id>`.
+- Historical approvals (from older versions) can be settled from Telegram: `/approve <approval_id>` or `/deny <approval_id>`.
 Use it when a step takes long or when you need a decision: one message is enough, no need to repeat it.
 
 ## Approvals
-{trust_line}
-- Approve requests while the call is waiting. A returned `APPROVAL_PENDING` with status
-  `timeout` or `expired` identifies a closed request: that `approval_id` cannot be approved.
-  Ask the user to open `arena-bridge trust --for 1h` before retrying once, or arrange a fresh
-  call that they can approve while it is waiting. `GET /approvals` includes historical records; only `pending` is actionable.
-- `APPROVAL_DENIED` means the user said no: do not retry, ask what to do instead.
+{access_line}
+- There is no approval gate and no trust window. `GET /approvals` only returns
+  historical records from older versions; no new approvals are created.
 
 ## Rules
-1. Use the path the user specifies; there is no configured authorized-roots allowlist. Access is still subject to macOS permissions, protected sensitive locations, and approval requirements. Never work around an OS permission denial or a protected-location denial.
+1. Use the path the user specifies; there is no configured authorized-roots allowlist. Access is still subject to macOS permissions and protected sensitive locations. Never work around an OS permission denial or a protected-location denial.
 2. Side-effecting tools (bash, write/edit/delete, process start/kill, actions on the user's own
-   Chrome or on the desktop) may require a local human approval. When the answer contains
-   `APPROVAL_PENDING`, stop and follow the recovery hint; never ask to approve a closed id.
-   Do not retry in a loop.
+   Chrome or on the desktop) run without confirmation while the service is running.
 3. Work step by step: inspect before you change. Prefer `read_file`/`list_dir`/`search_files`
    over blind shell commands. `list_dir` returns the top level only unless you ask for `recursive`.
 4. Long-running work (dev servers, watchers) belongs in `start_process` + `read_process_output`,

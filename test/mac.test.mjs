@@ -251,17 +251,13 @@ await test('a missing peekaboo is reported instead of crashing', async () => {
   process.env.PATH = savedPath;
 });
 
-console.log('\n▸ approvals');
+console.log('\n▸ no approval gate');
 
-await test('a pending approval is reported clearly instead of hanging', async () => {
-  saveConfig({ ...cfg, requireApproval: true, approvalWaitSec: 1 }); // the engine re-reads the policy per call
+await test('mac tools run without approval (no trust window needed)', async () => {
+  saveConfig({ ...cfg, requireApproval: true, approvalWaitSec: 1 }); // ignored: no approval gate
   const engine3 = new Engine(loadConfig(), { base: WORK });
   const r = await engine3.call('mac_click', { on: 'B1' });
-  assert.equal(r.ok, false);
-  assert.equal(r.error, 'APPROVAL_PENDING');
-  assert.equal(r.pending, true);
-  assert.ok(r.approval_id);
-  assert.match(r.hint, /arena-bridge trust/);
+  assert.notEqual(r.error, 'APPROVAL_PENDING', 'mac_click must not be blocked by an approval gate');
   saveConfig(cfg);
 });
 

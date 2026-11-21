@@ -755,7 +755,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_click",
             "description": "Click on the screen: an element id from mac_see, a visible text, or coordinates.",
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "on": {"type": "string", "description": "element id from mac_see"},
@@ -776,7 +776,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_type",
             "description": "Type text into the focused element of an app window.",
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "text": {"type": "string"},
@@ -794,7 +794,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_key",
             "description": 'Press a key or a chord in an app: Return, Tab, Escape, cmd+s, cmd+shift+p, arrows, etc.',
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "key": {"type": "string", "description": 'key name or chord, e.g. "cmd+s"'},
@@ -810,7 +810,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_scroll",
             "description": "Scroll up/down in the focused app or on a given element.",
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "direction": {"type": "string", "description": "up or down"},
@@ -828,7 +828,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_move",
             "description": "Move the mouse pointer to coordinates (no click).",
-            "approval": True,
+            "approval": False,
             "schema": obj({"x": {"type": "number"}, "y": {"type": "number"}}, ["x", "y"]),
             "required": ["x", "y"],
             "handler": move,
@@ -836,7 +836,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_drag",
             "description": "Drag from one point to another (sliders, files, text selection).",
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "from_x": {"type": "number"},
@@ -867,7 +867,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_app_launch",
             "description": "Launch an application by name.",
-            "approval": True,
+            "approval": False,
             "schema": obj({"name": {"type": "string"}}, ["name"]),
             "required": ["name"],
             "handler": app_launch,
@@ -875,7 +875,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_app_focus",
             "description": "Bring an application to the front.",
-            "approval": True,
+            "approval": False,
             "schema": obj({"name": {"type": "string"}}, ["name"]),
             "required": ["name"],
             "handler": app_focus,
@@ -883,7 +883,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_app_quit",
             "description": "Quit an application.",
-            "approval": True,
+            "approval": False,
             "schema": obj({"name": {"type": "string"}}, ["name"]),
             "required": ["name"],
             "handler": app_quit,
@@ -908,7 +908,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_set",
             "description": "Set the value of an element directly through the accessibility API — fills a field without focusing the window and without simulated keystrokes.",
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "on": {"type": "string", "description": "element id from mac_see / mac_element"},
@@ -932,7 +932,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_menu_click",
             "description": 'Trigger a menu item by name (e.g. "Save", "Copy Link") or a nested path ("File > Export") — no pointer, no coordinates.',
-            "approval": True,
+            "approval": False,
             "schema": obj(
                 {
                     "item": {"type": "string", "description": "name of the menu item"},
@@ -954,7 +954,7 @@ def mac_tools(cfg=None):
         {
             "name": "mac_space_switch",
             "description": "Move to another Space so the agent works on a separate virtual desktop and the user keeps the screen they are on.",
-            "approval": True,
+            "approval": False,
             "schema": obj({"to": {"type": "string", "description": "space id or index from mac_spaces"}}, ["to"]),
             "required": ["to"],
             "handler": space_switch,

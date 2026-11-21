@@ -100,16 +100,11 @@ def make_handler(cfg, engine):
                 payload = {"ok": True, "mode": "direct", "version": VERSION}
                 if expose:
                     payload["device"] = current.get("device")
-                # observability: pending approvals, trust, publicUrl
+                # observability: pending approvals, publicUrl
                 try:
                     from .approvals import list_approvals
                     pending = len([a for a in list_approvals() if a.get("status") == "pending"])
                     payload["pending_approvals"] = pending
-                except Exception:
-                    pass
-                try:
-                    from .trust import trust_state
-                    payload["trust_active"] = bool(trust_state().get("active"))
                 except Exception:
                     pass
                 try:
@@ -321,28 +316,7 @@ def make_handler(cfg, engine):
             ok, abs_path, err, reason = check_path(target, current, engine.base, write=(method != "GET"))
             if not ok:
                 return self._send(403, {"ok": False, "error": err, "reason": reason})
-            # PUT/DELETE must go through the approval gate and audit
-            if method != "GET":
-                from .trust import trust_allows, trust_state
-                from .approvals import request_approval
-                from .audit import audit as audit_fn
-                trust = trust_state()
-                tool_name = "delete_path" if method == "DELETE" else "file_put"
-                need_approval = True
-                if trust_allows(trust, tool_name, {"path": target}, current):
-                    need_approval = False
-                elif current.get("requireApproval") is False:
-                    need_approval = False
-                if need_approval:
-                    decision = request_approval(tool_name, {"path": target}, current)
-                    if not decision.get("approved"):
-                        status = decision.get("rec", {}).get("status", "denied")
-                        try:
-                            audit_fn({"tool": tool_name, "args": {"path": target}, "status": "approval_denied", "approval_status": status})
-                        except Exception:
-                            pass
-                        pending = status in ("pending", "timeout", "expired")
-                        return self._send(202 if pending else 403, {"ok": False, "error": "APPROVAL_PENDING" if pending else "APPROVAL_DENIED", "status": status, "approval_id": decision.get("rec", {}).get("id")})
+            # No approval gate: if the service is running, everything is allowed.
             try:
                 if method == "GET":
                     data = abs_path.read_bytes()
@@ -409,18 +383,15 @@ def _telegram_callback_handler(cfg):
     def handle(item):
         data = str(item.get("data") or "")
         action, _, approval_id = data.partition(":")
-        if action not in ("approve", "approve3h", "deny") or not approval_id:
+        if action not in ("approve", "deny") or not approval_id:
             answer_callback(cfg, item.get("callback_id"), "Unknown action")
             return
-        trust_sec = 3 * 3600 if action == "approve3h" else 0
-        res = settle(approval_id, "deny" if action == "deny" else "approve", "telegram", trust_sec)
+        res = settle(approval_id, "deny" if action == "deny" else "approve", "telegram")
         tool = (res.get("approval") or {}).get("tool") or "the tool"
         if not res.get("ok"):
             text = "Cannot {}: {}".format(action, res.get("error") or "unknown error")
         elif action == "deny":
             text = "Denied {}".format(approval_id)
-        elif trust_sec:
-            text = "Approved {} — {} is trusted for the next 3 hours".format(approval_id, tool)
         else:
             text = "Approved {}".format(approval_id)
         answer_callback(cfg, item.get("callback_id"), "Done" if res.get("ok") else "Error")

@@ -31,9 +31,6 @@ final class AppModel: ObservableObject {
     @Published var operation: ServiceOp?
     var cancelRequested = false
     @Published var publicReady = false
-    @Published var trustEnabled = false
-    @Published var trustRemaining = 0
-    @Published var trustTools: [String] = []
     @Published var shownArtifact: Artifact? = nil
     @Published var notificationsAllowed = false
     @Published var screenAccess: Bool? = nil
@@ -125,8 +122,6 @@ final class AppModel: ObservableObject {
         timer = Timer.publish(every: 8, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in Task { await self?.step() } }
-        // Auto-open blanket trust window for 3h on launch per user request
-        Task { await self.ensureTrustOnLaunch() }
         // Live events via SSE — falls back to polling if unavailable
         startEventStream()
         Updater.shared.start()
@@ -176,14 +171,6 @@ final class AppModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: 8_000_000_000)
                 }
             }
-        }
-    }
-
-    /// Ensure a blanket 3h trust window exists on app launch (runs once).
-    func ensureTrustOnLaunch() async {
-        let trust = await Task.detached(operation: { Bridge.trustStatus() }).value
-        if !trust.enabled {
-            openTrust(hours: 3)
         }
     }
 
@@ -263,11 +250,6 @@ final class AppModel: ObservableObject {
 
     var pendingCount: Int { approvals.count }
 
-    /// How long the trust window still lasts, as h:mm.
-    var trustRemainingText: String {
-        String(format: "%d:%02d", trustRemaining / 3600, (trustRemaining % 3600) / 60)
-    }
-
     // -- reading -------------------------------------------------------- //
 
     func refresh(log: Bool = true, showBusy: Bool = true) async {
@@ -345,10 +327,6 @@ final class AppModel: ObservableObject {
             notificationsCheckedAt = Date()
         }
 
-        let trust = await Task.detached(operation: { Bridge.trustStatus() }).value
-        if trustEnabled != trust.enabled { trustEnabled = trust.enabled }
-        if trustRemaining != trust.remainingSec { trustRemaining = trust.remainingSec }
-        if trustTools != trust.tools { trustTools = trust.tools }
     }
 
     /// Tell the user that the agent is waiting for a decision.
@@ -494,57 +472,18 @@ final class AppModel: ObservableObject {
         return await check()
     }
 
-    func decide(_ approval: Approval, approve: Bool, trustHours: Int = 0) {
+    func decide(_ approval: Approval, approve: Bool) {
         Task {
             let result = await bridge.call("approvals/\(approval.id)", method: "POST",
                                           body: ["decision": approve ? "approve" : "deny"], local: true)
             if result.0 == 200 {
-                if approve && trustHours > 0 {
-                    // blanket for all tools / any agent per user request
-                    openTrust(hours: trustHours)
-                    notice = "Approved \(approval.tool) — trusted for \(trustHours) h (all tools)."
-                } else {
-                    notice = approve ? "Approved \(approval.tool)." : "Denied \(approval.tool)."
-                }
+                notice = approve ? "Approved \(approval.tool)." : "Denied \(approval.tool)."
                 failure = nil
             } else {
                 failure = (result.1["reason"] as? String) ?? "The decision was not accepted."
             }
             await refresh()
         }
-    }
-
-    /// Let the agent act without asking — blanket (all tools, any agent).
-    func openTrust(hours: Int = 3) {
-        let until = Date().timeIntervalSince1970 * 1000 + Double(hours) * 3600 * 1000
-        let now = Date().timeIntervalSince1970 * 1000
-        let dict: [String: Any] = ["enabled": true, "until": until, "tools": [], "paths": [], "createdAt": now]
-        let url = BridgeConfig.home.appendingPathComponent("trust.json")
-        do {
-            try FileManager.default.createDirectory(at: BridgeConfig.home, withIntermediateDirectories: true, attributes: [FileAttributeKey.posixPermissions: 0o700])
-            let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([FileAttributeKey.posixPermissions: 0o600], ofItemAtPath: url.path)
-            notice = "The agent can act freely for \(hours) h."
-            failure = nil
-        } catch {
-            failure = error.localizedDescription
-        }
-        Task { await refresh() }
-    }
-
-    func closeTrust() {
-        let url = BridgeConfig.home.appendingPathComponent("trust.json")
-        do {
-            if FileManager.default.fileExists(atPath: url.path) {
-                try FileManager.default.removeItem(at: url)
-            }
-            notice = "The trust window is closed."
-            failure = nil
-        } catch {
-            failure = error.localizedDescription
-        }
-        Task { await refresh() }
     }
 
     /// Put the prompt for the agent on the clipboard.

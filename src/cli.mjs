@@ -15,7 +15,16 @@ import { pruneApprovals } from './approvals.mjs';
 import { startTunnel, isPortOpen, killStaleTunnel, killTunnelsForPort, listenerPid } from './tunnel.mjs';
 import { readPid, writePid, clearPid, pidAlive, pidArgs, pidParent, stopPid } from './state.mjs';
 import { spawn, execSync, spawnSync } from 'node:child_process';
-import { parseDuration, trustState, openTrust, closeTrust, reconcileTrust } from './trust.mjs';
+// Local duration parser ('30m' | '2h' | '1d' | '90' minutes -> ms).
+// (Previously in trust.mjs; the trust window is removed.)
+function parseDuration(value) {
+  if (value === undefined || value === null || value === true) return 60 * 60 * 1000;
+  const raw = String(value).trim().toLowerCase();
+  const m = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)?$/.exec(raw);
+  if (!m) throw new Error(`cannot parse duration: ${value}`);
+  const factor = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] || 'm'];
+  return Math.round(parseFloat(m[1]) * factor);
+}
 import { bridgeEvent, tunnelEvent } from './lifecycle.mjs';
 import { findPeekaboo, permissionStatus } from './mac.mjs';
 import { coldStartMs, mem, uptimeSec } from './telemetry.mjs';
@@ -150,11 +159,6 @@ Commands:
   approvals [--json]    List approval requests (or: approvals prune [--days 14])
   approve <id>         Approve a pending request (--deny to refuse)
   rotate               Generate a new agent token (--device for the device token)
-  trust                Open a trust window (use --history to see past windows)
-                       --for 2h        how long (30m, 2h, 1d)
-                       --tools a,b     only these tools (default: all)
-                       --paths p1,p2   only these paths (bash is not covered)
-                       --off | --status | --extend --for 1h
   audit [-n N] [--tool NAME] [--since DUR] [--from DATE] [--to DATE] [--json] Show the audit log
   cleanup [--days N]   Remove old artifacts + approvals (default 7 days)
   events [--json]      Stream live events (approvals/audit) via SSE /v1/events
@@ -169,7 +173,7 @@ Commands:
                        poll              listen for messages in the foreground
   doctor [--fix]       Check the installation and configuration (--fix repairs perms/dirs)
   permissions [--json] Check macOS Screen Recording and Accessibility for the bridge (exit 3 if missing)
-  status [--json]      One-line runtime status (config, url, trust, approvals, service)
+  status [--json]      One-line runtime status (config, url, approvals, service)
   url                  Print the public URL the agent should use
   open                 Open the public URL in the browser
   version              Show the installed version and the latest one on npm
@@ -192,7 +196,7 @@ Common options:
   --bin PATH           tunnel binary to run (default: cloudflared; "ngrok" is supported too)
   --authtoken TOKEN    ngrok authtoken (keeps the same URL on every restart)
   --domain NAME        ngrok reserved domain, e.g. my-machine.ngrok-free.app
-  --no-approval        disable the human approval gate (dangerous)
+  --no-approval        (deprecated, no-op) approvals are disabled
   --no-shell           disable shell execution entirely
 
 Config file: ${CONFIG_DIR}/config.json
@@ -241,10 +245,10 @@ function cmdInit(args) {
   console.log(`✓ config written to ${path.join(CONFIG_DIR, 'config.json')} (mode=${cfg.mode})`);
   console.log(`  agent token : ${cfg.token}`);
   console.log(`  device token: ${cfg.deviceToken}`);
-  console.log(`  local token : ${cfg.localToken}   (local only: approvals and trust, never given to the agent)`);
+  console.log(`  local token : ${cfg.localToken}   (local only: historical approvals, never given to the agent)`);
   console.log(`  device name : ${cfg.device}`);
   console.log(`  roots       : ${cfg.roots.join(', ')}`);
-  console.log(`  approval    : ${cfg.requireApproval ? 'required for side-effecting tools' : 'DISABLED'}`);
+  console.log(`  approval    : DISABLED (if the service is running, everything is allowed)`);
   console.log(`\nNext: arena-bridge start   (then expose it with a tunnel)`);
 }
 
@@ -277,15 +281,6 @@ async function cmdStart(args) {
     console.error('✗ no token in config — run "arena-bridge init" first');
     process.exit(1);
   }
-  try {
-    const { trustState, openTrust } = await import('./trust.mjs');
-    const st = trustState();
-    if (!st.active) {
-      const now = Date.now();
-      openTrust({ until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now }, { via: 'launch', source: { channel: 'local' } });
-      console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
-    }
-  } catch {}
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
   const server = createDirectServer(cfg, engine);
   server.on('error', (e) => {
@@ -335,17 +330,6 @@ async function cmdTunnel(args) {
   const authtoken = args.flags.authtoken || cfg.tunnel?.authtoken || undefined;
   const domain = (args.flags.domain !== undefined ? String(args.flags.domain) : cfg.tunnel?.domain) || undefined;
   const engine = new Engine(cfg, { base: cfg.roots?.[0] || os.homedir() });
-
-  // Auto-open blanket trust window on start (3h, all tools, any agent) per user request
-  try {
-    const { trustState, openTrust } = await import('./trust.mjs');
-    const st = trustState();
-    if (!st.active) {
-      const now = Date.now();
-      openTrust({ until: now + 3 * 3600 * 1000, tools: [], paths: [], createdAt: now }, { via: 'launch', source: { channel: 'local' } });
-      console.log('✓ trust window auto-opened for 3 h (all tools, any agent) — no approvals needed');
-    }
-  } catch {}
 
   let server = null;
   let tunnel = null;
@@ -547,72 +531,6 @@ function cmdApprove(args) {
   console.log(`✓ ${r.approval.tool} ${r.approval.status} (${id})`);
 }
 
-function cmdTrust(args) {
-  const state = trustState();
-  reconcileTrust();
-  const via = /^[a-z]{1,20}$/.test(String(args.flags.source || '')) ? args.flags.source : 'cli';
-  const source = { channel: 'cli' };
-  if (args.flags.extend || args.flags.extend) {
-    const cur = trustState();
-    if (!cur.active) { console.error('no active trust window to extend — use arena-bridge trust --for 2h'); process.exit(1); }
-    const ms = parseDuration(args.flags.for || args.flags.extend || '1h');
-    const saved = openTrust({ ...cur, until: cur.until + ms, createdAt: cur.createdAt || Date.now() }, { via, source });
-    console.log(`✓ trust window extended: until ${new Date(saved.until).toLocaleString()} (+${Math.round(ms/60000)} min)`);
-    return;
-  }
-  if (args.flags.history) {
-    try {
-      const hist = path.join(CONFIG_DIR, 'trust.history.json');
-      if (!fs.existsSync(hist)) { console.log('no trust history yet'); return; }
-      const data = JSON.parse(fs.readFileSync(hist,'utf8'));
-      if (args.flags.json) console.log(JSON.stringify(data, null, 2));
-      else { for (const h of data.slice(-20)) console.log(`${new Date(h.until).toLocaleString()} ${h.tools.length? h.tools.join(','):'all'} ${h.paths.length? h.paths.join(','):''} ${h.by||''}`); }
-    } catch (e) { console.error(e.message); }
-    return;
-  }
-  if (args.flags.off) {
-    closeTrust({ via, source });
-    console.log('✓ trust window cleared — every side-effecting action needs approval again');
-    return;
-  }
-  if (args.flags.status || (!args.flags.for && !args.flags.tools && !args.flags.paths)) {
-    if (args.flags.json) {
-      const remaining = state && state.active ? Math.max(0, Math.round((state.until - Date.now()) / 1000)) : 0;
-      console.log(
-        JSON.stringify({
-          enabled: !!(state && state.active),
-          until: state && state.active ? state.until : null,
-          remaining_sec: remaining,
-          tools: state ? state.tools : [],
-          paths: state ? state.paths : [],
-        }),
-      );
-      return;
-    }
-    if (!state || !state.active) {
-      console.log('no active trust window (every side-effecting action needs approval)');
-    } else {
-      console.log(`✓ trust window active until ${new Date(state.until).toLocaleString()}`);
-      console.log(`  tools: ${state.tools.length ? state.tools.join(', ') : 'all side-effecting tools'}`);
-      console.log(`  paths: ${state.paths.length ? state.paths.join(', ') : 'no path restriction'}`);
-    }
-    return;
-  }
-  const ms = parseDuration(args.flags.for);
-  const list = (v) =>
-    String(v || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  const tools = list(args.flags.tools);
-  const paths = list(args.flags.paths).map((p) => path.resolve(p.replace(/^~/, os.homedir())));
-  const saved = openTrust({ until: Date.now() + ms, tools, paths, createdAt: Date.now() }, { via, source });
-  console.log(`✓ trust window: until ${new Date(saved.until).toLocaleString()} (${Math.round(ms / 60000)} min)`);
-  console.log(`  tools: ${tools.length ? tools.join(', ') : 'all side-effecting tools'}`);
-  console.log(`  paths: ${paths.length ? paths.join(', ') : 'no path restriction'}`);
-  console.log('  the agent can now act without asking; run "arena-bridge trust --off" to stop');
-}
-
 function cmdAudit(args) {
   const what = args._[1];
   if (what === 'dir') {
@@ -744,10 +662,6 @@ function cmdStatus(args) {
   checks.push({ name: 'token', ok: !!cfg.token, detail: cfg.token ? 'present' : 'MISSING' });
   checks.push({ name: 'publicUrl', ok: !!cfg.publicUrl, detail: cfg.publicUrl || 'not set — run arena-bridge tunnel' });
   try {
-    const st = trustState();
-    checks.push({ name: 'trust window', ok: !!st.active, detail: st.active ? `active until ${new Date(st.until).toLocaleString()}` : 'none (approvals required)' });
-  } catch {}
-  try {
     const pending = listApprovals().filter(a => a.status==='pending').length;
     checks.push({ name: 'pending approvals', ok: true, detail: `${pending} pending` });
   } catch {}
@@ -759,7 +673,7 @@ function cmdStatus(args) {
   if (isJson) {
     console.log(JSON.stringify({ ok: checks.every(c=>c.ok && c.name!=='pending approvals' && c.name!=='API port'), checks, version: cfg._state?.version || undefined, publicUrl: cfg.publicUrl || null }, null, 2));
   } else {
-    for (const c of checks) console.log(`${c.ok ? '✓' : (c.name==='trust window' || c.name==='publicUrl' ? '○' : '✗')} ${c.name.padEnd(18)} ${c.detail}`);
+    for (const c of checks) console.log(`${c.ok ? '✓' : (c.name==='publicUrl' ? '○' : '✗')} ${c.name.padEnd(18)} ${c.detail}`);
     console.log(`\nPublic URL: ${cfg.publicUrl || '(not set)'}`);
     if (!cfg.publicUrl) console.log('Run: arena-bridge tunnel  or  arena-bridge service install');
   }
@@ -1197,7 +1111,7 @@ function cmdDoctor(args) {
   checks.push({ name: 'device token', code: 'device_token', passed: !!cfg.deviceToken, detail: cfg.deviceToken ? 'present' : 'MISSING', hint: 'run arena-bridge init' });
   checks.push({ name: 'mode', code: 'mode', passed: !!cfg.mode, detail: cfg.mode, hint: '' });
   checks.push({ name: 'filesystem paths', code: 'filesystem_paths', passed: true, detail: 'not restricted by configured roots', hint: '' });
-  checks.push({ name: 'approval gate', code: 'approval_gate', passed: cfg.requireApproval !== false, detail: cfg.requireApproval ? 'on' : 'OFF (dangerous)', hint: 'set requireApproval=true in config' });
+  checks.push({ name: 'approval gate', code: 'approval_gate', passed: true, detail: 'disabled — if the service is running, everything is allowed' });
   checks.push({ name: 'shell', code: 'shell', passed: cfg.allowShell !== false, detail: cfg.allowShell ? 'on' : 'off', hint: '' });
   checks.push({ name: 'protected paths', code: 'protected', passed: (cfg.protected || []).length > 0, detail: `${(cfg.protected || []).length} entries`, hint: '' });
   // config validate as doctor checks
@@ -1287,8 +1201,6 @@ export async function main(argv = process.argv.slice(2)) {
       return cmdTelegram(args);
     case 'rotate':
       return cmdRotate(args);
-    case 'trust':
-      return cmdTrust(args);
     case 'doctor':
       return cmdDoctor(args);
     case 'permissions':

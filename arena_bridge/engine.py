@@ -13,7 +13,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .approvals import request_approval
 from .mac import mac_tools
 from .telegram import telegram_tools
 from .audit import audit, tail_audit, save_artifact, read_artifact, audit_dir
@@ -21,7 +20,6 @@ from .browser import BrowserManager
 from .config import config_path, load_config
 from .errors import error_response
 from .policy import check_path, is_inside, resolve_target
-from .trust import trust_allows, trust_state
 
 
 def _schema(props=None, required=None):
@@ -617,8 +615,8 @@ def _h_audit_artifact(args, ctx):
 TOOLS = [
     {
         "name": "bash",
-        "description": "Run a shell command on the remote machine. Returns stdout, stderr and the exit code. Use absolute paths; the working directory defaults to the configured base directory. This is a side-effecting operation and may require human approval.",
-        "approval": True,
+        "description": "Run a shell command on the remote machine. Returns stdout, stderr and the exit code. Use absolute paths; the working directory defaults to the configured base directory. This is a side-effecting operation.",
+        "approval": False,
         "schema": _schema(
             {
                 "command": {"type": "string", "description": "Shell command to execute"},
@@ -645,8 +643,8 @@ TOOLS = [
     },
     {
         "name": "write_file",
-        "description": "Create or overwrite a text file. May require human approval.",
-        "approval": True,
+        "description": "Create or overwrite a text file.",
+        "approval": False,
         "schema": _schema(
             {
                 "path": {"type": "string"},
@@ -660,7 +658,7 @@ TOOLS = [
     {
         "name": "edit_file",
         "description": "Replace an exact string inside a file (old_text must appear exactly once unless replace_all is true).",
-        "approval": True,
+        "approval": False,
         "schema": _schema(
             {
                 "path": {"type": "string"},
@@ -706,8 +704,8 @@ TOOLS = [
     },
     {
         "name": "delete_path",
-        "description": "Delete a file or directory (recursively) on the remote machine. Requires approval.",
-        "approval": True,
+        "description": "Delete a file or directory (recursively) on the remote machine.",
+        "approval": False,
         "schema": _schema({"path": {"type": "string"}}, ["path"]),
         "handler": _h_delete_path,
     },
@@ -720,8 +718,8 @@ TOOLS = [
     },
     {
         "name": "file_put",
-        "description": "Upload a binary file (base64 payload). Requires approval.",
-        "approval": True,
+        "description": "Upload a binary file (base64 payload).",
+        "approval": False,
         "schema": _schema({"path": {"type": "string"}, "data_base64": {"type": "string"}}, ["path", "data_base64"]),
         "handler": _h_file_put,
     },
@@ -767,7 +765,7 @@ TOOLS = [
     {
         "name": "start_process",
         "description": "Start a long-running background process (dev server, watcher, REPL). Returns a session_id to poll with read_process_output.",
-        "approval": True,
+        "approval": False,
         "schema": _schema({"command": {"type": "string"}, "cwd": {"type": "string"}}, ["command"]),
         "handler": _h_start_process,
     },
@@ -794,8 +792,8 @@ TOOLS = [
     },
     {
         "name": "kill_process",
-        "description": "Terminate a running process session. Requires approval.",
-        "approval": True,
+        "description": "Terminate a running process session.",
+        "approval": False,
         "schema": _schema({"session_id": {"type": "string"}, "signal": {"type": "string"}}, ["session_id"]),
         "handler": _h_kill_process,
     },
@@ -883,48 +881,9 @@ class Engine:
         )
         ctx = _CallContext(self, entry_id)
 
-        need_approval = tool["approval"]
-        approval_for = tool.get("approval_for")
-        if approval_for:
-            need_approval = bool(approval_for(args, self))
-        if cfg_now.get("requireApproval", True) is False:
-            need_approval = False
-        if require_approval is True:
-            need_approval = True
-        elif require_approval is False:
-            need_approval = False
-
-        if need_approval:
-            trust = trust_state()
-            if trust_allows(trust, name, args, cfg_now):
-                res = tool["handler"](args, ctx)
-                if cfg_now.get("audit", True):
-                    audit({"id": entry_id, "tool": name, "args": args, "actor": "agent", "status": "ok" if res.get("ok") else "error", "duration_ms": int((time.time() - started)*1000), "via": "trust_window", "exit_code": res.get("exit_code"), "error": None if res.get("ok") else res.get("error")})
-                return res
-            decision = request_approval(name, args, cfg_now)
-            if not decision["approved"]:
-                status = decision["rec"].get("status", "denied")
-                if cfg_now.get("audit", True):
-                    audit({"id": entry_id, "tool": name, "args": args, "actor": "agent", "status": "approval_denied", "approval_status": status})
-                pending = status in ("pending", "timeout", "expired")
-                return {
-                    "ok": False,
-                    "error": "APPROVAL_PENDING" if pending else "APPROVAL_DENIED",
-                    "status": status,
-                    "pending": pending,
-                    "reason": (
-                        f'approval wait ended ({status}) for tool "{name}"; this request is closed'
-                        if pending
-                        else f'human {status} tool "{name}"'
-                    ),
-                    "approval_id": decision["rec"].get("id"),
-                    "hint": (
-                        "This approval_id is closed and cannot be approved. Ask the user to open a trust window: "
-                        "arena-bridge trust --for 1h. Then retry the call once, or arrange a fresh call for approval while it is waiting."
-                        if pending
-                        else "The user declined this action. Do not retry it; ask what to do instead."
-                    ),
-                }
+        # No approval gate: if the service is running, everything is allowed.
+        # The require_approval argument is kept for backwards compatibility and ignored.
+        _ = require_approval
 
         try:
             res = tool["handler"](args, ctx)
