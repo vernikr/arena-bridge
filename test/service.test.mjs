@@ -13,7 +13,7 @@ fs.writeFileSync(path.join(bin, 'launchctl'), `#!${process.execPath}\nrequire('f
 process.env.PATH = `${bin}:${process.env.PATH}`;
 const m = await import('../src/service.mjs');
 try {
-  const options = { bin: 'ngrok', domain: 'test.ngrok-free.dev', port: 9999 };
+  const options = { bin: 'ngrok', domain: 'test.ngrok-free.dev', port: 9999, fixedPublicUrl: 'https://bridge.example.test' };
   const configured = m.serviceConfigure(options);
   assert.equal(configured.ok, true);
   assert.equal(fs.existsSync(calls), false, 'configuration must not invoke launchctl or start the service');
@@ -23,6 +23,8 @@ try {
   let xml = fs.readFileSync(r.plist, 'utf8');
   assert.ok(xml.includes(`<string>${m.runnerPath()}</string>`));
   assert.ok(xml.includes('<key>KeepAlive</key><true/>'));
+  assert.ok(xml.includes('<string>--public-url</string>'));
+  assert.ok(xml.includes('<string>https://bridge.example.test</string>'));
   const helper = path.join(process.env.ARENA_BRIDGE_APP, 'Contents/Helpers/arena-bridge-agent');
   fs.mkdirSync(path.dirname(helper), { recursive: true });
   fs.writeFileSync(path.join(process.env.ARENA_BRIDGE_APP, 'Contents/Info.plist'), '<plist/>');
@@ -30,7 +32,7 @@ try {
   r = m.serviceInstall(options);
   xml = fs.readFileSync(r.plist, 'utf8');
   assert.ok(xml.includes('Arena &amp; Bridge.app'));
-  assert.deepEqual(m.programArguments(options).slice(3), ['tunnel', '--bin', 'ngrok', '--domain', options.domain, '--port', '9999']);
+  assert.deepEqual(m.programArguments(options).slice(3), ['tunnel', '--bin', 'ngrok', '--domain', options.domain, '--port', '9999', '--public-url', options.fixedPublicUrl]);
   const log = fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(log.length, 2);
   assert.ok(log.every(a => a[0] === 'submit'), 'installer must not stop its own parent');

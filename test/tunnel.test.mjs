@@ -45,6 +45,60 @@ test('the pid file follows the live tunnel and dies with it', async () => {
   assert.equal(tunnel.alive(), false);
 });
 
+test('cloudflared retries transient initial failures with bounded backoff', async () => {
+  const counter = path.join(tmp, 'cloudflared-attempts');
+  const retryBin = path.join(tmp, 'retry-cloudflared');
+  fs.writeFileSync(retryBin, [
+    '#!/bin/sh',
+    'n=0',
+    '[ -f ' + JSON.stringify(counter) + ' ] && n=$(cat ' + JSON.stringify(counter) + ')',
+    'n=$((n + 1))',
+    'echo $n > ' + JSON.stringify(counter),
+    'if [ "$n" -lt 3 ]; then echo "dial tcp 198.41.0.1:7844: i/o timeout" >&2; exit 1; fi',
+    'echo "https://retry-ok.trycloudflare.com" >&2',
+    'sleep 30 </dev/null >/dev/null 2>&1 &',
+    'wait',
+  ].join('\n') + '\n', { mode: 0o755 });
+
+  const retries = [];
+  const tunnel = startTunnel({}, {
+    bin: retryBin,
+    port: 8789,
+    restarts: 0,
+    startupRetries: 3,
+    retryBaseMs: 5,
+    retryMaxMs: 10,
+    random: () => 0,
+    onRetry: (details) => retries.push(details),
+  });
+  const url = await tunnel.urlPromise;
+  assert.equal(url, 'https://retry-ok.trycloudflare.com');
+  assert.equal(Number(fs.readFileSync(counter, 'utf8').trim()), 3);
+  assert.deepEqual(retries.map((r) => r.attempt), [1, 2]);
+  assert.ok(retries.every((r) => r.category === 'edge_connectivity'));
+  assert.deepEqual(retries.map((r) => r.delay), [4, 8]);
+  tunnel.kill();
+});
+
+test('permanent cloudflared configuration failures fail without retrying', async () => {
+  const retryBin = path.join(tmp, 'invalid-cloudflared');
+  const marker = path.join(tmp, 'invalid-cloudflared-called');
+  fs.writeFileSync(retryBin, '#!/bin/sh\necho called >> ' + JSON.stringify(marker) + '\necho "failed to parse tunnel credentials" >&2\nexit 1\n', { mode: 0o755 });
+  const retries = [];
+  const tunnel = startTunnel({}, {
+    bin: retryBin,
+    port: 8790,
+    startupRetries: 5,
+    retryBaseMs: 1,
+    onRetry: (details) => retries.push(details),
+  });
+  const error = await tunnel.urlPromise.then(() => null, (reason) => reason);
+  assert.match(error.message, /failed to parse tunnel credentials/);
+  assert.equal(retries.length, 0);
+  assert.equal(fs.readFileSync(marker, 'utf8').trim().split('\n').length, 1);
+  tunnel.kill();
+});
+
 test('only tunnels of our port are stopped, by exact name', async () => {
   const ours = spawn(path.join(tmp, 'a'), 8787);
   const theirs = spawn(path.join(tmp, 'b'), 9999);
@@ -70,6 +124,7 @@ test('startup failure preserves ngrok diagnostics and redacts the authtoken', as
     port: 8788,
     authtoken: 'example-secret-token',
     restarts: 0,
+    startupRetries: 0,
     onExit: (code, details) => { exitDetails = { code, ...details }; },
   });
 

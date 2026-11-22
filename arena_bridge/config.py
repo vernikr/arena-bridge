@@ -9,9 +9,9 @@ try:
 except Exception:
     import json, pathlib
     try:
-        VERSION = json.loads((pathlib.Path(__file__).parent.parent / "package.json").read_text()).get("version", "0.21.1")
+        VERSION = json.loads((pathlib.Path(__file__).parent.parent / "package.json").read_text()).get("version", "0.21.2")
     except Exception:
-        VERSION = "0.21.1"
+        VERSION = "0.21.2"
 
 
 def config_dir() -> Path:

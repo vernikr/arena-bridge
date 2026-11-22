@@ -84,7 +84,16 @@ arena-bridge config set fixedPublicUrl https://bridge.example.com
 ```
 
 В таком режиме `arena-bridge tunnel` запускает только API и не создаёт Quick Tunnel. Внешний
-туннель остаётся под управлением Cloudflare. Сбросить настройку:
+туннель остаётся под управлением Cloudflare. При работе API мост раз в минуту проверяет локальный
+`/health` и публичный HTTPS endpoint. После трёх последовательных ошибок пишет диагностику в
+`~/.arena-bridge/logs/bridge.log`; если настроен Telegram, отправляет уведомление и сообщает о
+восстановлении. Разовая проверка с Mac:
+
+```bash
+arena-bridge doctor --remote
+```
+
+Сбросить настройку:
 
 ```bash
 arena-bridge config set fixedPublicUrl null
@@ -104,6 +113,7 @@ arena-bridge config set fixedPublicUrl null
 
 ```bash
 arena-bridge service install                                   # облако, случайный адрес
+arena-bridge service install --public-url https://bridge.example.com  # внешний именованный туннель
 arena-bridge service install --bin ngrok --domain mymac.ngrok-free.app   # постоянный адрес
 arena-bridge service status                                    # состояние и текущий URL
 arena-bridge url                                              # текущий публичный адрес
@@ -486,7 +496,7 @@ arena-bridge audit -n 50       # что происходило
 | `logs [-n N] [--json]` | `bridge.log` (структурные логи, 5MB rotation) |
 | `config get/set/edit/list` | управление `config.json` (`get <key>`, `set <key> <val>`, `--json`) |
 | `cleanup [--days N]` | удалить старые артефакты + approvals (по умолчанию 14д) |
-| `doctor [--fix] [--json]` | проверка установки, токенов, путей, Peekaboo, Chrome (`--fix` чинит dirs/perms) |
+| `doctor [--fix] [--json] [--remote]` | проверка установки; `--remote` дополнительно проверяет локальный API и публичный HTTPS endpoint |
 | `status [--json]` | рантайм-снапшот: config, url, pending, port, service |
 | `url` / `open` | текущий публичный URL (open — открыть в браузере) |
 | `completion bash|zsh|fish` | shell completion для bash/zsh/fish |
