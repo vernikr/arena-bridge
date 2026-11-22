@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.21.2
+
+### Added
+- A dependency-free remote health probe (doctor --remote) checks the local API and public
+  HTTPS endpoint independently, classifying DNS, TLS, Cloudflare Edge, and HTTP failures.
+- Fixed-URL deployments monitor the public endpoint every minute, log failures, and send
+  Telegram alerts after three consecutive failures plus a recovery notification when restored.
+- Initial cloudflared startup retries use bounded exponential backoff with jitter; permanent
+  configuration and binary errors fail immediately.
+
+### Fixed
+- macOS service generation now carries fixedPublicUrl into ProgramArguments, so reinstalling
+  the LaunchAgent preserves an externally managed tunnel and does not revive Quick Tunnel mode.
+
 ## 0.21.1
 
 ### Added

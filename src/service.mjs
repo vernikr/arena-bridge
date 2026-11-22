@@ -105,12 +105,13 @@ exec "${stableNode()}" "${cliEntry()}" "$@"
  * accessibility permissions to the app, so the system settings show its name. Without the app
  * the service starts the wrapper script.
  */
-export function programArguments({ bin, domain, authtoken, port } = {}) {
+export function programArguments({ bin, domain, authtoken, port, fixedPublicUrl } = {}) {
   const extra = [];
   if (bin) extra.push('--bin', String(bin));
   if (domain) extra.push('--domain', String(domain));
   if (authtoken) extra.push('--authtoken', String(authtoken));
   if (port) extra.push('--port', String(port));
+  if (fixedPublicUrl) extra.push('--public-url', String(fixedPublicUrl));
   const helper = agentPath();
   if (helper) return [helper, stableNode(), cliEntry(), 'tunnel', ...extra];
   return [runnerPath(), 'tunnel', ...extra];

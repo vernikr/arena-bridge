@@ -68,6 +68,23 @@ export function killTunnelsForPort(port) {
 const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 const NGROK_URL_RE = /https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io|dev)/i;
 
+export function classifyTunnelFailure(error) {
+  const message = String(error?.message || error || '');
+  const code = String(error?.code || '');
+  if (code === 'ENOENT' || /cannot start .*ENOENT/i.test(message)) return 'missing_binary';
+  if (/ERR_NGROK_9040|authtoken|authentication failed|unauthorized|invalid credentials|failed to parse|unknown flag|permission denied/i.test(message)) return 'configuration';
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|DNS lookup/i.test(code + ' ' + message)) return 'dns';
+  if (/timeout|timed out|dial tcp|connection refused|connection reset|network is unreachable|7844|connect/i.test(message)) return 'edge_connectivity';
+  return 'startup';
+}
+
+function permanentStartupFailure(error) {
+  const message = String(error?.message || error || '');
+  const code = String(error?.code || '');
+  return ['ENOENT', 'EACCES', 'EPERM', 'EINVAL'].includes(code)
+    || /ERR_NGROK_9040|authtoken|authentication failed|unauthorized|invalid credentials|failed to parse|unknown flag|permission denied/i.test(message);
+}
+
 function redactTunnelOutput(value, authtoken) {
   let text = String(value)
     .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
@@ -119,7 +136,7 @@ export function killStaleNgrok(domain) {
 
 export function startTunnel(
   cfg,
-  { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000, onExit } = {},
+  { port, protocol = 'http2', bin = 'cloudflared', authtoken, domain, restarts = 20, delay = 2000, startupRetries = 5, retryBaseMs = 1000, retryMaxMs = 15000, random = Math.random, onRetry, onExit } = {},
 ) {
   const target = `http://127.0.0.1:${port}`;
   const isNgrok = /ngrok/i.test(bin);
@@ -139,7 +156,11 @@ export function startTunnel(
   let buffer = '';
   let diagnosticTail = '';
   let settled = false;
+  let urlResolved = false;
   let attempt = 0;
+  let startupAttempts = 0;
+  let retryScheduled = false;
+  let retryTimer = null;
   let exhausted = false;
   let resolveUrl;
   let rejectUrl;
@@ -163,37 +184,62 @@ export function startTunnel(
     if (!match) return;
     if (!settled) {
       settled = true;
+      urlResolved = true;
       resolveUrl(match[0]);
     }
     for (const fn of listeners) fn(match[0]);
   };
 
+  const scheduleStartupRetry = (error) => {
+    if (retryScheduled) return true;
+    if (settled || urlResolved || startupAttempts >= startupRetries || permanentStartupFailure(error)) return false;
+    startupAttempts++;
+    retryScheduled = true;
+    const base = Math.min(retryMaxMs, retryBaseMs * (2 ** (startupAttempts - 1)));
+    const jitter = Math.max(0, Math.min(1, Number(random()) || 0));
+    const wait = Math.round(base * (0.8 + jitter * 0.4));
+    const reason = String(error?.message || error || 'tunnel exited before URL appeared').slice(0, 400);
+    try { onRetry?.({ attempt: startupAttempts, delay: wait, category: classifyTunnelFailure(error), reason }); } catch {}
+    if (isNgrok) killStaleNgrok(domain);
+    retryTimer = setTimeout(() => {
+      retryScheduled = false;
+      spawnChild();
+    }, wait);
+    return true;
+  };
+
   const spawnChild = () => {
+    if (exhausted || (settled && !urlResolved)) return;
     child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    if (child.pid) writePid('tunnel', child.pid);
+    const mine = child;
+    if (mine.pid) writePid('tunnel', mine.pid);
     buffer = '';
-    child.stdout.on('data', onChunk);
-    child.stderr.on('data', onChunk);
-    child.on('error', (e) => {
-      if (!settled) {
-        settled = true;
-        rejectUrl(new Error(`cannot start ${bin}: ${e.message}`));
-      }
+    mine.stdout.on('data', onChunk);
+    mine.stderr.on('data', onChunk);
+    mine.on('error', (error) => {
+      if (urlResolved || settled) return;
+      const failure = new Error('cannot start ' + bin + ': ' + error.message);
+      failure.code = error.code;
+      if (scheduleStartupRetry(failure)) return;
+      settled = true;
+      rejectUrl(failure);
     });
-    child.on('close', (code) => {
+    mine.on('close', (code) => {
+      if (child !== mine) return;
       const output = redactTunnelOutput(diagnosticTail.trim(), authtoken).slice(-2000);
-      onExit?.(code, { attempt: attempt + 1, output });
-      const mine = child;
-      if (!settled) {
-        if (!exhausted && isNgrok && attempt++ < restarts) {
-          killStaleNgrok(domain);
-          setTimeout(spawnChild, delay);
-          return;
-        }
+      const newline = String.fromCharCode(10);
+      const suffix = output ? newline + 'Last output from ' + bin + ':' + newline + output : '';
+      const failure = new Error(bin + ' exited with code ' + code + ' before the tunnel URL appeared' + suffix);
+      onExit?.(code, {
+        attempt: startupAttempts + attempt + 1,
+        output,
+        category: urlResolved ? 'runtime' : classifyTunnelFailure(failure),
+      });
+      if (!urlResolved) {
+        if (settled) return;
+        if (scheduleStartupRetry(failure)) return;
         settled = true;
-        const details = redactTunnelOutput(diagnosticTail.trim(), authtoken);
-        const suffix = details ? `\nLast output from ${bin}:\n${details}` : '';
-        rejectUrl(new Error(`${bin} exited with code ${code} before the tunnel URL appeared${suffix}`));
+        rejectUrl(failure);
         return;
       }
       if (!exhausted && attempt++ < restarts) {
@@ -223,6 +269,8 @@ export function startTunnel(
     spent: () => exhausted,
     kill: () => {
       exhausted = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      retryScheduled = false;
       const pid = child?.pid;
       if (pid) clearPid('tunnel', pid);
       try {

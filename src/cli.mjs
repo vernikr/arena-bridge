@@ -29,6 +29,7 @@ import { bridgeEvent, tunnelEvent } from './lifecycle.mjs';
 import { findPeekaboo, permissionStatus } from './mac.mjs';
 import { coldStartMs, mem, uptimeSec } from './telemetry.mjs';
 import { tailLog, logPathForCli } from './log.mjs';
+import { checkRemoteHealth, startRemoteMonitor } from './monitor.mjs';
 import { VERSION } from './version.mjs';
 import { cmdBrowser as _cmdBrowserImpl } from './cli/browser.mjs';
 import { findChrome, listProfiles, resolveProfile, sanitizeProfile } from './browser.mjs';
@@ -172,7 +173,7 @@ Commands:
                        status            show the bot, the chats, the unread count
                        inbox [-n N]      show the messages the user sent
                        poll              listen for messages in the foreground
-  doctor [--fix]       Check the installation and configuration (--fix repairs perms/dirs)
+  doctor [--fix] [--remote]  Check installation; --remote probes local API and public HTTPS URL
   permissions [--json] Check macOS Screen Recording and Accessibility for the bridge (exit 3 if missing)
   status [--json]      One-line runtime status (config, url, approvals, service)
   url                  Print the public URL the agent should use
@@ -307,7 +308,16 @@ async function cmdStart(args) {
     console.log('-----8<-----');
   });
   writePid('bridge');
+  const monitorUrl = cfg.fixedPublicUrl;
+  const remoteMonitor = monitorUrl
+    ? startRemoteMonitor({
+        cfg,
+        localUrl: 'http://' + (['0.0.0.0', '::'].includes(String(cfg.host)) ? '127.0.0.1' : cfg.host) + ':' + (cfg.port || 8787) + '/health',
+        publicUrl: monitorUrl,
+      })
+    : null;
   const bye = () => {
+    remoteMonitor?.stop();
     bridgeEvent('stop', { reason: 'signal' });
     clearPid('bridge', process.pid);
     server.close(() => process.exit(0));
@@ -385,9 +395,13 @@ async function cmdTunnel(args) {
     bin,
     authtoken,
     domain,
+    onRetry: (details = {}) => {
+      tunnelEvent('retry', { attempt: details.attempt, delay_ms: details.delay, category: details.category, reason: details.reason });
+      console.warn('[tunnel] startup retry ' + details.attempt + ' in ' + details.delay + ' ms (' + details.category + ')');
+    },
     onExit: (code, details = {}) => {
       const output = typeof details.output === 'string' ? details.output.slice(-1800) : '';
-      tunnelEvent('down', { code, attempt: details.attempt, ...(output ? { output } : {}) });
+      tunnelEvent('down', { code, attempt: details.attempt, category: details.category, ...(output ? { output } : {}) });
       if (typeof code === 'number' && code !== 0 && output) {
         console.error(`[tunnel] ${bin} exited with code ${code} (attempt ${details.attempt || '?'})`);
         console.error(output);
@@ -435,7 +449,15 @@ async function cmdTunnel(args) {
   console.log(fixedPublicUrl ? 'Ctrl+C stops the API; the external tunnel remains running.' : 'Ctrl+C stops both the tunnel and the API.');
 
   writePid('bridge');
+  const remoteMonitor = fixedPublicUrl
+    ? startRemoteMonitor({
+        cfg,
+        localUrl: 'http://' + (['0.0.0.0', '::'].includes(String(cfg.host)) ? '127.0.0.1' : cfg.host) + ':' + port + '/health',
+        publicUrl: fixedPublicUrl,
+      })
+    : null;
   const bye = () => {
+    remoteMonitor?.stop();
     bridgeEvent('stop', { reason: 'signal' });
     tunnel?.kill();
     clearPid('bridge', process.pid);
@@ -788,11 +810,16 @@ function cmdService(args) {
   const what = args._[1] || 'status';
   if (what === 'install' || what === 'configure') {
     const cfg = loadConfig();
+    if (args.flags['public-url'] !== undefined) {
+      cfg.fixedPublicUrl = String(args.flags['public-url']);
+      saveConfig(cfg);
+    }
     const options = {
       bin: args.flags.bin || cfg.tunnel?.bin,
       domain: args.flags.domain !== undefined ? String(args.flags.domain) : cfg.tunnel?.domain,
       authtoken: args.flags.authtoken || cfg.tunnel?.authtoken,
-      port: args.flags.port,
+      port: args.flags.port !== undefined ? args.flags.port : cfg.port,
+      fixedPublicUrl: args.flags['public-url'] !== undefined ? String(args.flags['public-url']) : cfg.fixedPublicUrl || null,
     };
     const res = what === 'configure' ? serviceConfigure(options) : serviceInstall(options);
     if (!res.ok) throw new Error(res.detail);
@@ -1119,7 +1146,7 @@ function cmdLogs(args) {
   }
 }
 
-function cmdDoctor(args) {
+async function cmdDoctor(args) {
   const isJson = !!(args?.flags?.json || args?.flags?.['output-json']);
   const doFix = !!(args?.flags?.fix || args?.flags?.['fix']);
   if (doFix) {
@@ -1146,6 +1173,28 @@ function cmdDoctor(args) {
   } catch {}
   // service health as doctor check (non-fatal)
   try { const svc = serviceStatus(); checks.push({ name: 'service health', code: 'service_health', passed: svc.installed ? svc.running : true, detail: svc.installed ? (svc.running ? 'running' : 'not running') : 'not installed', hint: svc.installed && !svc.running ? 'arena-bridge service install' : '' }); } catch {}
+
+  if (args?.flags?.remote) {
+    const host = ['0.0.0.0', '::', ''].includes(String(cfg.host || '127.0.0.1')) ? '127.0.0.1' : cfg.host;
+    const base = cfg.fixedPublicUrl || cfg.publicUrl;
+    if (!base) {
+      checks.push({ name: 'public endpoint', code: 'public_endpoint', passed: false, detail: 'no public URL configured', hint: 'set fixedPublicUrl or run arena-bridge tunnel' });
+    } else {
+      const remote = await checkRemoteHealth({
+        localUrl: 'http://' + host + ':' + (cfg.port || 8787) + '/health',
+        publicUrl: base,
+      });
+      for (const check of remote.checks) {
+        checks.push({
+          name: check.name === 'local_api' ? 'local API' : 'public endpoint',
+          code: check.code,
+          passed: check.ok,
+          detail: check.detail,
+          hint: check.hint || '',
+        });
+      }
+    }
+  }
 
   // audit log + bridge.log size checks (R6)
   try {
